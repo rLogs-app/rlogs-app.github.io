@@ -37,6 +37,7 @@ jobs:
       - name: Build static site
         env:
           RLOGS_SITE_BASE: /rlogs-website/
+          VITE_RLOGS_API_BASE_URL: ${{ vars.RLOGS_API_BASE_URL }}
         run: npm run build
 
       - name: Upload GitHub Pages artifact
@@ -54,4 +55,3 @@ jobs:
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-

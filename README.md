@@ -4,11 +4,23 @@
 separate repository from the capture/parser application so the site, parser,
 plug-ins, and future backend can evolve independently.
 
-The first release is intentionally a static site:
+The read-only parse browser is backed by the separate rLogs submission
+service. Its regions, activities, scenes, and difficulties are derived from
+accepted public reports, so new content does not require a hand-maintained
+website list or a frontend rebuild. `?parse=<report-id>#parse` opens the
+server-generated share page; source `.rlog` artifacts remain private.
+
+Set `VITE_RLOGS_API_BASE_URL` to the deployed submission-service origin at
+build time. Without it, the site uses the public-safe demo fixtures under
+`public/fixtures`. Accounts, rankings, and leaderboards are intentionally out
+of this milestone.
+
+The browser application remains intentionally static:
 
 - it validates the version-1 `WebsitePayloadEnvelope` emitted by rLogs;
 - it verifies the sealed `LocalProfilePackage` written by the desktop and
   extracts only its public website envelope;
+- it browses server-replayed parse projections without exposing source logs;
 - it imports and renders sanitized Blue Protocol: Star Resonance character
   profiles;
 - it discovers hashed, developer-published profile packages without requiring
@@ -53,12 +65,14 @@ belong in `src/contracts`; game data does not.
 
 ## Deployment boundary
 
-GitHub Pages hosts only static browser assets. The site must not contain API
-secrets or pretend to persist profiles. A later backend will own:
+GitHub Pages hosts only static browser assets. The site contains no API keys
+and cannot accept uploads itself. The separately deployed RLogs submission
+service owns private log ingestion, server replay, public/unlisted projections,
+and its derived browse catalog. Future services may add:
 
 - opt-in identity linking and authentication;
 - idempotent profile storage;
-- log ingestion, verification, and abuse controls;
+- higher-volume abuse controls and moderation;
 - ranking calculations and leaderboard queries.
 
 The frontend will address that backend through a configurable API adapter, so

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "report_id": "rpt_99b755083b2a00602526d6cb7312d6c5",
+  "visibility": "public",
+  "created_unix_millis": 1786661918723,
+  "game_plugin_id": "app.rlogs.game.blue-protocol-star-resonance",
+  "deployment_id": "global",
+  "region_id": "global",
+  "client_build": "24252055",
+  "protocol_pack_digest": "sha256:8d5be9e2e7cee6733c36fc94d4ad15c9357d150267e4135e89f054c65bf839e6",
+  "verification": {
+    "tier": "replayed",
+    "artifact_sha256": "99b755083b2a00602526d6cb7312d6c5edf01c88238a7b3b15e925524f5f4109",
+    "canonical_content_sha256": "sha256:14999599147329997328713b8a44c7dbd25f0ed49293bde0745e64e1553ec6eb",
+    "event_count": 32280,
+    "privacy_policy_digest": "8d5be9e2e7cee6733c36fc94d4ad15c9357d150267e4135e89f054c65bf839e6"
+  },
+  "runs": [{
+    "run_index": 0,
+    "activity_id": "scene.1631",
+    "activity_family_id": "tina-mindrealm",
+    "scene_id": 1631,
+    "scene_name": "Chaotic - Tina's Mindrealm",
+    "difficulty_family": "normal",
+    "terminal_state": "completed",
+    "total_run_time_micros": 108052770,
+    "game_time_micros": 53029373,
+    "active_combat_micros": 30687013,
+    "true_time_micros": 47962237,
+    "retry_count": 0,
+    "boss_retry_count": 0,
+    "rdps_status": "partial_packet_proven_rules",
+    "data_gap_count": 0,
+    "authoritative_start": true,
+    "authoritative_completion": true,
+    "submission_disposition": "completed_needs_review",
+    "segments": [
+      { "index": 0, "kind": "mobbing", "wall_time_micros": 33865830, "active_combat_micros": 16590606, "attempt_count": 1, "retry_count": 0 },
+      { "index": 1, "kind": "boss", "wall_time_micros": 19163543, "active_combat_micros": 14096407, "attempt_count": 1, "retry_count": 0 }
+    ],
+    "participants": [
+      { "actor_id": "7", "display_name": "MarieRose", "actor_kind": "player", "class_id": 11, "class_name": "Marksman", "damage": 88120985, "dps": 1661739.1, "encounter_dps": 2871605.2, "hps": 20186.9, "tps": 6750.1, "rdps": 1661739.1, "deaths": 0 },
+      { "actor_id": "8", "display_name": "Verdant Oracle", "actor_kind": "player", "class_id": 5, "class_name": "Verdant Oracle", "damage": 4831537, "dps": 91110.6, "encounter_dps": 157445.7, "hps": 837837.1, "tps": 1635.7, "rdps": 91110.6, "deaths": 0 },
+      { "actor_id": "11", "display_name": "Marksman", "actor_kind": "player", "class_id": 11, "class_name": "Marksman", "damage": 25660842, "dps": 483898.6, "encounter_dps": 836211.8, "hps": 0, "tps": 2785.4, "rdps": 483898.6, "deaths": 0 },
+      { "actor_id": "13", "display_name": "Heavy Guardian", "actor_kind": "player", "class_id": 9, "class_name": "Heavy Guardian", "damage": 24308983, "dps": 458406, "encounter_dps": 792158.7, "hps": 0, "tps": 6124.5, "rdps": 458406, "deaths": 0 },
+      { "actor_id": "14", "display_name": "Stormblade", "actor_kind": "player", "class_id": 1, "class_name": "Stormblade", "damage": 57682974, "dps": 1087755.2, "encounter_dps": 1879719.4, "hps": 0, "tps": 2685.2, "rdps": 1087755.2, "deaths": 0 }
+    ]
+  }]
+}

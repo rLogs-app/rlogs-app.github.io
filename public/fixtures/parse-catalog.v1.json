@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "total_entries": 1,
+  "offset": 0,
+  "next_offset": null,
+  "entries": [{
+    "report_id": "rpt_99b755083b2a00602526d6cb7312d6c5",
+    "run_index": 0,
+    "created_unix_millis": 1786661918723,
+    "deployment_id": "global",
+    "region_id": "global",
+    "activity_id": "scene.1631",
+    "activity_family_id": "tina-mindrealm",
+    "scene_id": 1631,
+    "scene_name": "Chaotic - Tina's Mindrealm",
+    "difficulty_family": "normal",
+    "terminal_state": "completed",
+    "total_run_time_micros": 108052770,
+    "participant_count": 5
+  }],
+  "facets": {
+    "deployments": [{ "id": "global", "count": 1 }],
+    "regions": [{ "id": "global", "count": 1 }],
+    "activities": [{ "id": "scene.1631", "count": 1 }],
+    "scenes": [{ "id": 1631, "label": "Chaotic - Tina's Mindrealm", "count": 1 }],
+    "difficulties": [{ "id": "normal", "count": 1 }],
+    "terminal_states": [{ "id": "completed", "count": 1 }]
+  }
+}

@@ -24,6 +24,7 @@
       </a>
       <nav aria-label="Primary navigation">
         <a href="#overview">Overview</a>
+        <a href="#parse">Parses</a>
         <a href="#profile-lab">Profile Lab</a>
         <a href="#optimizer">Optimizer</a>
       </nav>
@@ -34,14 +35,15 @@
       <section id="overview" class="hero content-section">
         <div class="hero-copy">
           <p class="eyebrow">Public integration sandbox</p>
-          <h1>Test what rLogs can publish before the real backend exists.</h1>
+          <h1>Review server-verified rLogs parses through one shareable link.</h1>
           <p class="hero-text">
-            This site consumes versioned, privacy-reviewed payloads from rLogs.
-            It is static by design today, so no captures, credentials, or
-            account data are uploaded or stored.
+            rLogs keeps sealed log artifacts private, replays them on the
+            submission service, and publishes only a compact parse projection.
+            New regions, scenes, and difficulties populate the catalog from
+            accepted reports without hand-maintained website pages.
           </p>
           <div class="button-row">
-            <a class="button primary" href="#profile-lab">Open Profile Lab</a>
+            <a class="button primary" href="#parse">Browse parses</a>
             <a class="button secondary" href="#optimizer">Open module optimizer</a>
           </div>
         </div>
@@ -61,9 +63,9 @@
               <span>03</span>
               <div><strong>Optimizer bridge</strong><small>Rust engine live in browser</small></div>
             </li>
-            <li>
+            <li class="complete">
               <span>04</span>
-              <div><strong>Authenticated API</strong><small>Future hosting</small></div>
+              <div><strong>Submission API</strong><small>Private artifacts, public projections</small></div>
             </li>
           </ol>
         </aside>
@@ -89,9 +91,33 @@
           </article>
           <article class="feature-card">
             <span class="feature-number">03</span>
-            <h3>Future API</h3>
-            <p>Owns authentication, persistence, verification, and leaderboards.</p>
+            <h3>Submission service</h3>
+            <p>Owns private artifacts, deterministic replay, verification, and discovery.</p>
           </article>
+        </div>
+      </section>
+
+      <section id="parse" class="content-section parse-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Server-generated reports</p>
+            <h2>Submitted parses</h2>
+          </div>
+          <span id="parse-status" class="status-chip neutral" role="status">Loading catalog…</span>
+        </div>
+        <p class="section-intro">
+          Filters are built from accepted reports. The site does not keep a
+          separate dungeon list and never downloads the private source log.
+        </p>
+        <div id="parse-browser">
+          <div class="parse-filters" aria-label="Parse filters">
+            <label><span>Region</span><select id="parse-region"><option value="">All regions</option></select></label>
+            <label><span>Activity</span><select id="parse-activity"><option value="">All activities</option></select></label>
+            <label><span>Scene</span><select id="parse-scene"><option value="">All scenes</option></select></label>
+            <label><span>Difficulty</span><select id="parse-difficulty"><option value="">All difficulties</option></select></label>
+          </div>
+          <div id="parse-list" class="parse-list"><p class="empty-state">Loading submitted parses…</p></div>
+          <div id="parse-detail" class="parse-detail" aria-live="polite"></div>
         </div>
       </section>
 
