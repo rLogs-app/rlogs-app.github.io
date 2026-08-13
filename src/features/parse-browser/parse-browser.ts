@@ -141,6 +141,7 @@ function renderCatalogEntry(entry: PublicParseCatalogEntry): string {
       <small>${escapeHtml([difficulty, title(entry.terminal_state)].filter(Boolean).join(" / "))}</small></span>
     <span><small>Region</small><strong>${escapeHtml(title(entry.region_id))}</strong></span>
     <span><small>Party</small><strong>${entry.participant_count}</strong></span>
+    <span><small>Reports</small><strong>${entry.contribution_count ?? 1}</strong></span>
     <span><small>Run time</small><strong>${formatDuration(entry.total_run_time_micros)}</strong></span>
     <span><small>Recorded</small><strong>${new Date(entry.created_unix_millis).toLocaleDateString()}</strong></span>
     <span aria-hidden="true">&rsaquo;</span>
@@ -168,7 +169,7 @@ function renderReport(report: PublicParseReport, runIndex: number): string {
     <div class="parse-party"><div class="parse-party-head"><strong>Party</strong><small>${run.participants.length} combatants / rDPS ${escapeHtml(run.rdps_status)}</small></div>
       ${run.participants.map(renderParticipant).join("")}
     </div>
-    <p class="parse-proof">Build ${escapeHtml(report.client_build)} / ${report.verification.event_count.toLocaleString()} canonical events / ${run.data_gap_count} data gaps / report ${escapeHtml(report.report_id)}</p>
+    <p class="parse-proof">Build ${escapeHtml(report.client_build)} / ${report.verification.event_count.toLocaleString()} canonical events / ${run.data_gap_count} data gaps / report ${escapeHtml(report.report_id)}${run.run_group_id ? ` / group ${escapeHtml(run.run_group_id)}` : ""}</p>
   </article>`;
 }
 

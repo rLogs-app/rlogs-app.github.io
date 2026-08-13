@@ -269,7 +269,7 @@ h3 {
 
 .parse-row {
   display: grid;
-  grid-template-columns: minmax(230px, 1.7fr) repeat(4, minmax(90px, 0.72fr)) 22px;
+  grid-template-columns: minmax(230px, 1.7fr) repeat(5, minmax(78px, 0.65fr)) 22px;
   gap: 18px;
   align-items: center;
   width: 100%;
@@ -1183,7 +1183,8 @@ footer p {
   }
 
   .parse-row > span:nth-child(4),
-  .parse-row > span:nth-child(5) {
+  .parse-row > span:nth-child(5),
+  .parse-row > span:nth-child(6) {
     display: none;
   }
   .site-header {

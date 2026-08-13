@@ -9,7 +9,11 @@ export interface PublicParseCatalog {
 
 export interface PublicParseCatalogEntry {
   report_id: string;
+  report_ids?: string[];
   run_index: number;
+  run_group_id?: string;
+  contribution_count?: number;
+  distinct_submitter_count?: number;
   created_unix_millis: number;
   deployment_id: string;
   region_id: string;
@@ -56,7 +60,13 @@ export interface PublicParseReport {
   client_build: string;
   protocol_pack_digest: string;
   verification: PublicVerification;
+  submission_provenance?: PublicSubmissionProvenance;
   runs: PublicRun[];
+}
+
+export interface PublicSubmissionProvenance {
+  submitter_id?: string;
+  authentication: string;
 }
 
 export interface PublicVerification {
@@ -69,6 +79,8 @@ export interface PublicVerification {
 
 export interface PublicRun {
   run_index: number;
+  run_group_id?: string;
+  correlation_method?: "exact_instance_id" | "isolated_artifact";
   activity_id?: string;
   activity_family_id?: string;
   scene_id?: number;
