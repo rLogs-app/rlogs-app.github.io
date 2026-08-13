@@ -141,7 +141,7 @@ function renderCatalogEntry(entry: PublicParseCatalogEntry): string {
       <small>${escapeHtml([difficulty, title(entry.terminal_state)].filter(Boolean).join(" / "))}</small></span>
     <span><small>Region</small><strong>${escapeHtml(title(entry.region_id))}</strong></span>
     <span><small>Party</small><strong>${entry.participant_count}</strong></span>
-    <span><small>Reports</small><strong>${entry.contribution_count ?? 1}</strong></span>
+    <span><small>Evidence</small><strong>${entry.contribution_count ?? 1} report${(entry.contribution_count ?? 1) === 1 ? "" : "s"} / ${entry.distinct_submitter_count ?? 0} submitter${(entry.distinct_submitter_count ?? 0) === 1 ? "" : "s"}</strong></span>
     <span><small>Run time</small><strong>${formatDuration(entry.total_run_time_micros)}</strong></span>
     <span><small>Recorded</small><strong>${new Date(entry.created_unix_millis).toLocaleDateString()}</strong></span>
     <span aria-hidden="true">&rsaquo;</span>
