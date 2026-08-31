@@ -28,6 +28,25 @@ interface DiscordCompletionReceipt {
   login_code: string;
 }
 
+interface LinkedProfileEntry {
+  profile_id: string;
+  updated_unix_millis: number;
+  source_client_build: string;
+  deployment: string;
+  region: string;
+  realm: string | null;
+  world: string | null;
+  character_id: string;
+  display_name: string | null;
+  module_inventory_count: number;
+  equipped_module_count: number;
+}
+
+interface LinkedProfileCatalog {
+  schema_version: 1;
+  profiles: LinkedProfileEntry[];
+}
+
 export async function mountAccount(): Promise<void> {
   const status = requiredElement("account-status");
   const content = requiredElement("account-content");
@@ -172,7 +191,7 @@ async function renderSignedIn(
   identity.append(copy);
 
   const explanation = message(
-    "Generate a token for one PC, then paste it into rLogs Settings → Log Uploader. The desktop stores it in Windows Credential Manager; the website will never show it again.",
+    "Generate a token for one PC, then paste it into rLogs Settings → Log Uploader. The receiver URL is already filled in. The desktop stores the token in Windows Credential Manager; the website will never show it again.",
   );
   const actions = document.createElement("div");
   actions.className = "button-row";
@@ -222,7 +241,57 @@ async function renderSignedIn(
     location.reload();
   });
   actions.append(generate, signOut);
-  content.replaceChildren(identity, explanation, actions, output);
+  const linkedProfiles = await renderLinkedProfiles(session);
+  content.replaceChildren(identity, linkedProfiles, explanation, actions, output);
+}
+
+async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
+  const section = document.createElement("section");
+  section.className = "linked-profile-section";
+  section.append(element("h3", "", "Linked game IDs"));
+  try {
+    const response = await fetch(`${apiBase}/v1/auth/profiles`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (!response.ok) throw new Error(`Linked-profile request failed with HTTP ${response.status}.`);
+    const catalog = parseLinkedProfileCatalog(await response.json());
+    if (catalog.profiles.length === 0) {
+      section.append(
+        message(
+          "No UID is linked yet. Connect your local rLogs app, enable BPSR Profile Sync, then publish a sealed personal profile. That proof claims the UID for this account.",
+        ),
+      );
+      return section;
+    }
+
+    const list = document.createElement("div");
+    list.className = "linked-profile-list";
+    for (const profile of catalog.profiles) {
+      const card = document.createElement("article");
+      card.className = "linked-profile-card";
+      const location = [profile.region, profile.realm ?? profile.world]
+        .filter((value): value is string => Boolean(value))
+        .join(" · ");
+      const link = document.createElement("a");
+      link.href = `/profile-lab/?profile=${encodeURIComponent(profile.profile_id)}`;
+      link.textContent = profile.display_name ?? `UID ${profile.character_id}`;
+      card.append(
+        link,
+        element("strong", "identity-id", `UID ${profile.character_id}`),
+        element("small", "", location || profile.deployment),
+        element(
+          "small",
+          "",
+          `${profile.module_inventory_count.toLocaleString()} modules · ${profile.equipped_module_count.toLocaleString()} equipped`,
+        ),
+      );
+      list.append(card);
+    }
+    section.append(list);
+  } catch (error) {
+    section.append(message(errorText(error)));
+  }
+  return section;
 }
 
 export function parseAccount(value: unknown): AccountView {
@@ -286,6 +355,34 @@ export function parseDiscordCompletion(value: unknown): DiscordCompletionReceipt
   return value as unknown as DiscordCompletionReceipt;
 }
 
+export function parseLinkedProfileCatalog(value: unknown): LinkedProfileCatalog {
+  if (!isRecord(value) || value.schema_version !== 1 || !Array.isArray(value.profiles)) {
+    throw new Error("The linked-profile response is invalid.");
+  }
+  const profiles = value.profiles.map((profile) => {
+    if (
+      !isRecord(profile) ||
+      typeof profile.profile_id !== "string" ||
+      !/^prf_[0-9a-f]{32}$/u.test(profile.profile_id) ||
+      !positiveSafeInteger(profile.updated_unix_millis) ||
+      typeof profile.source_client_build !== "string" ||
+      typeof profile.deployment !== "string" ||
+      typeof profile.region !== "string" ||
+      !isNullableString(profile.realm) ||
+      !isNullableString(profile.world) ||
+      typeof profile.character_id !== "string" ||
+      profile.character_id.length === 0 ||
+      !isNullableString(profile.display_name) ||
+      !nonnegativeSafeInteger(profile.module_inventory_count) ||
+      !nonnegativeSafeInteger(profile.equipped_module_count)
+    ) {
+      throw new Error("The linked-profile response is invalid.");
+    }
+    return profile as unknown as LinkedProfileEntry;
+  });
+  return { schema_version: 1, profiles };
+}
+
 function clearAuthenticationParameters(): void {
   const url = new URL(window.location.href);
   for (const name of ["auth_code", "code", "state", "error", "error_description"]) {
@@ -333,6 +430,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNullableString(value: unknown): boolean {
   return value === null || typeof value === "string";
+}
+
+function positiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function nonnegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function errorText(error: unknown): string {

@@ -1219,6 +1219,37 @@ footer {
   user-select: all;
 }
 
+.linked-profile-section {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 0;
+  border-block: 1px solid var(--line);
+}
+
+.linked-profile-section h3 {
+  margin: 0;
+}
+
+.linked-profile-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.linked-profile-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.linked-profile-card a {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 footer p {
   margin: 0;
 }

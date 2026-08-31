@@ -4,6 +4,7 @@ import {
   parseAccount,
   parseAppToken,
   parseDiscordCompletion,
+  parseLinkedProfileCatalog,
   parseWebSession,
 } from "./account";
 
@@ -46,5 +47,29 @@ describe("account contracts", () => {
       login_code: `login_${"e".repeat(64)}`,
     });
     expect(receipt.login_code).toMatch(/^login_/u);
+  });
+
+  it("validates the account-scoped linked UID catalog", () => {
+    const catalog = parseLinkedProfileCatalog({
+      schema_version: 1,
+      profiles: [
+        {
+          profile_id: `prf_${"a".repeat(32)}`,
+          claimed: true,
+          package_id: "pkg_test",
+          updated_unix_millis: 1,
+          source_client_build: "steam-24687926",
+          deployment: "global",
+          region: "north-america",
+          realm: "asteria",
+          world: null,
+          character_id: "3296036",
+          display_name: "MarieRose",
+          module_inventory_count: 42,
+          equipped_module_count: 8,
+        },
+      ],
+    });
+    expect(catalog.profiles[0]?.character_id).toBe("3296036");
   });
 });
