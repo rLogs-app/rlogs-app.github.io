@@ -107,7 +107,7 @@ For backwards-compatible testing, the command also accepts a bare sanitized
 digest can be verified before publication.
 
 Each package is available at
-`https://donneeee.github.io/rlogs-website/?profile=<character-uid>`. The
+`https://rlogs-app.github.io/?profile=<character-uid>`. The
 publisher derives this key from the envelope; character names are never used
 as routes because they are not unique. The browser
 validates the index, byte length, digest, envelope, and manifest routing before

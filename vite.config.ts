@@ -4,7 +4,7 @@ export default defineConfig(({ command, mode }) => ({
   base:
     command === "serve" && mode === "development"
       ? "/"
-      : (process.env.RLOGS_SITE_BASE ?? "/rlogs-website/"),
+      : (process.env.RLOGS_SITE_BASE ?? "/"),
   build: {
     outDir: "dist",
     sourcemap: true,
