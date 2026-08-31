@@ -25,6 +25,7 @@
       <nav aria-label="Primary navigation">
         <a href="#overview">Overview</a>
         <a href="#parse">Parses</a>
+        <a href="#account">Account</a>
         <a href="#profile-lab">Profile Lab</a>
         <a href="#optimizer">Optimizer</a>
       </nav>
@@ -69,6 +70,19 @@
             </li>
           </ol>
         </aside>
+      </section>
+
+      <section id="account" class="content-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Website and desktop identity</p>
+            <h2>Your rLogs account</h2>
+          </div>
+          <span id="account-status" class="status-chip neutral" role="status">Loading account…</span>
+        </div>
+        <article id="account-content" class="panel account-panel">
+          <p class="empty-state">Checking account authentication…</p>
+        </article>
       </section>
 
       <section class="content-section">
@@ -320,7 +334,7 @@
 
     <footer>
       <p>rLogs Web Lab · Static, versioned, and privacy-reviewed by default.</p>
-      <p>No packet capture or account authentication runs in this site.</p>
+      <p>Packet capture stays in the desktop app. Account tokens are issued only after explicit sign-in.</p>
     </footer>
 
     <script type="module" src="/src/main.ts"></script>

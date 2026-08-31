@@ -1168,6 +1168,25 @@ footer {
   font-size: 10px;
 }
 
+.account-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.account-token-output {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.account-token-output code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 footer p {
   margin: 0;
 }

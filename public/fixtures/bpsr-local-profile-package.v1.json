@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "package_id": "181b363d0cf5db0b2d2a4562373e6bb378fbac4b2baeb33637991a1a07737874",
-  "created_unix_millis": 1789000000000,
+  "package_id": "2621e3e079f9dbc29cdf0e020225e9b5a049fbbc49a68eb7451567d80bf403f7",
+  "created_unix_millis": 1789000000001,
   "source": {
     "session_id": "synthetic-profile-session",
     "client_build": "synthetic-build",
     "protocol_pack_digest": "sha256:synthetic-demo-pack",
     "canonical_content_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "observation_count": 2,
-    "last_event_sequence": 9
+    "observation_count": 3,
+    "last_event_sequence": 10
   },
   "request": {
     "relative_endpoint": "/v1/games/blue-protocol-star-resonance/profiles",
@@ -35,19 +35,59 @@
           }
         },
         "display_name": "Example Adventurer",
+        "display_id": null,
+        "server_id": null,
         "class_id": 2,
         "specialization_id": 1,
         "level": 60,
+        "progression": null,
         "combat_power": 24500,
+        "combat_power_breakdown": null,
+        "season_strength": null,
+        "season": null,
+        "appearance": null,
         "equipment": [],
+        "equipment_suit_entries": null,
         "modules": {
-          "equipped_slots": {},
-          "inventory": []
+          "equipped_slots": {
+            "1": "9007199254740993"
+          },
+          "inventory": [
+            {
+              "instance_id": "9007199254740993",
+              "config_id": 20001,
+              "count": 1,
+              "quality": 5,
+              "load_flag": 1,
+              "module_type": 2,
+              "level": 4,
+              "parts": [
+                {
+                  "part_id": 1110,
+                  "initial_link_points": 4
+                }
+              ],
+              "upgrade_records": [],
+              "success_rate": 75
+            }
+          ]
         },
         "owned_imagines": [],
+        "battle_imagine_skills": null,
+        "equipped_action_slots": null,
         "active_skills": [],
         "talents": [],
-        "collection_summary": {}
+        "talent_progress": null,
+        "combat_professions": null,
+        "life_professions": null,
+        "cosmetics": null,
+        "collection_summary": null,
+        "activity_progress": null,
+        "season_medals": null,
+        "season_cultivation": null,
+        "reputations": null,
+        "current_profession_project_id": null,
+        "social_display": null
       }
     }
   }
