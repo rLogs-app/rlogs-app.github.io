@@ -1,5 +1,5 @@
 export interface PublicParseCatalog {
-  schema_version: 1;
+  schema_version: 5;
   total_entries: number;
   offset: number;
   next_offset?: number | null;
@@ -49,14 +49,14 @@ export interface SceneFacetValue {
 }
 
 export interface PublicParseReport {
-  schema_version: 1;
+  schema_version: 6;
   report_id: string;
   visibility: "public" | "unlisted";
   created_unix_millis: number;
   game_plugin_id: string;
   deployment_id: string;
   region_id: string;
-  world_id?: string;
+  world_id: string | null;
   client_build: string;
   protocol_pack_digest: string;
   verification: PublicVerification;
@@ -65,7 +65,7 @@ export interface PublicParseReport {
 }
 
 export interface PublicSubmissionProvenance {
-  submitter_id?: string;
+  submitter_id: string | null;
   authentication: string;
 }
 
@@ -81,17 +81,17 @@ export interface PublicRun {
   run_index: number;
   run_group_id?: string;
   correlation_method?: "exact_instance_id" | "isolated_artifact";
-  activity_id?: string;
-  activity_family_id?: string;
-  scene_id?: number;
-  scene_name?: string;
-  difficulty_family?: string;
-  difficulty_tier?: number;
+  activity_id: string | null;
+  activity_family_id: string | null;
+  scene_id: number | null;
+  scene_name: string | null;
+  difficulty_family: string | null;
+  difficulty_tier: number | null;
   terminal_state: string;
-  total_run_time_micros?: number;
-  game_time_micros?: number;
+  total_run_time_micros: number | null;
+  game_time_micros: number | null;
   active_combat_micros: number;
-  true_time_micros?: number;
+  true_time_micros: number | null;
   retry_count: number;
   boss_retry_count: number;
   rdps_status: string;
@@ -114,19 +114,19 @@ export interface PublicRunSegment {
 
 export interface PublicParticipant {
   actor_id: string;
-  character_id?: string;
-  display_name?: string;
-  actor_kind?: string;
-  class_id?: number;
-  class_name?: string;
-  specialization_id?: number;
-  specialization_name?: string;
+  character_id: string | null;
+  display_name: string | null;
+  actor_kind: string | null;
+  class_id: number | null;
+  class_name: string | null;
+  specialization_id: number | null;
+  specialization_name: string | null;
   damage: number;
   dps: number;
   encounter_dps: number;
   hps: number;
   tps: number;
-  rdps?: number;
+  rdps: number | null;
   deaths: number;
 }
 
@@ -135,7 +135,7 @@ const reportIdPattern = /^rpt_[a-f0-9]{32}$/;
 export function isPublicParseCatalog(value: unknown): value is PublicParseCatalog {
   if (
     !isRecord(value) ||
-    value.schema_version !== 1 ||
+    value.schema_version !== 5 ||
     !Number.isSafeInteger(value.total_entries) ||
     !Number.isSafeInteger(value.offset) ||
     !(value.next_offset == null || Number.isSafeInteger(value.next_offset)) ||
@@ -170,7 +170,7 @@ function isCatalogFacets(value: unknown): value is CatalogFacets {
 export function isPublicParseReport(value: unknown): value is PublicParseReport {
   return (
     isRecord(value) &&
-    value.schema_version === 1 &&
+    value.schema_version === 6 &&
     typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) &&
     (value.visibility === "public" || value.visibility === "unlisted") &&

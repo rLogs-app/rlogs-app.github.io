@@ -229,7 +229,7 @@ function formatDifficulty(run: PublicRun): string {
   );
 }
 
-function formatDuration(micros: number | undefined): string {
+function formatDuration(micros: number | null | undefined): string {
   if (micros == null) return "-";
   const seconds = micros / 1_000_000;
   const minutes = Math.floor(seconds / 60);
@@ -240,7 +240,7 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
 }
 
-function title(value: string | undefined): string {
+function title(value: string | null | undefined): string {
   return value ? value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : "";
 }
 
