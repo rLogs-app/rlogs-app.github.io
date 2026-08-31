@@ -99,7 +99,7 @@ export async function mountAccount(): Promise<void> {
       });
       if (!response.ok) throw new Error(`Sign-in exchange failed with HTTP ${response.status}.`);
       const session = parseWebSession(await response.json());
-      sessionStorage.setItem(sessionKey, JSON.stringify(session));
+      localStorage.setItem(sessionKey, JSON.stringify(session));
       window.dispatchEvent(new Event("rlogs:session-changed"));
       clearAuthenticationParameters();
     } catch (error) {
@@ -115,7 +115,7 @@ export async function mountAccount(): Promise<void> {
     return;
   }
   if (session.expires_unix_millis <= Date.now()) {
-    sessionStorage.removeItem(sessionKey);
+    localStorage.removeItem(sessionKey);
     window.dispatchEvent(new Event("rlogs:session-changed"));
     await renderSignedOut(status, content);
     return;
@@ -166,7 +166,7 @@ async function renderSignedIn(
     if (!response.ok) throw new Error("Session expired.");
     account = parseAccount(await response.json());
   } catch {
-    sessionStorage.removeItem(sessionKey);
+    localStorage.removeItem(sessionKey);
     window.dispatchEvent(new Event("rlogs:session-changed"));
     await renderSignedOut(status, content);
     return;
@@ -236,7 +236,7 @@ async function renderSignedIn(
     }
   });
   signOut.addEventListener("click", () => {
-    sessionStorage.removeItem(sessionKey);
+    localStorage.removeItem(sessionKey);
     window.dispatchEvent(new Event("rlogs:session-changed"));
     location.reload();
   });
@@ -392,12 +392,12 @@ function clearAuthenticationParameters(): void {
 }
 
 function loadSession(): WebSession | undefined {
-  const source = sessionStorage.getItem(sessionKey);
+  const source = localStorage.getItem(sessionKey);
   if (!source) return undefined;
   try {
     return parseWebSession(JSON.parse(source) as unknown);
   } catch {
-    sessionStorage.removeItem(sessionKey);
+    localStorage.removeItem(sessionKey);
     window.dispatchEvent(new Event("rlogs:session-changed"));
     return undefined;
   }

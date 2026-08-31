@@ -12,8 +12,9 @@ server-generated share page; source `.rlog` artifacts remain private.
 
 Set `VITE_RLOGS_API_BASE_URL` to the deployed submission-service origin at
 build time. Without it, the site uses the public-safe demo fixtures under
-`public/fixtures`. Accounts, rankings, and leaderboards are intentionally out
-of this milestone.
+`public/fixtures`. Rankings and leaderboards remain outside this milestone;
+Discord accounts, per-device app tokens, immutable UID claims, and
+account-scoped profile discovery are implemented by the configured service.
 
 The browser application remains intentionally static:
 
@@ -23,12 +24,13 @@ The browser application remains intentionally static:
 - it browses server-replayed parse projections without exposing source logs;
 - it imports and renders sanitized Blue Protocol: Star Resonance character
   profiles;
-- it discovers hashed, developer-published profile packages without requiring
-  an upload API or account authentication;
+- it discovers both legacy developer-published profiles and authenticated,
+  server-published UID profiles;
 - it records the native module-optimizer smoke result without duplicating the
   Rust optimizer in TypeScript;
 - it is deployable to GitHub Pages and contains no secrets, database, packet
-  capture, authentication, or upload endpoint.
+  capture, or upload endpoint; authentication and storage stay in the separate
+  API service.
 
 ## Run locally
 
@@ -68,10 +70,10 @@ belong in `src/contracts`; game data does not.
 GitHub Pages hosts only static browser assets. The site contains no API keys
 and cannot accept uploads itself. The separately deployed RLogs submission
 service owns private log ingestion, server replay, public/unlisted projections,
-and its derived browse catalog. Future services may add:
+and its derived browse catalog. It also owns Discord OAuth, short-lived website
+sessions, per-device app tokens, and immutable first-owner UID claims. Future
+services may add:
 
-- opt-in identity linking and authentication;
-- idempotent profile storage;
 - higher-volume abuse controls and moderation;
 - ranking calculations and leaderboard queries.
 
@@ -80,8 +82,10 @@ moving away from GitHub Pages will not require rewriting page features.
 
 ## Developer profile publishing
 
-Until the authenticated API exists, repository write access is the developer
-authorization boundary. Publish an already-sanitized, user-approved
+Repository publishing remains a developer-only compatibility path for fixtures
+and legacy public profiles. Normal users should sign in, connect the desktop,
+and publish a sealed profile through the authenticated API. To publish an
+already-sanitized, user-approved package through the compatibility path, run:
 `current.profile.json` created by rLogs with:
 
 ```powershell

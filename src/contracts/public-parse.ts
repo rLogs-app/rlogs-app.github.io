@@ -139,7 +139,7 @@ export interface PublicParticipant {
 }
 
 export interface PublicRunReconciliation {
-  schema_version: 5;
+  schema_version: 5 | 6;
   reconciliation_id: string;
   run_group_id: string;
   status: RunAttributionReconciliationStatus;
@@ -159,7 +159,32 @@ export interface PublicRunReconciliation {
   verified_state_input_sha256?: string;
   reconciled_participants: PublicReconciledParticipant[];
   conservation?: PublicAttributionConservation;
+  swift_vortex_candidate_audit?: SwiftVortexCandidateAuditReport;
   attribution_replay_completed: boolean;
+}
+
+export interface SwiftVortexAppliedMagnitude {
+  haste_basis_points: number;
+  normal_action_speed_basis_points: number;
+  guide_action_speed_basis_points: number;
+}
+
+export interface SwiftVortexCandidateAuditReport {
+  schema_version: 1;
+  effect_id: 2110060;
+  candidate_status_event_count: number;
+  exact_application_transition_count: number;
+  exact_paired_receipt_count: number;
+  distinct_provider_entity_count: number;
+  distinct_recipient_entity_count: number;
+  incomplete_application_count: number;
+  incomplete_removal_count: number;
+  identity_mismatch_event_count: number;
+  blockers: Record<string, number>;
+  magnitude_consensus?: SwiftVortexAppliedMagnitude;
+  magnitude_gate_satisfied: boolean;
+  production_attribution_enabled: false;
+  receipts: unknown[];
 }
 
 export interface PublicCanonicalSpine {
@@ -263,7 +288,7 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
 export function isPublicRunReconciliation(value: unknown): value is PublicRunReconciliation {
   if (
     !isRecord(value) ||
-    value.schema_version !== 5 ||
+    (value.schema_version !== 5 && value.schema_version !== 6) ||
     typeof value.reconciliation_id !== "string" ||
     !reconciliationIdPattern.test(value.reconciliation_id) ||
     typeof value.run_group_id !== "string" ||
@@ -277,7 +302,9 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
     !Array.isArray(value.state_replay_blockers) ||
     !value.state_replay_blockers.every((blocker) => typeof blocker === "string") ||
     !Array.isArray(value.reconciled_participants) ||
-    typeof value.attribution_replay_completed !== "boolean"
+    typeof value.attribution_replay_completed !== "boolean" ||
+    !(value.swift_vortex_candidate_audit == null ||
+      isSwiftVortexCandidateAudit(value.swift_vortex_candidate_audit))
   ) {
     return false;
   }
@@ -291,6 +318,41 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
       (participant.contribution_received == null || Number.isSafeInteger(participant.contribution_received)) &&
       typeof participant.rdps_incomplete === "boolean",
   );
+}
+
+function isSwiftVortexCandidateAudit(value: unknown): value is SwiftVortexCandidateAuditReport {
+  return (
+    isRecord(value) &&
+    value.schema_version === 1 &&
+    value.effect_id === 2110060 &&
+    nonnegativeSafeInteger(value.candidate_status_event_count) &&
+    nonnegativeSafeInteger(value.exact_application_transition_count) &&
+    nonnegativeSafeInteger(value.exact_paired_receipt_count) &&
+    nonnegativeSafeInteger(value.distinct_provider_entity_count) &&
+    nonnegativeSafeInteger(value.distinct_recipient_entity_count) &&
+    nonnegativeSafeInteger(value.incomplete_application_count) &&
+    nonnegativeSafeInteger(value.incomplete_removal_count) &&
+    nonnegativeSafeInteger(value.identity_mismatch_event_count) &&
+    isRecord(value.blockers) &&
+    Object.values(value.blockers).every(nonnegativeSafeInteger) &&
+    (value.magnitude_consensus == null || isSwiftVortexMagnitude(value.magnitude_consensus)) &&
+    typeof value.magnitude_gate_satisfied === "boolean" &&
+    value.production_attribution_enabled === false &&
+    Array.isArray(value.receipts)
+  );
+}
+
+function isSwiftVortexMagnitude(value: unknown): value is SwiftVortexAppliedMagnitude {
+  return (
+    isRecord(value) &&
+    Number.isSafeInteger(value.haste_basis_points) &&
+    Number.isSafeInteger(value.normal_action_speed_basis_points) &&
+    Number.isSafeInteger(value.guide_action_speed_basis_points)
+  );
+}
+
+function nonnegativeSafeInteger(value: unknown): boolean {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
 }
 
 export function validateRunGroupId(value: string): boolean {

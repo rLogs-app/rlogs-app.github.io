@@ -204,6 +204,7 @@ function renderReport(
       ${metric("Retries", `${run.retry_count} / ${run.boss_retry_count} boss`)}
     </div>
     ${renderReconciliationProof(reconciliation, reconciliationError, reconciled)}
+    ${renderSwiftVortexCandidateAudit(reconciliation)}
     <div class="parse-party"><div class="parse-party-head"><strong>Party</strong><small>${run.participants.length} combatants / rDPS ${escapeHtml(run.rdps_status)}</small></div>
       ${participants.map((actor) => renderParticipant(actor, run.active_combat_micros, reconciled)).join("")}
     </div>
@@ -265,6 +266,25 @@ function renderReconciliationProof(
     ? reconciliation.state_replay_blockers.map(title).join(", ")
     : title(reconciliation.state_replay_readiness);
   return `<div class="reconciliation-proof pending"><strong>Cross-vantage replay pending</strong><span>${reconciliation.reports.length} reports / ${reconciliation.local_vantage_character_count} local character witnesses. ${escapeHtml(blockers)}. The representative replay is shown without combining damage.</span></div>`;
+}
+
+function renderSwiftVortexCandidateAudit(reconciliation: PublicRunReconciliation | null): string {
+  const audit = reconciliation?.swift_vortex_candidate_audit;
+  if (!audit) return "";
+
+  const magnitude = audit.magnitude_consensus
+    ? `Consensus: Haste ${formatNumber(audit.magnitude_consensus.haste_basis_points)} bp, normal action speed ${formatNumber(audit.magnitude_consensus.normal_action_speed_basis_points)} bp, guide action speed ${formatNumber(audit.magnitude_consensus.guide_action_speed_basis_points)} bp.`
+    : "No exact magnitude consensus yet.";
+  const blockerSummary = Object.entries(audit.blockers)
+    .filter(([, count]) => count > 0)
+    .map(([blocker, count]) => `${title(blocker)} (${count})`)
+    .join(", ");
+  const gate = audit.magnitude_gate_satisfied
+    ? "The magnitude review gate is satisfied."
+    : "The magnitude review gate is not yet satisfied.";
+  const blockers = blockerSummary ? ` Blockers: ${blockerSummary}.` : "";
+
+  return `<div class="reconciliation-proof pending"><strong>Swift Vortex candidate evidence</strong><span>${audit.candidate_status_event_count} status events / ${audit.exact_paired_receipt_count} exact paired receipts / ${audit.distinct_provider_entity_count} providers / ${audit.distinct_recipient_entity_count} recipients. ${escapeHtml(magnitude)} ${escapeHtml(gate)} Production attribution remains disabled.${escapeHtml(blockers)}</span></div>`;
 }
 
 function damageRate(damage: number, activeCombatMicros: number): number {

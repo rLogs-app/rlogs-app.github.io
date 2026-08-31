@@ -46,7 +46,7 @@ export function mountSiteNavigation(): SitePage {
   }
 
   const refreshAccountLabel = (): void => {
-    const signedIn = hasActiveSession(sessionStorage.getItem(sessionKey));
+    const signedIn = hasActiveSession(localStorage.getItem(sessionKey));
     for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-account-nav]")) {
       link.textContent = signedIn ? "My Profile" : "Account";
     }

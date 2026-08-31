@@ -131,4 +131,43 @@ describe("public parse contract", () => {
       }),
     ).toBe(false);
   });
+
+  it("accepts schema 6 candidate evidence without treating it as production attribution", () => {
+    const value = {
+      schema_version: 6,
+      reconciliation_id: `rec_${"ef".repeat(16)}`,
+      run_group_id: `run_${"cd".repeat(16)}`,
+      status: "reconciled",
+      canonical_spine: { report_id: `rpt_${"ab".repeat(16)}` },
+      reports: [],
+      characters: [],
+      state_replay_blockers: [],
+      reconciled_participants: [],
+      attribution_replay_completed: true,
+      swift_vortex_candidate_audit: {
+        schema_version: 1,
+        effect_id: 2110060,
+        candidate_status_event_count: 8,
+        exact_application_transition_count: 4,
+        exact_paired_receipt_count: 4,
+        distinct_provider_entity_count: 2,
+        distinct_recipient_entity_count: 2,
+        incomplete_application_count: 0,
+        incomplete_removal_count: 0,
+        identity_mismatch_event_count: 0,
+        blockers: {},
+        magnitude_consensus: {
+          haste_basis_points: 500,
+          normal_action_speed_basis_points: 300,
+          guide_action_speed_basis_points: 600,
+        },
+        magnitude_gate_satisfied: true,
+        production_attribution_enabled: false,
+        receipts: [],
+      },
+    };
+    expect(isPublicRunReconciliation(value)).toBe(true);
+    value.swift_vortex_candidate_audit.production_attribution_enabled = true;
+    expect(isPublicRunReconciliation(value)).toBe(false);
+  });
 });
