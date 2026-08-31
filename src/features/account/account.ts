@@ -23,6 +23,11 @@ interface AppTokenReceipt {
   created_unix_millis: number;
 }
 
+interface DiscordCompletionReceipt {
+  schema_version: 1;
+  login_code: string;
+}
+
 export async function mountAccount(): Promise<void> {
   const status = requiredElement("account-status");
   const content = requiredElement("account-content");
@@ -32,7 +37,39 @@ export async function mountAccount(): Promise<void> {
     return;
   }
 
-  const authCode = new URLSearchParams(window.location.search).get("auth_code");
+  const parameters = new URLSearchParams(window.location.search);
+  const oauthError = parameters.get("error");
+  if (oauthError) {
+    status.textContent = "Sign-in cancelled";
+    content.replaceChildren(
+      message(parameters.get("error_description") ?? "Discord sign-in was not completed."),
+    );
+    clearAuthenticationParameters();
+    return;
+  }
+
+  let authCode = parameters.get("auth_code");
+  const discordCode = parameters.get("code");
+  const discordState = parameters.get("state");
+  if (!authCode && (discordCode || discordState)) {
+    status.textContent = "Completing Discord sign-in…";
+    try {
+      if (!discordCode || !discordState) throw new Error("Discord returned an incomplete sign-in response.");
+      const response = await fetch(`${apiBase}/v1/auth/discord/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: discordCode, state: discordState }),
+      });
+      if (!response.ok) throw new Error(`Discord sign-in failed with HTTP ${response.status}.`);
+      authCode = parseDiscordCompletion(await response.json()).login_code;
+    } catch (error) {
+      status.textContent = "Sign-in failed";
+      content.replaceChildren(message(errorText(error)));
+      clearAuthenticationParameters();
+      return;
+    }
+  }
+
   if (authCode) {
     status.textContent = "Completing sign-in…";
     try {
@@ -45,9 +82,7 @@ export async function mountAccount(): Promise<void> {
       const session = parseWebSession(await response.json());
       sessionStorage.setItem(sessionKey, JSON.stringify(session));
       window.dispatchEvent(new Event("rlogs:session-changed"));
-      const url = new URL(window.location.href);
-      url.searchParams.delete("auth_code");
-      history.replaceState(null, "", `${url.pathname}${url.search}#account`);
+      clearAuthenticationParameters();
     } catch (error) {
       status.textContent = "Sign-in failed";
       content.replaceChildren(message(errorText(error)));
@@ -237,6 +272,26 @@ export function parseAppToken(value: unknown): AppTokenReceipt {
     throw new Error("The app-token response is invalid.");
   }
   return value as unknown as AppTokenReceipt;
+}
+
+export function parseDiscordCompletion(value: unknown): DiscordCompletionReceipt {
+  if (
+    !isRecord(value) ||
+    value.schema_version !== 1 ||
+    typeof value.login_code !== "string" ||
+    !/^login_[0-9a-f]{64}$/u.test(value.login_code)
+  ) {
+    throw new Error("The Discord completion response is invalid.");
+  }
+  return value as unknown as DiscordCompletionReceipt;
+}
+
+function clearAuthenticationParameters(): void {
+  const url = new URL(window.location.href);
+  for (const name of ["auth_code", "code", "state", "error", "error_description"]) {
+    url.searchParams.delete(name);
+  }
+  history.replaceState(null, "", `${url.pathname}${url.search}`);
 }
 
 function loadSession(): WebSession | undefined {

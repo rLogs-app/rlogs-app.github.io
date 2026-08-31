@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { parseAccount, parseAppToken, parseWebSession } from "./account";
+import {
+  parseAccount,
+  parseAppToken,
+  parseDiscordCompletion,
+  parseWebSession,
+} from "./account";
 
 const account = {
   schema_version: 1,
@@ -33,5 +38,13 @@ describe("account contracts", () => {
       created_unix_millis: 10,
     });
     expect(token.device_token).toMatch(/^rld_/u);
+  });
+
+  it("validates the browser-side Discord completion receipt", () => {
+    const receipt = parseDiscordCompletion({
+      schema_version: 1,
+      login_code: `login_${"e".repeat(64)}`,
+    });
+    expect(receipt.login_code).toMatch(/^login_/u);
   });
 });
