@@ -7,7 +7,7 @@ plug-ins, and future backend can evolve independently.
 The read-only parse browser is backed by the separate rLogs submission
 service. Its regions, activities, scenes, and difficulties are derived from
 accepted public reports, so new content does not require a hand-maintained
-website list or a frontend rebuild. `?parse=<report-id>#parse` opens the
+website list or a frontend rebuild. `/parses/?parse=<report-id>` opens the
 server-generated share page; source `.rlog` artifacts remain private.
 
 Set `VITE_RLOGS_API_BASE_URL` to the deployed submission-service origin at
@@ -107,7 +107,7 @@ For backwards-compatible testing, the command also accepts a bare sanitized
 digest can be verified before publication.
 
 Each package is available at
-`https://rlogs-app.github.io/?profile=<character-uid>`. The
+`https://rlogs-app.github.io/profile-lab/?profile=<character-uid>`. The
 publisher derives this key from the envelope; character names are never used
 as routes because they are not unique. The browser
 validates the index, byte length, digest, envelope, and manifest routing before

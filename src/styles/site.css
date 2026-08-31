@@ -29,6 +29,22 @@ html {
   scroll-behavior: smooth;
 }
 
+[data-page] {
+  display: none;
+}
+
+html[data-rlogs-page="home"] [data-page~="home"],
+html[data-rlogs-page="parses"] [data-page~="parses"],
+html[data-rlogs-page="account"] [data-page~="account"],
+html[data-rlogs-page="profile-lab"] [data-page~="profile-lab"],
+html[data-rlogs-page="optimizer"] [data-page~="optimizer"] {
+  display: block;
+}
+
+html[data-rlogs-page="home"] .hero {
+  display: grid;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -133,8 +149,24 @@ nav a {
 }
 
 nav a:hover,
-nav a:focus-visible {
+nav a:focus-visible,
+nav a[aria-current="page"] {
   color: var(--accent);
+}
+
+nav a[aria-current="page"] {
+  position: relative;
+}
+
+nav a[aria-current="page"]::after {
+  position: absolute;
+  right: 0;
+  bottom: -27px;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 14px rgb(92 225 230 / 60%);
+  content: "";
 }
 
 .build-chip {
@@ -1208,10 +1240,30 @@ footer p {
   }
   .site-header {
     grid-template-columns: 1fr auto;
+    padding-top: 10px;
   }
 
   .site-header nav {
+    display: flex;
+    grid-column: 1 / -1;
+    gap: 22px;
+    justify-content: flex-start;
+    width: 100%;
+    padding: 4px 0 13px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .site-header nav::-webkit-scrollbar {
     display: none;
+  }
+
+  .site-header nav a {
+    flex: 0 0 auto;
+  }
+
+  .site-header nav a[aria-current="page"]::after {
+    bottom: -14px;
   }
 
   .hero,
@@ -1244,8 +1296,8 @@ footer p {
 
 @media (max-width: 620px) {
   .site-header {
-    min-height: 64px;
-    padding: 0 18px;
+    min-height: 96px;
+    padding: 10px 18px 0;
   }
 
   .content-section {

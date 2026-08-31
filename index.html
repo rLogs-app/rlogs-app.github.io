@@ -9,31 +9,44 @@
     />
     <meta name="color-scheme" content="dark" />
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
-    <title>rLogs Web Lab</title>
+    <title>rLogs</title>
+    <script>
+      (() => {
+        const route = location.pathname.replace(/\/+$/, "") || "/";
+        const pages = {
+          "/": "home",
+          "/parses": "parses",
+          "/account": "account",
+          "/profile-lab": "profile-lab",
+          "/optimizer": "optimizer",
+        };
+        document.documentElement.dataset.rlogsPage = pages[route] || "home";
+      })();
+    </script>
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
 
     <header class="site-header">
-      <a class="brand" href="#overview" aria-label="rLogs Web Lab home">
+      <a class="brand" href="/" aria-label="rLogs home">
         <span class="brand-mark" aria-hidden="true">r/</span>
         <span>
           <strong>rLogs</strong>
-          <small>web lab</small>
+          <small>combat intelligence</small>
         </span>
       </a>
       <nav aria-label="Primary navigation">
-        <a href="#overview">Overview</a>
-        <a href="#parse">Parses</a>
-        <a href="#account">Account</a>
-        <a href="#profile-lab">Profile Lab</a>
-        <a href="#optimizer">Optimizer</a>
+        <a href="/" data-nav-page="home">Home</a>
+        <a href="/parses/" data-nav-page="parses">Parses</a>
+        <a href="/account/" data-nav-page="account" data-account-nav>Account</a>
+        <a href="/profile-lab/" data-nav-page="profile-lab">Profile Lab</a>
+        <a href="/optimizer/" data-nav-page="optimizer">Optimizer</a>
       </nav>
       <span class="build-chip">contract v1</span>
     </header>
 
     <main id="main-content">
-      <section id="overview" class="hero content-section">
+      <section id="overview" class="hero content-section" data-page="home">
         <div class="hero-copy">
           <p class="eyebrow">Public integration sandbox</p>
           <h1>Review server-verified rLogs parses through one shareable link.</h1>
@@ -44,8 +57,8 @@
             accepted reports without hand-maintained website pages.
           </p>
           <div class="button-row">
-            <a class="button primary" href="#parse">Browse parses</a>
-            <a class="button secondary" href="#optimizer">Open module optimizer</a>
+            <a class="button primary" href="/parses/">Browse parses</a>
+            <a class="button secondary" href="/optimizer/">Open module optimizer</a>
           </div>
         </div>
 
@@ -72,11 +85,11 @@
         </aside>
       </section>
 
-      <section id="account" class="content-section">
+      <section id="account" class="content-section" data-page="account">
         <div class="section-heading">
           <div>
             <p class="eyebrow">Website and desktop identity</p>
-            <h2>Your rLogs account</h2>
+            <h2 id="account-title">Your rLogs account</h2>
           </div>
           <span id="account-status" class="status-chip neutral" role="status">Loading account…</span>
         </div>
@@ -85,7 +98,7 @@
         </article>
       </section>
 
-      <section class="content-section">
+      <section class="content-section" data-page="home">
         <div class="section-heading">
           <div>
             <p class="eyebrow">Clear boundaries</p>
@@ -111,7 +124,7 @@
         </div>
       </section>
 
-      <section id="parse" class="content-section parse-section">
+      <section id="parse" class="content-section parse-section" data-page="parses">
         <div class="section-heading">
           <div>
             <p class="eyebrow">Server-generated reports</p>
@@ -135,7 +148,7 @@
         </div>
       </section>
 
-      <section id="profile-lab" class="content-section lab-section">
+      <section id="profile-lab" class="content-section lab-section" data-page="profile-lab">
         <div class="section-heading">
           <div>
             <p class="eyebrow">Live browser validation</p>
@@ -195,7 +208,7 @@
         </div>
       </section>
 
-      <section id="optimizer" class="content-section">
+      <section id="optimizer" class="content-section" data-page="optimizer">
         <div class="section-heading">
           <div>
             <p class="eyebrow">Runs locally in your browser</p>

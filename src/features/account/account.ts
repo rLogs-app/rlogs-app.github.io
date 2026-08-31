@@ -44,6 +44,7 @@ export async function mountAccount(): Promise<void> {
       if (!response.ok) throw new Error(`Sign-in exchange failed with HTTP ${response.status}.`);
       const session = parseWebSession(await response.json());
       sessionStorage.setItem(sessionKey, JSON.stringify(session));
+      window.dispatchEvent(new Event("rlogs:session-changed"));
       const url = new URL(window.location.href);
       url.searchParams.delete("auth_code");
       history.replaceState(null, "", `${url.pathname}${url.search}#account`);
@@ -61,6 +62,7 @@ export async function mountAccount(): Promise<void> {
   }
   if (session.expires_unix_millis <= Date.now()) {
     sessionStorage.removeItem(sessionKey);
+    window.dispatchEvent(new Event("rlogs:session-changed"));
     await renderSignedOut(status, content);
     return;
   }
@@ -111,10 +113,12 @@ async function renderSignedIn(
     account = parseAccount(await response.json());
   } catch {
     sessionStorage.removeItem(sessionKey);
+    window.dispatchEvent(new Event("rlogs:session-changed"));
     await renderSignedOut(status, content);
     return;
   }
   status.textContent = "Signed in";
+  document.querySelector<HTMLElement>("#account-title")?.replaceChildren("My Profile");
   const identity = document.createElement("div");
   identity.className = "profile-identity";
   if (account.discord_avatar_url) {
@@ -179,6 +183,7 @@ async function renderSignedIn(
   });
   signOut.addEventListener("click", () => {
     sessionStorage.removeItem(sessionKey);
+    window.dispatchEvent(new Event("rlogs:session-changed"));
     location.reload();
   });
   actions.append(generate, signOut);
@@ -241,6 +246,7 @@ function loadSession(): WebSession | undefined {
     return parseWebSession(JSON.parse(source) as unknown);
   } catch {
     sessionStorage.removeItem(sessionKey);
+    window.dispatchEvent(new Event("rlogs:session-changed"));
     return undefined;
   }
 }

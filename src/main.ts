@@ -1,10 +1,21 @@
 import "./styles/site.css";
-import { mountAccount } from "./features/account/account";
-import { mountModuleOptimizer } from "./features/module-optimizer/module-optimizer";
-import { mountProfileLab } from "./features/profile-lab/profile-lab";
-import { mountParseBrowser } from "./features/parse-browser/parse-browser";
+import { mountSiteNavigation } from "./site-navigation";
 
-void mountAccount();
-void mountProfileLab();
-void mountModuleOptimizer();
-void mountParseBrowser();
+const page = mountSiteNavigation();
+
+if (page === "account") {
+  void import("./features/account/account").then(({ mountAccount }) => mountAccount());
+}
+if (page === "profile-lab") {
+  void import("./features/profile-lab/profile-lab").then(({ mountProfileLab }) => mountProfileLab());
+}
+if (page === "optimizer") {
+  void import("./features/module-optimizer/module-optimizer").then(({ mountModuleOptimizer }) =>
+    mountModuleOptimizer(),
+  );
+}
+if (page === "parses") {
+  void import("./features/parse-browser/parse-browser").then(({ mountParseBrowser }) =>
+    mountParseBrowser(),
+  );
+}

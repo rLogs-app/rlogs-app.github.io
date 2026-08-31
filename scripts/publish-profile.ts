@@ -280,7 +280,7 @@ async function main(): Promise<void> {
   console.log(`Payload: ${result.profilePath}`);
   console.log(`Index:   ${result.indexPath}`);
   console.log(
-    `URL:     https://rlogs-app.github.io/?profile=${result.entry.profile_id}`,
+    `URL:     https://rlogs-app.github.io/profile-lab/?profile=${result.entry.profile_id}`,
   );
   if (result.wroteFiles) {
     console.log("Run npm test, npm run check, and npm run build before committing.");
