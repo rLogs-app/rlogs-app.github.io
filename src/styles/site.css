@@ -420,6 +420,11 @@ h3 {
   border-bottom: 1px solid var(--line);
 }
 
+.parse-party-row.reconciled {
+  min-width: 1080px;
+  grid-template-columns: minmax(210px, 1.5fr) repeat(7, minmax(90px, 0.7fr));
+}
+
 .parse-party-row:last-child {
   border-bottom: 0;
 }
@@ -438,6 +443,33 @@ h3 {
   margin: 16px 0 0;
   font: 600 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
   overflow-wrap: anywhere;
+}
+
+.reconciliation-proof {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  margin: -8px 0 14px;
+  border: 1px solid var(--line-bright);
+  border-radius: 10px;
+  background: rgb(7 11 18 / 45%);
+  font-size: 12px;
+}
+
+.reconciliation-proof span {
+  color: var(--muted);
+}
+
+.reconciliation-proof.valid {
+  border-color: rgb(103 232 170 / 35%);
+}
+
+.reconciliation-proof.valid strong {
+  color: var(--success);
+}
+
+.reconciliation-proof.pending strong {
+  color: var(--accent);
 }
 
 .button-row,

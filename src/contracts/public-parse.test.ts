@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isPublicParseCatalog, isPublicParseReport, validateReportId } from "./public-parse";
+import {
+  isPublicParseCatalog,
+  isPublicParseReport,
+  isPublicRunReconciliation,
+  validateReportId,
+  validateRunGroupId,
+} from "./public-parse";
 
 describe("public parse contract", () => {
   it("accepts deterministic report identifiers", () => {
@@ -62,6 +68,66 @@ describe("public parse contract", () => {
           difficulties: [],
           terminal_states: [],
         },
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts a conserved cross-vantage reconciliation product", () => {
+    const reportId = `rpt_${"ab".repeat(16)}`;
+    const runGroupId = `run_${"cd".repeat(16)}`;
+    expect(validateRunGroupId(runGroupId)).toBe(true);
+    expect(validateRunGroupId("../../private-run")).toBe(false);
+    expect(
+      isPublicRunReconciliation({
+        schema_version: 5,
+        reconciliation_id: `rec_${"ef".repeat(16)}`,
+        run_group_id: runGroupId,
+        status: "reconciled",
+        canonical_spine: { report_id: reportId },
+        reports: [],
+        characters: [],
+        participant_character_count: 2,
+        local_vantage_character_count: 2,
+        complete_local_vantage_coverage: true,
+        state_replay_readiness: "full_coverage_ready",
+        state_replay_blockers: [],
+        reconciled_participants: [
+          {
+            actor_id: "11",
+            damage: 90,
+            rdps_damage: 100,
+            contribution_given: 20,
+            contribution_received: 10,
+            rdps_incomplete: false,
+          },
+        ],
+        attribution_replay_completed: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects reconciliation rows with non-integral conserved damage", () => {
+    expect(
+      isPublicRunReconciliation({
+        schema_version: 5,
+        reconciliation_id: `rec_${"ef".repeat(16)}`,
+        run_group_id: `run_${"cd".repeat(16)}`,
+        status: "reconciled",
+        canonical_spine: { report_id: `rpt_${"ab".repeat(16)}` },
+        reports: [],
+        characters: [],
+        state_replay_blockers: [],
+        reconciled_participants: [
+          {
+            actor_id: "11",
+            damage: 90,
+            rdps_damage: 99.5,
+            contribution_given: 10,
+            contribution_received: 0,
+            rdps_incomplete: false,
+          },
+        ],
+        attribution_replay_completed: true,
       }),
     ).toBe(false);
   });

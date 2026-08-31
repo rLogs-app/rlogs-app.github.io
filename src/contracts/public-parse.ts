@@ -14,6 +14,8 @@ export interface PublicParseCatalogEntry {
   run_group_id?: string;
   contribution_count?: number;
   distinct_submitter_count?: number;
+  local_profile_witness_character_count?: number;
+  attribution_reconciliation_status?: RunAttributionReconciliationStatus;
   created_unix_millis: number;
   deployment_id: string;
   region_id: string;
@@ -27,6 +29,12 @@ export interface PublicParseCatalogEntry {
   total_run_time_micros?: number;
   participant_count: number;
 }
+
+export type RunAttributionReconciliationStatus =
+  | "single_vantage"
+  | "multiple_reports_no_additional_vantage"
+  | "cross_vantage_evidence_available"
+  | "reconciled";
 
 export interface CatalogFacets {
   deployments: FacetValue[];
@@ -130,7 +138,79 @@ export interface PublicParticipant {
   deaths: number;
 }
 
+export interface PublicRunReconciliation {
+  schema_version: 5;
+  reconciliation_id: string;
+  run_group_id: string;
+  status: RunAttributionReconciliationStatus;
+  canonical_spine: PublicCanonicalSpine;
+  reports: PublicReconciliationReport[];
+  characters: PublicReconciliationCharacter[];
+  participant_character_count: number;
+  local_vantage_character_count: number;
+  complete_local_vantage_coverage: boolean;
+  state_replay_readiness:
+    | "single_vantage"
+    | "multiple_reports_no_additional_vantage"
+    | "blocked"
+    | "partial_coverage_ready"
+    | "full_coverage_ready";
+  state_replay_blockers: string[];
+  verified_state_input_sha256?: string;
+  reconciled_participants: PublicReconciledParticipant[];
+  conservation?: PublicAttributionConservation;
+  attribution_replay_completed: boolean;
+}
+
+export interface PublicCanonicalSpine {
+  report_id: string;
+  run_index: number;
+  artifact_sha256: string;
+  authoritative_start: boolean;
+  authoritative_completion: boolean;
+  data_gap_count: number;
+  event_count: number;
+}
+
+export interface PublicReconciliationReport {
+  report_id: string;
+  run_index: number;
+  artifact_sha256: string;
+  protocol_pack_digest: string;
+  created_unix_millis: number;
+  canonical_spine: boolean;
+  local_profile_witnesses: unknown[];
+  local_state_witnesses: unknown[];
+}
+
+export interface PublicReconciliationCharacter {
+  character_id: string;
+  participant_report_count: number;
+  disposition: string;
+  selected_report_id?: string;
+  state_witness_count: number;
+  game_time_aligned_state_witness_count: number;
+  witnesses: unknown[];
+}
+
+export interface PublicReconciledParticipant extends PublicParticipant {
+  rdps_damage: number | null;
+  contribution_given: number | null;
+  contribution_received: number | null;
+  rdps_incomplete: boolean;
+}
+
+export interface PublicAttributionConservation {
+  raw_damage: number;
+  rdps_damage: number;
+  contribution_given: number;
+  contribution_received: number;
+  conserved: boolean;
+}
+
 const reportIdPattern = /^rpt_[a-f0-9]{32}$/;
+const runGroupIdPattern = /^run_[a-f0-9]{32}$/;
+const reconciliationIdPattern = /^rec_[a-f0-9]{32}$/;
 
 export function isPublicParseCatalog(value: unknown): value is PublicParseCatalog {
   if (
@@ -180,8 +260,54 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
   );
 }
 
+export function isPublicRunReconciliation(value: unknown): value is PublicRunReconciliation {
+  if (
+    !isRecord(value) ||
+    value.schema_version !== 5 ||
+    typeof value.reconciliation_id !== "string" ||
+    !reconciliationIdPattern.test(value.reconciliation_id) ||
+    typeof value.run_group_id !== "string" ||
+    !runGroupIdPattern.test(value.run_group_id) ||
+    !isReconciliationStatus(value.status) ||
+    !isRecord(value.canonical_spine) ||
+    typeof value.canonical_spine.report_id !== "string" ||
+    !reportIdPattern.test(value.canonical_spine.report_id) ||
+    !Array.isArray(value.reports) ||
+    !Array.isArray(value.characters) ||
+    !Array.isArray(value.state_replay_blockers) ||
+    !value.state_replay_blockers.every((blocker) => typeof blocker === "string") ||
+    !Array.isArray(value.reconciled_participants) ||
+    typeof value.attribution_replay_completed !== "boolean"
+  ) {
+    return false;
+  }
+  return value.reconciled_participants.every(
+    (participant) =>
+      isRecord(participant) &&
+      typeof participant.actor_id === "string" &&
+      Number.isSafeInteger(participant.damage) &&
+      (participant.rdps_damage == null || Number.isSafeInteger(participant.rdps_damage)) &&
+      (participant.contribution_given == null || Number.isSafeInteger(participant.contribution_given)) &&
+      (participant.contribution_received == null || Number.isSafeInteger(participant.contribution_received)) &&
+      typeof participant.rdps_incomplete === "boolean",
+  );
+}
+
+export function validateRunGroupId(value: string): boolean {
+  return runGroupIdPattern.test(value);
+}
+
 export function validateReportId(value: string): boolean {
   return reportIdPattern.test(value);
+}
+
+function isReconciliationStatus(value: unknown): value is RunAttributionReconciliationStatus {
+  return [
+    "single_vantage",
+    "multiple_reports_no_additional_vantage",
+    "cross_vantage_evidence_available",
+    "reconciled",
+  ].includes(String(value));
 }
 
 function isRecord(value: unknown): value is Record<string, any> {
