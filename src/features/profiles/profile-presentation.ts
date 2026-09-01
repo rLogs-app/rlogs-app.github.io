@@ -8,6 +8,8 @@ export interface PresentationRecord {
   talent_id?: number;
   dungeon_type_name?: string;
   effects?: string[];
+  equipment_effects?: EquipmentAttributeEffectPresentation[];
+  equipment_buff_effects?: EquipmentBuffEffectPresentation[];
   attribute_library_id?: number | null;
   levels?: Array<{ level: number; enhancement_num: number }>;
   description?: string | null;
@@ -15,6 +17,27 @@ export interface PresentationRecord {
   target?: number | null;
   season_id?: number | null;
   achievement_level?: number | null;
+}
+
+export interface EquipmentBuffEffectPresentation {
+  buff_id: number;
+  description: string;
+  parameters: Array<{ minimum: number; maximum: number }>;
+}
+
+export interface EquipmentAttributeEffectPresentation {
+  attribute_id: number;
+  name: string;
+  minimum: number;
+  maximum: number;
+  number_type: number;
+  format_type: number;
+}
+
+export interface FightAttributePresentation {
+  name: string;
+  number_type: number;
+  format_type: number;
 }
 
 export interface SigilLevelPresentation {
@@ -34,9 +57,12 @@ export interface ProfilePresentationCatalog {
   source_item_table_sha256?: string;
   source_achievement_table_sha256?: string;
   source_medal_table_sha256?: string;
+  source_equipment_attribute_table_sha256?: string;
+  source_buff_table_sha256?: string;
   equipment_slots: Record<string, string>;
   quality_names: Record<string, string>;
   equipment_attributes: Record<string, PresentationRecord>;
+  fight_attributes: Record<string, FightAttributePresentation>;
   items: Record<string, PresentationRecord>;
   sigils: Record<string, SigilLevelPresentation[]>;
   titles: Record<string, PresentationRecord>;
@@ -53,7 +79,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=9`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=10`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -106,6 +132,9 @@ export function normalizeProfilePresentationCatalog(
       : {},
     medals: isRecord(value.medals)
       ? (value.medals as ProfilePresentationCatalog["medals"])
+      : {},
+    fight_attributes: isRecord(value.fight_attributes)
+      ? (value.fight_attributes as ProfilePresentationCatalog["fight_attributes"])
       : {},
   };
 }

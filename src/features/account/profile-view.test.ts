@@ -1,6 +1,43 @@
 import { describe, expect, it } from "vitest";
 
-import { orderedMedalEntries, resolvePublishedPhotoUrl } from "./profile-view";
+import {
+  battleImagineOwnershipFacts,
+  formatFightAttributeValue,
+  interpolateEquipmentAttributeValue,
+  materializeEquipmentBuffDescription,
+  orderedMedalEntries,
+  resolvePublishedPhotoUrl,
+} from "./profile-view";
+
+describe("Battle Imagine ownership presentation", () => {
+  it("shows tier and equipped slot without the irrelevant character level", () => {
+    expect(battleImagineOwnershipFacts(5, 7)).toBe("Tier 5 · Equipped · Slot 7");
+    expect(battleImagineOwnershipFacts(5, undefined)).toBe("Tier 5");
+  });
+});
+
+describe("equipment attribute values", () => {
+  it("uses the exact client interpolation formula for the observed roll scalar", () => {
+    expect(interpolateEquipmentAttributeValue(1_935, 3_195, 100)).toBe(3_195);
+    expect(interpolateEquipmentAttributeValue(1_935, 3_195, 50)).toBe(2_565);
+    expect(interpolateEquipmentAttributeValue(1_935, 3_195, -1)).toBe(1_935);
+  });
+
+  it("formats normal, percent, time, and percent-member values like the client", () => {
+    expect(formatFightAttributeValue(3_195, 0, 2)).toBe("3,195");
+    expect(formatFightAttributeValue(1_710, 1, 2)).toBe("17.1%");
+    expect(formatFightAttributeValue(1_500, 2, 2)).toBe("1.5s");
+    expect(formatFightAttributeValue(1_234, 0, 4)).toBe("12.34%");
+  });
+
+  it("materializes buff-backed equipment effects with their exact rolled parameters", () => {
+    expect(materializeEquipmentBuffDescription(
+      "Grants {*Decision.unmarkpercent(1)*} PHY Boost bonus while Focus is active.",
+      [{ minimum: 600, maximum: 600 }],
+      100,
+    )).toBe("Grants 6% PHY Boost bonus while Focus is active.");
+  });
+});
 
 describe("published Photo Wall URLs", () => {
   it("resolves only the server-owned public Photo Wall route", () => {

@@ -185,16 +185,25 @@ function imagineSection(owned: JsonValue[], skills: JsonValue[]): HTMLElement {
     appendPresentationIcon(card, localized?.icon, localized?.name ?? "Battle Imagine", "profile-item-icon");
     card.append(
       element("strong", "", localized?.name ?? `Unknown Battle Imagine ${displayValue(item.imagine_id ?? item.skill_id)}`),
-      element("small", "", joinFacts([
-        pair("Tier", item.remodel_level ?? item.breakthrough_level),
-        pair("Level", item.level),
-        item.equipped_slot == null ? "" : `Equipped · Slot ${displayValue(item.equipped_slot)}`,
-      ])),
+      element("small", "", battleImagineOwnershipFacts(
+        item.remodel_level ?? item.breakthrough_level,
+        item.equipped_slot,
+      )),
     );
     grid.append(card);
   }
   section.append(records.length ? grid : empty("No Battle Imagine data was present in the latest snapshot."));
   return section;
+}
+
+export function battleImagineOwnershipFacts(
+  tier: JsonValue | undefined,
+  equippedSlot: JsonValue | undefined,
+): string {
+  return joinFacts([
+    pair("Tier", tier),
+    equippedSlot == null ? "" : `Equipped · Slot ${displayValue(equippedSlot)}`,
+  ]);
 }
 
 function moduleSection(inventory: JsonValue[], slots: JsonRecord | undefined): HTMLElement {
@@ -614,14 +623,104 @@ function equipmentAttributeList(item: JsonRecord): HTMLElement | undefined {
     ["Rare quality", "rare_quality"],
   ] as const) {
     for (const [attributeId, value] of Object.entries(recordValue(attributes[key]) ?? {})) {
+      const rollValue = numericValue(value);
+      if (key === "base") {
+        const fightAttribute = presentation.fight_attributes[attributeId];
+        rows.append(compactRow(
+          fightAttribute?.name ?? `Unknown fight attribute ${attributeId}`,
+          rollValue == null || !fightAttribute
+            ? category
+            : `${category} · ${formatSignedFightAttributeValue(rollValue, fightAttribute.number_type, fightAttribute.format_type)}`,
+        ));
+        continue;
+      }
       const localized = presentation.equipment_attributes[attributeId];
+      const effects = rollValue == null
+        ? []
+        : (localized?.equipment_effects ?? []).map((effect) => ({
+            name: effect.name,
+            value: interpolateEquipmentAttributeValue(effect.minimum, effect.maximum, rollValue),
+            numberType: effect.number_type,
+            formatType: effect.format_type,
+          }));
+      const buffDescriptions = rollValue == null
+        ? []
+        : (localized?.equipment_buff_effects ?? []).map((effect) =>
+            materializeEquipmentBuffDescription(effect.description, effect.parameters, rollValue)
+          );
+      const effectDetails = effects.map((effect) =>
+        `${effect.name} ${formatSignedFightAttributeValue(effect.value, effect.numberType, effect.formatType)}`
+      );
       rows.append(compactRow(
-        localized?.name ?? `Unknown equipment attribute ${attributeId}`,
-        `${category} · Roll value ${displayValue(value)}`,
+        !effectDetails.length && buffDescriptions.length
+          ? buffDescriptions.join(" · ")
+          : localized?.name ?? `Unknown equipment attribute ${attributeId}`,
+        effectDetails.length || (!effectDetails.length && !buffDescriptions.length)
+          ? [category, ...effectDetails, ...buffDescriptions].join(" · ")
+          : category,
       ));
     }
   }
   return rows.childElementCount ? rows : undefined;
+}
+
+export function interpolateEquipmentAttributeValue(
+  minimum: number,
+  maximum: number,
+  rollValue: number,
+): number {
+  const normalizedRoll = rollValue < 0 ? 0 : rollValue;
+  return Math.floor(normalizedRoll * (maximum - minimum) / 100 + minimum);
+}
+
+export function formatFightAttributeValue(
+  value: number,
+  numberType: number,
+  formatType: number,
+): string {
+  if (numberType === 1 || (numberType === 0 && formatType === 4)) {
+    return `${formatReadableNumber(value / 100)}%`;
+  }
+  if (numberType === 2) return `${formatReadableNumber(value / 1_000)}s`;
+  return formatReadableNumber(value);
+}
+
+export function materializeEquipmentBuffDescription(
+  description: string,
+  parameters: Array<{ minimum: number; maximum: number }>,
+  rollValue: number,
+): string {
+  const values = parameters.map((parameter) =>
+    interpolateEquipmentAttributeValue(parameter.minimum, parameter.maximum, rollValue)
+  );
+  return description
+    .replace(
+      /\{\*Decision\.(marknormal|unmarknormal|markpercent|unmarkpercent|marktime|unmarktime)\((\d+)\)\*\}/gu,
+      (_match, formatter: string, index: string) => {
+        const value = values[Number(index) - 1];
+        if (value == null) return "?";
+        const marked = formatter.startsWith("mark");
+        const numberType = formatter.endsWith("percent") ? 1 : formatter.endsWith("time") ? 2 : 0;
+        const formatted = formatFightAttributeValue(value, numberType, 0);
+        return marked && value > 0 ? `+${formatted}` : formatted;
+      },
+    )
+    .replace(/<[^>]+>/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function formatSignedFightAttributeValue(
+  value: number,
+  numberType: number,
+  formatType: number,
+): string {
+  const formatted = formatFightAttributeValue(value, numberType, formatType);
+  return value > 0 ? `+${formatted}` : formatted;
+}
+
+function formatReadableNumber(value: number): string {
+  return value.toLocaleString("en-US", { maximumFractionDigits: 6 });
 }
 
 function appendPresentationIcon(target: HTMLElement, value: string | null | undefined, alt: string, className: string): void {

@@ -28,8 +28,11 @@ const achievementsTable = readJson(achievementsTablePath);
 const medalsTablePath = path.join(tableRoot, "MedalTable.json");
 const medalsTable = readJson(medalsTablePath);
 const moduleEffectsTable = readJson(path.join(tableRoot, "ModEffectTable.json"));
-const equipmentAttributesTable = readJson(path.join(tableRoot, "EquipAttrLibTable.json"));
+const equipmentAttributesTablePath = path.join(tableRoot, "EquipAttrLibTable.json");
+const equipmentAttributesTable = readJson(equipmentAttributesTablePath);
 const equipmentSchoolAttributesTable = readJson(path.join(tableRoot, "EquipAttrSchoolLibTable.json"));
+const buffTablePath = path.join(tableRoot, "BuffTable.json");
+const buffTable = readJson(buffTablePath);
 const enchantmentItemsTable = readJson(
   existsSync(path.join(tableRoot, "EquipEnchantItemTable.json"))
     ? path.join(tableRoot, "EquipEnchantItemTable.json")
@@ -70,32 +73,84 @@ if (missingSigilIcons.length) {
 }
 
 const fightAttributeByMemberId = new Map();
+const fightAttributes = {};
 for (const row of Object.values(fightAttributesTable)) {
   for (const member of [row.AttrFinal, row.AttrTotal, row.AttrAdd, row.AttrExAdd, row.AttrPer, row.AttrExPer]) {
-    if (Number.isInteger(member)) fightAttributeByMemberId.set(member, row);
+    if (!Number.isInteger(member)) continue;
+    fightAttributeByMemberId.set(member, row);
+    fightAttributes[String(member)] = {
+      name: row.OfficialName,
+      number_type: row.AttrNumType,
+      format_type: member % 10,
+    };
   }
 }
+const equipmentAttributeRows = [
+  ...Object.values(equipmentAttributesTable),
+  ...Object.values(equipmentSchoolAttributesTable),
+];
 const equipmentAttributes = Object.fromEntries(
-  [...Object.values(equipmentAttributesTable), ...Object.values(equipmentSchoolAttributesTable)]
+  equipmentAttributeRows
     .filter((row) => Number.isInteger(row.Id))
     .map((row) => {
-      const effectIds = (row.AttrEffect ?? [])
-        .flatMap((effect) => Array.isArray(effect) ? effect.slice(1) : [])
-        .filter((id) => Number.isInteger(id));
-      const names = effectIds
-        .flatMap((id) => [
-          fightAttributeByMemberId.get(id)?.OfficialName,
-          cleanAttributeDescription(attributeDescriptionsTable[String(id)]?.Description),
-        ])
-        .filter((name) => typeof name === "string" && name.trim())
+      let configIndex = 0;
+      const equipmentEffects = [];
+      const equipmentBuffEffects = [];
+      for (const effect of row.AttrEffect ?? []) {
+        if (!Array.isArray(effect) || !Number.isInteger(effect[0])) continue;
+        if (effect[0] === 3) {
+          const parameterCount = Number.isInteger(effect[2]) && effect[2] > 0 ? effect[2] : 1;
+          const buff = buffTable[String(effect[1])];
+          const description = attributeDescriptionsTable[String(buff?.TipsDescription)]?.Description;
+          const parameters = (row.AttrEffectConfig ?? [])
+            .slice(configIndex, configIndex + parameterCount)
+            .filter((range) => Array.isArray(range) && Number.isFinite(range[0]) && Number.isFinite(range[1]))
+            .map((range) => ({ minimum: range[0], maximum: range[1] }));
+          configIndex += parameterCount;
+          if (Number.isInteger(effect[1]) && typeof description === "string" && parameters.length === parameterCount) {
+            equipmentBuffEffects.push({
+              buff_id: effect[1],
+              description,
+              parameters,
+            });
+          }
+          continue;
+        }
+        if (effect[0] !== 1) continue;
+        const attributeId = effect[1];
+        const range = row.AttrEffectConfig?.[configIndex++] ?? [];
+        const fightAttribute = fightAttributeByMemberId.get(attributeId);
+        const name = fightAttribute?.OfficialName
+          ?? cleanAttributeDescription(attributeDescriptionsTable[String(attributeId)]?.Description);
+        if (
+          !Number.isInteger(attributeId)
+          || typeof name !== "string"
+          || !Number.isFinite(range[0])
+          || !Number.isFinite(range[1])
+        ) continue;
+        equipmentEffects.push({
+          attribute_id: attributeId,
+          name,
+          minimum: range[0],
+          maximum: range[1],
+          number_type: fightAttribute?.AttrNumType ?? 0,
+          format_type: attributeId % 10,
+        });
+      }
+      const names = equipmentEffects
+        .map((effect) => effect.name)
+        .concat(equipmentBuffEffects.map((effect) => cleanBuffDescription(effect.description)))
         .filter((name, index, all) => all.indexOf(name) === index);
       return [String(row.Id), {
         name: names.length ? names.join(" + ") : `Equipment attribute ${row.Id}`,
         effects: names,
+        equipment_effects: equipmentEffects,
+        equipment_buff_effects: equipmentBuffEffects,
         attribute_library_id: row.AttrLibId ?? null,
       }];
     }),
 );
+
 
 const sigils = {};
 for (const row of Object.values(enchantmentItemsTable)) {
@@ -268,6 +323,8 @@ const catalog = {
   source_item_table_sha256: createHash("sha256").update(readFileSync(itemsTablePath)).digest("hex"),
   source_achievement_table_sha256: createHash("sha256").update(readFileSync(achievementsTablePath)).digest("hex"),
   source_medal_table_sha256: createHash("sha256").update(readFileSync(medalsTablePath)).digest("hex"),
+  source_equipment_attribute_table_sha256: createHash("sha256").update(readFileSync(equipmentAttributesTablePath)).digest("hex"),
+  source_buff_table_sha256: createHash("sha256").update(readFileSync(buffTablePath)).digest("hex"),
   equipment_slots: {
     "200": "Weapon", "201": "Headwear", "202": "Armor", "203": "Gloves",
     "204": "Shoes", "205": "Earrings", "206": "Necklace", "207": "Ring",
@@ -275,6 +332,7 @@ const catalog = {
   },
   quality_names: { "1": "Common", "2": "Uncommon", "3": "Rare", "4": "Epic", "5": "Legendary" },
   equipment_attributes: equipmentAttributes,
+  fight_attributes: fightAttributes,
   items,
   sigils,
   titles,
@@ -299,6 +357,15 @@ function cleanAttributeDescription(value) {
   if (typeof value !== "string") return undefined;
   return value
     .replace(/\s*[+-]?\{\*[^}]+\*\}/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanBuffDescription(value) {
+  if (typeof value !== "string") return "Equipment effect";
+  return value
+    .replace(/\{\*Decision\.[A-Za-z]+\(\d+\)\*\}/g, "value")
+    .replace(/<[^>]+>/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
