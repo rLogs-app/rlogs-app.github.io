@@ -36,6 +36,10 @@ describe("BPSR profile presentation catalog", () => {
       target: 1,
       season_id: 0,
     }));
+    expect(catalog.achievements["100010201"]?.description).toBe("Unlock 2 classes");
+    expect(Object.values(catalog.achievements).every(
+      (achievement) => !achievement.description?.includes("{*val*}"),
+    )).toBe(true);
     expect(catalog.achievements["101010101"]?.season_id).toBe(1);
   });
 

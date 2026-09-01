@@ -190,13 +190,21 @@ const achievements = Object.fromEntries(
     .filter((achievement) => Number.isInteger(achievement.Id) && achievement.Name)
     .map((achievement) => [String(achievement.Id), {
       name: achievement.Name,
-      description: achievement.Des ?? null,
+      description: materializeAchievementDescription(achievement.Des, achievement.Num),
       category: achievement.Sma11ClassName ?? null,
       target: achievement.Num ?? null,
       season_id: achievement.SeasonId ?? null,
       achievement_level: achievement.AchievementLevel ?? null,
     }]),
 );
+
+function materializeAchievementDescription(description, target) {
+  if (typeof description !== "string") return null;
+  if (!description.includes("{*val*}")) return description;
+  return Number.isFinite(target)
+    ? description.replaceAll("{*val*}", Number(target).toLocaleString("en-US"))
+    : description;
+}
 
 const imagines = Object.fromEntries(imaginePresentation.imagines.map((imagine) => {
   const source = path.join(rlogsRoot, "assets/blue-protocol-star-resonance/shared", imagine.icon);
