@@ -176,7 +176,7 @@ function imagineSection(owned: JsonValue[], skills: JsonValue[]): HTMLElement {
     card.append(
       element("strong", "", localized?.name ?? `Unknown Battle Imagine ${displayValue(item.imagine_id ?? item.skill_id)}`),
       element("small", "", joinFacts([
-        localized?.item_tier == null ? "" : `Tier ${localized.item_tier}/${localized.maximum_tier ?? 5}`,
+        localized?.item_tier == null ? "" : `Tier ${localized.item_tier}`,
         pair("Level", item.level),
         pair("Breakthrough", item.breakthrough_level ?? item.remodel_level),
         item.equipped_slot == null ? "" : `Equipped · Slot ${displayValue(item.equipped_slot)}`,
