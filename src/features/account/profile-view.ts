@@ -7,8 +7,20 @@ export function renderSyncedCharacterProfile(profile: PublishedProfile): HTMLEle
   const body = profile.envelope.body;
   const root = element("article", "synced-character-profile");
   const heading = element("header", "character-profile-heading");
-  const identity = element("div");
-  identity.append(
+  const identity = element("div", "character-profile-identity");
+  const appearance = recordValue(body.appearance);
+  const profileImageUrl = safeImageUrl(appearance?.profile_image_url);
+  if (profileImageUrl) {
+    const image = document.createElement("img");
+    image.className = "character-profile-picture";
+    image.src = profileImageUrl;
+    image.alt = `${stringValue(body.display_name) ?? profile.entry.label} profile picture`;
+    image.loading = "eager";
+    image.referrerPolicy = "no-referrer";
+    identity.append(image);
+  }
+  const identityCopy = element("div");
+  identityCopy.append(
     element("p", "eyebrow", "Synced character"),
     element("h2", "", stringValue(body.display_name) ?? profile.entry.label),
     element(
@@ -17,8 +29,20 @@ export function renderSyncedCharacterProfile(profile: PublishedProfile): HTMLEle
       `UID ${profile.entry.character_id} · ${[profile.entry.region, profile.entry.realm ?? profile.entry.world].filter(Boolean).join(" · ")}`,
     ),
   );
+  identity.append(identityCopy);
   heading.append(identity, element("span", "profile-last-seen", `Last seen ${relativeTime(profile.entry.source_updated_unix_millis ?? profile.entry.source_created_unix_millis ?? Date.now())}`));
   root.append(heading);
+
+  const halfBodyImageUrl = safeImageUrl(appearance?.half_body_image_url);
+  if (halfBodyImageUrl) {
+    const portrait = document.createElement("img");
+    portrait.className = "character-half-body-picture";
+    portrait.src = halfBodyImageUrl;
+    portrait.alt = `${stringValue(body.display_name) ?? profile.entry.label} character portrait`;
+    portrait.loading = "lazy";
+    portrait.referrerPolicy = "no-referrer";
+    root.append(portrait);
+  }
 
   const summary = element("div", "profile-stat-grid");
   const modules = recordValue(body.modules);
@@ -28,6 +52,7 @@ export function renderSyncedCharacterProfile(profile: PublishedProfile): HTMLEle
     ["Level", displayValue(body.level)],
     ["Combat power", displayNumber(body.combat_power)],
     ["Season strength", displayNumber(body.season_strength)],
+    ["Master score", displayNumber(body.master_score)],
     ["Equipment", String(arrayValue(body.equipment).length)],
     ["Modules", String(inventory.length)],
     ["Imagines", String(arrayValue(body.owned_imagines).length)],
@@ -43,6 +68,8 @@ export function renderSyncedCharacterProfile(profile: PublishedProfile): HTMLEle
     moduleSection(inventory, equippedSlots),
     skillsSection(body),
     collectionsSection(body),
+    photoWallSection(body),
+    achievementSection(body),
     progressSection(body),
   );
   root.append(sections);
@@ -179,6 +206,58 @@ function collectionsSection(body: JsonRecord): HTMLElement {
   return section;
 }
 
+function photoWallSection(body: JsonRecord): HTMLElement {
+  const collection = recordValue(body.collection_summary);
+  const photos = arrayValue(collection?.photo_ids);
+  const wall = recordValue(collection?.photo_wall);
+  const placements = wall ? Object.entries(wall) : [];
+  const section = profileSection("Photo Wall", `${photos.length} photos · ${placements.length} displayed`);
+  const grid = element("div", "profile-item-grid photo-wall-grid");
+  for (const [slot, photoId] of placements) {
+    const card = element("article", "profile-item-card photo-wall-card");
+    card.append(
+      element("strong", "", `Wall slot ${slot}`),
+      element("span", "", `Photo ${displayValue(photoId)}`),
+    );
+    grid.append(card);
+  }
+  section.append(
+    placements.length
+      ? grid
+      : empty("No Photo Wall placement was present in the latest synced snapshot."),
+  );
+  return section;
+}
+
+function achievementSection(body: JsonRecord): HTMLElement {
+  const collection = recordValue(body.collection_summary);
+  const achievements = recordValue(collection?.achievements);
+  const general = arrayValue(achievements?.general);
+  const seasons = arrayValue(achievements?.seasons);
+  const seasonalCount = seasons.reduce<number>((total, value) => {
+    const season = recordValue(value);
+    return total + arrayValue(season?.achievements).length;
+  }, 0);
+  const section = profileSection(
+    "Achievements",
+    `${general.length} general · ${seasonalCount} seasonal`,
+  );
+  const facts = element("dl", "profile-facts");
+  appendFact(facts, "General achievements", general.length.toLocaleString());
+  appendFact(facts, "Season achievements", seasonalCount.toLocaleString());
+  appendFact(facts, "Seasons represented", seasons.length.toLocaleString());
+  appendFact(
+    facts,
+    "Rewards claimed",
+    [...general, ...seasons.flatMap((value) => arrayValue(recordValue(value)?.achievements))]
+      .filter((value) => recordValue(value)?.reward_claimed === true)
+      .length
+      .toLocaleString(),
+  );
+  section.append(facts);
+  return section;
+}
+
 function progressSection(body: JsonRecord): HTMLElement {
   const activity = recordValue(body.activity_progress);
   const weekly = recordValue(activity?.weekly_tower);
@@ -190,6 +269,7 @@ function progressSection(body: JsonRecord): HTMLElement {
   for (const [label, value] of [
     ["Season", season?.season_id],
     ["Season level", season?.level],
+    ["Master score", body.master_score],
     ["Weekly tower highest floor", weekly?.maximum_floor_id],
     ["Challenge dungeons", arrayValue(activity?.challenge_dungeons).length],
     ["Master-mode dungeons", arrayValue(activity?.master_mode_dungeons).length],
@@ -263,6 +343,16 @@ function displayValue(value: JsonValue | number | undefined): string {
 
 function stringValue(value: JsonValue | undefined): string | undefined {
   return typeof value === "string" && value.length ? value : undefined;
+}
+
+function safeImageUrl(value: JsonValue | undefined): string | undefined {
+  if (typeof value !== "string" || value.length > 2_048) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function recordValue(value: JsonValue | undefined): JsonRecord | undefined {

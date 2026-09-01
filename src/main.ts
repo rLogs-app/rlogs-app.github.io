@@ -10,6 +10,11 @@ if (page === "home") {
 if (page === "account") {
   void import("./features/account/account").then(({ mountAccount }) => mountAccount());
 }
+if (page === "profiles") {
+  void import("./features/profiles/profile-browser").then(({ mountProfileBrowser }) =>
+    mountProfileBrowser(),
+  );
+}
 if (page === "optimizer") {
   void import("./features/module-optimizer/module-optimizer").then(({ mountModuleOptimizer }) =>
     mountModuleOptimizer(),

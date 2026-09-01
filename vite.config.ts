@@ -2,8 +2,7 @@ import { copyFile, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
-// Keep the retired Profile Lab URL as a redirect target for older desktop receipts.
-const pageRoutes = ["parses", "account", "optimizer", "profile-lab"] as const;
+const pageRoutes = ["parses", "profiles", "account", "optimizer"] as const;
 
 function publishPageRoutes(): Plugin {
   return {

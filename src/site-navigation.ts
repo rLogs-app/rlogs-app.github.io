@@ -1,10 +1,11 @@
 const sessionKey = "rlogs.web-session.v1";
 
-export type SitePage = "home" | "parses" | "account" | "optimizer";
+export type SitePage = "home" | "parses" | "profiles" | "account" | "optimizer";
 
 const pageTitles: Record<SitePage, string> = {
   home: "rLogs",
   parses: "Parses · rLogs",
+  profiles: "Profiles · rLogs",
   account: "Account · rLogs",
   optimizer: "Module Optimizer · rLogs",
 };
@@ -12,6 +13,7 @@ const pageTitles: Record<SitePage, string> = {
 export function pageFromPath(pathname: string): SitePage {
   const route = pathname.replace(/\/+$/u, "") || "/";
   if (route === "/parses") return "parses";
+  if (route === "/profiles") return "profiles";
   if (route === "/account") return "account";
   if (route === "/optimizer") return "optimizer";
   return "home";
@@ -62,7 +64,7 @@ function redirectLegacyDeepLink(search: string): void {
   if (parameters.has("parse")) {
     location.replace(`/parses/${search}`);
   } else if (parameters.has("profile")) {
-    location.replace(`/account/${search}`);
+    location.replace(`/profiles/${search}`);
   } else if (parameters.has("auth_code")) {
     location.replace(`/account/${search}`);
   }

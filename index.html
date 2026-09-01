@@ -16,6 +16,7 @@
         const pages = {
           "/": "home",
           "/parses": "parses",
+          "/profiles": "profiles",
           "/account": "account",
           "/optimizer": "optimizer",
         };
@@ -37,12 +38,13 @@
       <nav aria-label="Primary navigation">
         <a href="/" data-nav-page="home">Home</a>
         <a href="/parses/" data-nav-page="parses">Parses</a>
+        <a href="/profiles/" data-nav-page="profiles">Profiles</a>
         <a href="/account/" data-nav-page="account" data-account-nav>Account</a>
         <a href="/optimizer/" data-nav-page="optimizer">Module Optimizer</a>
       </nav>
       <a
         class="header-download"
-        href="https://github.com/donneeee/RLogs/releases/download/v0.1.15/rLogs_0.1.15_x64-setup.exe"
+        href="https://github.com/donneeee/RLogs/releases/download/v0.1.16/rLogs_0.1.16_x64-setup.exe"
       >Download rLogs</a>
     </header>
 
@@ -100,6 +102,34 @@
         </article>
       </section>
 
+      <section id="profiles" class="content-section" data-page="profiles">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Public character directory</p>
+            <h2>Player profiles</h2>
+          </div>
+          <span id="profile-browser-status" class="status-chip neutral" role="status">Loading profiles…</span>
+        </div>
+        <p class="section-intro">
+          Browse live-verified character snapshots, including equipment, modules,
+          pictures, collections, badges, scores, and achievements.
+        </p>
+        <div class="profile-browser-layout">
+          <aside class="panel profile-browser-sidebar">
+            <label class="parse-search">
+              <span>Search profiles</span>
+              <input id="profile-search" type="search" placeholder="Character name, UID, region, or server" />
+            </label>
+            <div id="profile-browser-list" class="linked-profile-list">
+              <p class="empty-state">Loading public profiles…</p>
+            </div>
+          </aside>
+          <div id="profile-browser-detail" class="profile-browser-detail" aria-live="polite">
+            <p class="empty-state">Choose a profile to view its latest snapshot.</p>
+          </div>
+        </div>
+      </section>
+
       <section id="parse" class="content-section parse-section" data-page="parses">
         <div class="section-heading">
           <div>
@@ -139,9 +169,10 @@
 
         <article class="panel optimizer-workbench">
           <div class="optimizer-notice">
-            <strong>Your module inventory stays on this device.</strong>
-            The optimizer runs as WebAssembly in a background worker. It does not
-            upload modules, profile data, captures, credentials, or account data.
+            <strong>Your signed-in character supplies the synced module inventory.</strong>
+            Profile Sync publishes the privacy-reviewed module JSON with that UID.
+            Optimization itself runs as WebAssembly in your browser and sends no
+            additional search inputs, results, captures, credentials, or account data.
           </div>
 
           <div class="optimizer-source-bar">

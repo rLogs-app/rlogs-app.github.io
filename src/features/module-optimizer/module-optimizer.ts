@@ -134,7 +134,7 @@ async function loadSyncedInventory(): Promise<void> {
   const profiles = parseLinkedProfiles(await response.json());
   if (!profiles.length) {
     setInventoryStatus(
-      "No synced character profile is linked yet. Connect the desktop app, enable BPSR Profile Sync, and complete a live parse.",
+      "No synced character profile is linked yet. Connect the desktop app and enable BPSR Profile Sync while the game is open; the parser will publish modules as soon as it observes your personal character snapshot.",
     );
     setRunStatus("Waiting for a synced module inventory.");
     return;

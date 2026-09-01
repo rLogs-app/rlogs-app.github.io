@@ -194,7 +194,7 @@ async function renderSignedIn(
   identity.append(copy);
 
   const explanation = message(
-    "Generate a token for one PC, then paste it into rLogs Settings → Log Uploader. The receiver URL is already filled in. The desktop stores the token in Windows Credential Manager; the website will never show it again.",
+    "Generate a token for one PC, then paste it into rLogs Settings → Website account connection. Log Uploader and Profile Sync share it. The desktop stores the token in Windows Credential Manager; the website will never show it again.",
   );
   const actions = document.createElement("div");
   actions.className = "button-row";
@@ -270,7 +270,7 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
       section.append(
         element("h3", "", "My Profile"),
         message(
-          "No UID is linked yet. Connect your local rLogs app, enable BPSR Profile Sync, then complete a live parse. Only device-bound personal profile evidence captured from the running game process can claim the UID; replayed, imported, offline, and shared logs are rejected.",
+          "No UID is linked yet. Connect your local rLogs app and enable BPSR Profile Sync while the game is open. The parser will claim your UID as soon as it observes your personal character snapshot; replayed, imported, offline, and shared logs are rejected.",
         ),
       );
       return section;
@@ -287,6 +287,10 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
       const link = document.createElement("a");
       link.href = `/account/?profile=${encodeURIComponent(profile.profile_id)}`;
       link.textContent = profile.display_name ?? `UID ${profile.character_id}`;
+      const publicLink = document.createElement("a");
+      publicLink.className = "profile-public-link";
+      publicLink.href = `/profiles/?profile=${encodeURIComponent(profile.profile_id)}`;
+      publicLink.textContent = "View public profile";
       card.append(
         link,
         element("strong", "identity-id", `UID ${profile.character_id}`),
@@ -296,6 +300,7 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
           "",
           `${profile.module_inventory_count.toLocaleString()} modules · ${profile.equipped_module_count.toLocaleString()} equipped`,
         ),
+        publicLink,
       );
       list.append(card);
     }
