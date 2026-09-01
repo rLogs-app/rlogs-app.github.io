@@ -23,6 +23,7 @@ const moduleEffectsTable = readJson(path.join(tableRoot, "ModEffectTable.json"))
 const equipmentAttributesTable = readJson(path.join(tableRoot, "EquipAttrLibTable.json"));
 const equipmentSchoolAttributesTable = readJson(path.join(tableRoot, "EquipAttrSchoolLibTable.json"));
 const fightAttributesTable = readJson(path.join(tableRoot, "FightAttrTable.json"));
+const attributeDescriptionsTable = readJson(path.join(tableRoot, "AttrDescription.json"));
 const imaginePresentation = readJson(path.join(gameDataRoot, "runtime/battle-imagine-presentation.v1.json"));
 const imagineNames = new Map(readJson(path.join(gameDataRoot, "runtime/localization/en-US/battle-imagine-names.v1.json")).imagines);
 const moduleLocale = readJson(path.join(gameDataRoot, "catalog/localization/en-US/modules/profile-catalog.json"));
@@ -65,9 +66,14 @@ const equipmentAttributes = Object.fromEntries(
   [...Object.values(equipmentAttributesTable), ...Object.values(equipmentSchoolAttributesTable)]
     .filter((row) => Number.isInteger(row.Id))
     .map((row) => {
-      const names = (row.AttrEffect ?? [])
+      const effectIds = (row.AttrEffect ?? [])
         .flatMap((effect) => Array.isArray(effect) ? effect.slice(1) : [])
-        .map((id) => fightAttributeByMemberId.get(id)?.OfficialName)
+        .filter((id) => Number.isInteger(id));
+      const names = effectIds
+        .flatMap((id) => [
+          fightAttributeByMemberId.get(id)?.OfficialName,
+          cleanAttributeDescription(attributeDescriptionsTable[String(id)]?.Description),
+        ])
         .filter((name) => typeof name === "string" && name.trim())
         .filter((name, index, all) => all.indexOf(name) === index);
       return [String(row.Id), {
@@ -85,6 +91,16 @@ const skills = Object.fromEntries(
       name: skill.Name,
       icon: copyNamedIcon(skill.Icon, "skills"),
       skill_type: skill.SkillType,
+    }]),
+);
+
+const titles = Object.fromEntries(
+  Object.values(itemsTable)
+    .filter((item) => item.Type === 906 && item.Name)
+    .map((item) => [String(item.Id), {
+      name: item.Name.replace(/^Title\s*-\s*/i, ""),
+      quality: item.Quality,
+      icon: copyNamedIcon(item.Icon, "titles"),
     }]),
 );
 
@@ -176,6 +192,7 @@ const catalog = {
   quality_names: { "1": "Common", "2": "Uncommon", "3": "Rare", "4": "Epic", "5": "Legendary" },
   equipment_attributes: equipmentAttributes,
   items,
+  titles,
   skills,
   talents,
   talent_nodes: talentNodes,
@@ -189,7 +206,15 @@ const output = path.join(websiteRoot, "public/data/bpsr/profile-presentation.en-
 mkdirSync(path.dirname(output), { recursive: true });
 writeFileSync(output, `${JSON.stringify(catalog)}\n`);
 console.log(`wrote ${output}`);
-console.log(`${Object.keys(items).length} items, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes, ${Object.keys(dungeons).length} dungeons, ${Object.keys(imagines).length} imagines; all sigil icons present`);
+console.log(`${Object.keys(items).length} items, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes, ${Object.keys(dungeons).length} dungeons, ${Object.keys(imagines).length} imagines; all sigil icons present`);
+
+function cleanAttributeDescription(value) {
+  if (typeof value !== "string") return undefined;
+  return value
+    .replace(/\s*[+-]?\{\*[^}]+\*\}/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function readJsonFiles(directory) {
   if (!existsSync(directory)) return [];

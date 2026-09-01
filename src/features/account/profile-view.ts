@@ -293,6 +293,8 @@ function collectionsSection(body: JsonRecord): HTMLElement {
   const appearance = recordValue(body.appearance);
   const collection = recordValue(body.collection_summary);
   const social = recordValue(body.social_display);
+  const equippedTitleId = social?.equipped_title_id ?? arrayValue(social?.title_ids)[0];
+  const equippedTitle = equippedTitleId == null ? undefined : presentation.titles[String(equippedTitleId)];
   const section = profileSection("Collections & appearance", "Privacy-reviewed unlock data");
   const facts = element("dl", "profile-facts");
   appendFact(facts, "Meowlux score", resolvedMeowluxScore(body)?.toLocaleString() ?? "—");
@@ -307,7 +309,7 @@ function collectionsSection(body: JsonRecord): HTMLElement {
     ["Vanity pets", arrayValue(collection?.vanity_pet_ids).length],
     ["Guild", social?.guild_name ?? social?.guild_id],
     ["Titles", arrayValue(social?.title_ids).length],
-    ["Equipped title", social?.equipped_title_id ?? arrayValue(social?.title_ids)[0]],
+    ["Equipped title", equippedTitle?.name ?? equippedTitleId],
     ["Equipped title level", social?.equipped_title_level],
     ["Medals", arrayValue(social?.medal_ids).length],
   ] as Array<[string, JsonValue | number | undefined]>) appendFact(facts, label, displayValue(value));

@@ -17,6 +17,7 @@ export interface ProfilePresentationCatalog {
   quality_names: Record<string, string>;
   equipment_attributes: Record<string, PresentationRecord>;
   items: Record<string, PresentationRecord>;
+  titles: Record<string, PresentationRecord>;
   skills: Record<string, PresentationRecord>;
   talents: Record<string, PresentationRecord>;
   talent_nodes: Record<string, PresentationRecord>;
@@ -28,7 +29,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=2`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=3`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -51,6 +52,7 @@ function isCatalog(value: unknown): value is ProfilePresentationCatalog {
     "quality_names",
     "equipment_attributes",
     "items",
+    "titles",
     "skills",
     "talents",
     "talent_nodes",
