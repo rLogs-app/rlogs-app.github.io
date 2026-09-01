@@ -258,7 +258,7 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
     if (catalog.profiles.length === 0) {
       section.append(
         message(
-          "No UID is linked yet. Connect your local rLogs app, enable BPSR Profile Sync, then publish a sealed personal profile. That proof claims the UID for this account.",
+          "No UID is linked yet. Connect your local rLogs app, enable BPSR Profile Sync, then complete a live parse. Only device-bound personal profile evidence captured from the running game process can claim the UID; replayed, imported, offline, and shared logs are rejected.",
         ),
       );
       return section;
