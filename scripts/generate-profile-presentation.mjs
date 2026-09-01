@@ -253,6 +253,82 @@ const talentNodes = Object.fromEntries(
     }]),
 );
 
+const talentTreeIndex = {};
+for (const professionId of [...new Set(Object.values(talentNodes).map((node) => node.profession_id))].sort((a, b) => a - b)) {
+  const professionNodes = Object.entries(talentNodes)
+    .filter(([, node]) => node.profession_id === professionId);
+  const foundationNodes = professionNodes
+    .filter(([, node]) => node.talent_stage === 0)
+    .map(([nodeId]) => Number(nodeId))
+    .sort((left, right) => left - right);
+  const branchIds = [...new Set(
+    professionNodes
+      .filter(([, node]) => node.talent_stage === 1)
+      .map(([, node]) => node.branch),
+  )].sort((a, b) => a - b);
+  if (foundationNodes.length !== 30 || branchIds.length !== 2) {
+    throw new Error(
+      `Incomplete talent tree for profession ${professionId}: ` +
+      `${foundationNodes.length} foundation nodes and ${branchIds.length} specialization branches`,
+    );
+  }
+  const specializations = branchIds.map((branch) => {
+    const branchNodes = professionNodes
+      .filter(([, node]) => node.talent_stage === 1 && node.branch === branch)
+      .map(([nodeId]) => Number(nodeId))
+      .sort((left, right) => left - right);
+    if (branchNodes.length !== 60) {
+      throw new Error(`Incomplete profession ${professionId} branch ${branch}: ${branchNodes.length} nodes`);
+    }
+    const specializationTalents = branchNodes
+      .map((nodeId) => ({
+        talent_id: talentNodes[String(nodeId)].talent_id,
+        talent: talents[String(talentNodes[String(nodeId)].talent_id)],
+      }))
+      .filter((entry) => entry.talent?.talent_type === 5);
+    if (specializationTalents.length !== 1) {
+      throw new Error(
+        `Profession ${professionId} branch ${branch} has ${specializationTalents.length} specialization identities`,
+      );
+    }
+    const specializationTalent = specializationTalents[0];
+    return {
+      branch,
+      name: specializationTalent.talent.name,
+      talent_id: specializationTalent.talent_id,
+      node_ids: branchNodes,
+    };
+  });
+  talentTreeIndex[String(professionId)] = {
+    profession_id: professionId,
+    foundation_node_ids: foundationNodes,
+    specializations,
+  };
+}
+
+const indexedTalentNodeIds = new Set(Object.values(talentTreeIndex).flatMap((tree) => [
+  ...tree.foundation_node_ids,
+  ...tree.specializations.flatMap((specialization) => specialization.node_ids),
+]));
+for (const [nodeId, node] of Object.entries(talentNodes)) {
+  const talent = talents[String(node.talent_id)];
+  if (!indexedTalentNodeIds.has(Number(nodeId))) {
+    throw new Error(`Talent node ${nodeId} is absent from the website tree index`);
+  }
+  if (!talent?.name || talent.name.startsWith("Unknown talent ") || !talent.icon) {
+    throw new Error(`Talent node ${nodeId} is missing a localized name or icon`);
+  }
+  const allowedNodeIds = new Set([
+    ...talentTreeIndex[String(node.profession_id)].foundation_node_ids,
+    ...(talentTreeIndex[String(node.profession_id)].specializations
+      .find((specialization) => specialization.branch === node.branch)?.node_ids ?? []),
+  ]);
+  const missingPrerequisite = node.prerequisite_node_ids.find((prerequisiteId) => !allowedNodeIds.has(prerequisiteId));
+  if (missingPrerequisite != null) {
+    throw new Error(`Talent node ${nodeId} references prerequisite ${missingPrerequisite} outside its website tree`);
+  }
+}
+
 const dungeons = Object.fromEntries(
   Object.values(dungeonsTable)
     .filter((dungeon) => dungeon.Name)
@@ -361,6 +437,7 @@ const catalog = {
   skills,
   talents,
   talent_nodes: talentNodes,
+  talent_tree_index: talentTreeIndex,
   dungeons,
   achievements,
   medals,
@@ -373,7 +450,7 @@ const output = path.join(websiteRoot, "public/data/bpsr/profile-presentation.en-
 mkdirSync(path.dirname(output), { recursive: true });
 writeFileSync(output, `${JSON.stringify(catalog)}\n`);
 console.log(`wrote ${output}`);
-console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes, ${Object.keys(dungeons).length} dungeons, ${Object.keys(achievements).length} achievements, ${Object.keys(medals).length} medals, ${Object.keys(imagines).length} imagines; all sigil icons present`);
+console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes across ${Object.keys(talentTreeIndex).length} professions and ${Object.values(talentTreeIndex).reduce((sum, tree) => sum + tree.specializations.length, 0)} specializations, ${Object.keys(dungeons).length} dungeons, ${Object.keys(achievements).length} achievements, ${Object.keys(medals).length} medals, ${Object.keys(imagines).length} imagines; all sigil and talent-tree completeness gates passed`);
 
 function cleanAttributeDescription(value) {
   if (typeof value !== "string") return undefined;

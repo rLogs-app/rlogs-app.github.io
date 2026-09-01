@@ -116,6 +116,20 @@ inventory, or browser file-import path. The canonical optimizer remains the
 implementation through its WebAssembly wrapper, keeping native and browser
 scoring behavior in one implementation.
 
+## Talent-tree boundary
+
+Talent-tree geometry is website-owned, exact-build presentation data. The
+generated `profile-presentation.en-US.v1.json` catalog contains every
+profession's shared foundation tree and both specialization trees, including
+localized talent identity, icons, coordinates, and prerequisite links. A
+profile submission carries only its observed class and selected talent node
+IDs; it never uploads or duplicates the tree layout. The website resolves
+those IDs against the catalog for the submitted game build.
+
+Catalog generation fails when any profession does not have 30 foundation
+nodes and two complete 60-node specialization branches, or when any indexed
+node is missing its localization, icon, geometry, or in-tree prerequisites.
+
 ## Privacy
 
 The browser validator mirrors Core's prohibited-field boundary for passwords,

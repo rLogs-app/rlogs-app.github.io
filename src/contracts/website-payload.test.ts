@@ -84,6 +84,7 @@ describe("website payload contract", () => {
     );
     const profile = JSON.parse(source) as {
       body: {
+        talents: Array<Record<string, unknown>>;
         modules: {
           equipped_slots: Record<string, string>;
           inventory: unknown[];
@@ -96,5 +97,12 @@ describe("website payload contract", () => {
     expect(result.errors).toEqual([]);
     expect(profile.body.modules.inventory).toHaveLength(649);
     expect(Object.keys(profile.body.modules.equipped_slots)).toHaveLength(5);
+    expect(profile.body.talents).toHaveLength(70);
+    expect(profile.body.talents.every((talent) =>
+      Object.keys(talent).every((key) => key === "talent_id" || key === "level") &&
+      !("position" in talent) &&
+      !("prerequisite_node_ids" in talent) &&
+      !("dependent_node_ids" in talent)
+    )).toBe(true);
   });
 });

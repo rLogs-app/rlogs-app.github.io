@@ -403,10 +403,23 @@ export function resolveTalentTreeLayout(
         : numericValue(talent.node_id ?? talent.talent_id))
       .filter((nodeId): nodeId is number => nodeId != null),
   );
-  const candidates = Object.entries(catalog.talent_nodes)
+  const indexedTree = catalog.talent_tree_index?.[String(professionId)];
+  const indexedSpecialization = indexedTree?.specializations
+    .map((specialization) => ({
+      ...specialization,
+      selectedCount: specialization.node_ids.filter((nodeId) => selectedNodeIds.has(nodeId)).length,
+    }))
+    .sort((left, right) => right.selectedCount - left.selectedCount || left.branch - right.branch)[0];
+  const indexedNodeIds = indexedTree && indexedSpecialization
+    ? new Set([...indexedTree.foundation_node_ids, ...indexedSpecialization.node_ids])
+    : undefined;
+  const candidates = (indexedNodeIds
+    ? [...indexedNodeIds].map((nodeId) => [String(nodeId), catalog.talent_nodes[String(nodeId)]] as const)
+    : Object.entries(catalog.talent_nodes))
     .map(([nodeId, node]) => {
-      const position = node.position;
+      const position = node?.position;
       if (
+        node == null ||
         node.profession_id !== professionId ||
         node.talent_id == null ||
         node.branch == null ||
@@ -434,10 +447,10 @@ export function resolveTalentTreeLayout(
     if (node.talentStage !== 1 || !node.selected) continue;
     selectedBranches.set(node.branch, (selectedBranches.get(node.branch) ?? 0) + 1);
   }
-  const branch = [...selectedBranches.entries()]
+  const branch = indexedSpecialization?.branch ?? [...selectedBranches.entries()]
     .sort((left, right) => right[1] - left[1] || left[0] - right[0])[0]?.[0] ?? 0;
   const nodes = candidates
-    .filter((node) => node.talentStage === 0 || (node.talentStage === 1 && node.branch === branch))
+    .filter((node) => indexedNodeIds != null || node.talentStage === 0 || (node.talentStage === 1 && node.branch === branch))
     .sort((left, right) => left.y - right.y || left.x - right.x || left.nodeId - right.nodeId);
   if (!nodes.length) return undefined;
   const specializationNode = nodes.find((node) =>
@@ -447,9 +460,9 @@ export function resolveTalentTreeLayout(
     nodes,
     selectedCount: nodes.filter((node) => node.selected).length,
     branch,
-    specializationName: specializationNode == null
+    specializationName: indexedSpecialization?.name ?? (specializationNode == null
       ? `Specialization branch ${branch + 1}`
-      : presentationTalent(catalog, specializationNode.talentId)?.name ?? `Specialization branch ${branch + 1}`,
+      : presentationTalent(catalog, specializationNode.talentId)?.name ?? `Specialization branch ${branch + 1}`),
   };
 }
 

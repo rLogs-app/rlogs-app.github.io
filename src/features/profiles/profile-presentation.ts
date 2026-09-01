@@ -49,6 +49,19 @@ export interface FightAttributePresentation {
   format_type: number;
 }
 
+export interface TalentTreeSpecializationPresentation {
+  branch: number;
+  name: string;
+  talent_id: number;
+  node_ids: number[];
+}
+
+export interface TalentTreePresentation {
+  profession_id: number;
+  foundation_node_ids: number[];
+  specializations: TalentTreeSpecializationPresentation[];
+}
+
 export interface SigilLevelPresentation {
   level: number;
   item_id: number;
@@ -66,6 +79,7 @@ export interface ProfilePresentationCatalog {
   source_item_table_sha256?: string;
   source_achievement_table_sha256?: string;
   source_medal_table_sha256?: string;
+  source_talent_tree_table_sha256?: string;
   source_equipment_attribute_table_sha256?: string;
   source_buff_table_sha256?: string;
   equipment_slots: Record<string, string>;
@@ -78,6 +92,7 @@ export interface ProfilePresentationCatalog {
   skills: Record<string, PresentationRecord>;
   talents: Record<string, PresentationRecord>;
   talent_nodes: Record<string, PresentationRecord>;
+  talent_tree_index: Record<string, TalentTreePresentation>;
   dungeons: Record<string, PresentationRecord>;
   achievements: Record<string, PresentationRecord>;
   medals: Record<string, PresentationRecord>;
@@ -88,7 +103,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=11`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=12`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -144,6 +159,9 @@ export function normalizeProfilePresentationCatalog(
       : {},
     fight_attributes: isRecord(value.fight_attributes)
       ? (value.fight_attributes as ProfilePresentationCatalog["fight_attributes"])
+      : {},
+    talent_tree_index: isRecord(value.talent_tree_index)
+      ? (value.talent_tree_index as unknown as ProfilePresentationCatalog["talent_tree_index"])
       : {},
   };
 }

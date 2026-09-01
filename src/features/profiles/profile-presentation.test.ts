@@ -60,6 +60,50 @@ describe("BPSR profile presentation catalog", () => {
     expect(Object.values(catalog.sigils).flat().every((level) => level.icon?.startsWith("/assets/"))).toBe(true);
   });
 
+  it("publishes every profession and specialization tree independently of profile submissions", () => {
+    expect(Object.keys(catalog.talent_tree_index)).toHaveLength(9);
+    const specializations = Object.values(catalog.talent_tree_index)
+      .flatMap((tree) => tree.specializations);
+    expect(specializations).toHaveLength(18);
+    expect(specializations.map((specialization) => specialization.name).sort()).toEqual([
+      "Block Spec",
+      "Concerto Spec",
+      "Crimson Expertise Spec",
+      "Dissonance Spec",
+      "Earthfort Spec",
+      "Falconry Spec",
+      "Formless Expertise Spec",
+      "Frostbeam Spec",
+      "Iaido Slash Spec",
+      "Icicle Spec",
+      "Lifebind Spec",
+      "Moonstrike Spec",
+      "Recovery Spec",
+      "Shield Spec",
+      "Skyward Spec",
+      "Smite Spec",
+      "Vanguard Spec",
+      "Wildpack Spec",
+    ]);
+    const indexedNodeIds = new Set<number>();
+    for (const tree of Object.values(catalog.talent_tree_index)) {
+      expect(tree.foundation_node_ids).toHaveLength(30);
+      expect(tree.specializations).toHaveLength(2);
+      tree.foundation_node_ids.forEach((nodeId) => indexedNodeIds.add(nodeId));
+      for (const specialization of tree.specializations) {
+        expect(specialization.node_ids).toHaveLength(60);
+        expect(catalog.talents[String(specialization.talent_id)]?.name).toBe(specialization.name);
+        specialization.node_ids.forEach((nodeId) => indexedNodeIds.add(nodeId));
+      }
+    }
+    expect(indexedNodeIds.size).toBe(1_350);
+    expect([...indexedNodeIds].every((nodeId) => {
+      const node = catalog.talent_nodes[String(nodeId)];
+      const talent = node?.talent_id == null ? undefined : catalog.talents[String(node.talent_id)];
+      return node?.position != null && Boolean(talent?.name) && Boolean(talent?.icon);
+    })).toBe(true);
+  });
+
   it("resolves all exact Final Sigil levels and rolled attribute values", () => {
     expect(catalog.sigils["3020221"]).toEqual([
       expect.objectContaining({ level: 8, item_id: 3020221, name: "Paradox-Calamity Remnant - Final Sigil" }),
@@ -77,9 +121,11 @@ describe("BPSR profile presentation catalog", () => {
     delete legacyCatalog.sigils;
     delete legacyCatalog.achievements;
     delete legacyCatalog.medals;
+    delete legacyCatalog.talent_tree_index;
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.sigils).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.achievements).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.medals).toEqual({});
+    expect(normalizeProfilePresentationCatalog(legacyCatalog)?.talent_tree_index).toEqual({});
     expect(normalizeProfilePresentationCatalog({ sigils: {} })).toBeUndefined();
   });
 });

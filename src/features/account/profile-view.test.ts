@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -16,6 +19,13 @@ import {
   talentPresentationFacts,
 } from "./profile-view";
 import type { ProfilePresentationCatalog } from "../profiles/profile-presentation";
+
+const allTreesCatalog = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL("../../../public/data/bpsr/profile-presentation.en-US.v1.json", import.meta.url)),
+    "utf8",
+  ),
+) as ProfilePresentationCatalog;
 
 describe("Battle Imagine ownership presentation", () => {
   it("shows tier and equipped slot without the irrelevant character level", () => {
@@ -80,6 +90,16 @@ describe("talent presentation", () => {
         "102": { name: "Falconry Spec", talent_type: 5 },
         "103": { name: "Falcon talent" },
       },
+      talent_tree_index: {
+        "11": {
+          profession_id: 11,
+          foundation_node_ids: [1],
+          specializations: [
+            { branch: 0, name: "Other specialization", talent_id: 101, node_ids: [2] },
+            { branch: 1, name: "Falconry Spec", talent_id: 102, node_ids: [3, 4] },
+          ],
+        },
+      },
     } as unknown as ProfilePresentationCatalog;
     const layout = resolveTalentTreeLayout({
       class_id: 11,
@@ -91,6 +111,27 @@ describe("talent presentation", () => {
     expect(layout?.nodes[2]?.x).toBe(300);
     expect(layout?.nodes[2]?.prerequisiteNodeIds).toEqual([3]);
     expect(layout?.selectedCount).toBe(2);
+  });
+
+  it("resolves all website-owned specialization trees from submission node IDs", () => {
+    for (const tree of Object.values(allTreesCatalog.talent_tree_index)) {
+      for (const specialization of tree.specializations) {
+        const specializationNodeId = specialization.node_ids.find((nodeId) =>
+          allTreesCatalog.talent_nodes[String(nodeId)]?.talent_id === specialization.talent_id
+        );
+        expect(specializationNodeId, specialization.name).toBeDefined();
+        if (specializationNodeId == null) throw new Error(`Missing specialization node for ${specialization.name}`);
+        const layout = resolveTalentTreeLayout({
+          class_id: tree.profession_id,
+          talents: [{ talent_id: specializationNodeId }],
+        }, allTreesCatalog);
+        expect(layout?.branch, specialization.name).toBe(specialization.branch);
+        expect(layout?.specializationName, specialization.name).toBe(specialization.name);
+        expect(layout?.nodes, specialization.name).toHaveLength(90);
+        expect(layout?.nodes.filter((node) => node.talentStage === 0), specialization.name).toHaveLength(30);
+        expect(layout?.nodes.filter((node) => node.talentStage === 1), specialization.name).toHaveLength(60);
+      }
+    }
   });
 });
 
