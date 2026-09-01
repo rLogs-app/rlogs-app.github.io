@@ -14,6 +14,7 @@ export interface PublishedProfileEntry {
   payload_bytes: number;
   source_package_id?: string;
   source_created_unix_millis?: number;
+  source_updated_unix_millis?: number;
   source_observation_count?: number;
   source_client_build?: string;
 }

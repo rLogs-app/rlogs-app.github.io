@@ -6,7 +6,6 @@ describe("site navigation", () => {
     ["/", "home"],
     ["/parses/", "parses"],
     ["/account", "account"],
-    ["/profile-lab/", "profile-lab"],
     ["/optimizer/", "optimizer"],
     ["/unknown/", "home"],
   ] as const)("maps %s to %s", (path, expected) => {

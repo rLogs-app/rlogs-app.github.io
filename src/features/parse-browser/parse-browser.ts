@@ -15,7 +15,14 @@ import {
 const baseUrl = import.meta.env.BASE_URL;
 const configuredApi = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/, "");
 
-type ParseControls = Record<"region" | "activity" | "scene" | "difficulty", HTMLSelectElement>;
+interface ParseControls {
+  search: HTMLInputElement;
+  region: HTMLSelectElement;
+  activity: HTMLSelectElement;
+  scene: HTMLSelectElement;
+  difficulty: HTMLSelectElement;
+  terminal: HTMLSelectElement;
+}
 
 export async function mountParseBrowser(): Promise<void> {
   const root = document.querySelector<HTMLElement>("#parse-browser");
@@ -25,10 +32,12 @@ export async function mountParseBrowser(): Promise<void> {
   const list = required<HTMLElement>("#parse-list");
   const detail = required<HTMLElement>("#parse-detail");
   const controls: ParseControls = {
+    search: required<HTMLInputElement>("#parse-search"),
     region: required<HTMLSelectElement>("#parse-region"),
     activity: required<HTMLSelectElement>("#parse-activity"),
     scene: required<HTMLSelectElement>("#parse-scene"),
     difficulty: required<HTMLSelectElement>("#parse-difficulty"),
+    terminal: required<HTMLSelectElement>("#parse-terminal"),
   };
 
   let catalog: PublicParseCatalog;
@@ -55,11 +64,17 @@ export async function mountParseBrowser(): Promise<void> {
     controls.difficulty,
     catalog.facets.difficulties.map((item) => [item.id, label(item.id, item.count)]),
   );
+  populateSelect(
+    controls.terminal,
+    catalog.facets.terminal_states.map((item) => [item.id, label(item.id, item.count)]),
+  );
 
   const renderList = (): void => {
-    list.innerHTML = catalog.entries.length
-      ? `${catalog.entries.map(renderCatalogEntry).join("")}${renderLoadMore(catalog)}`
-      : '<p class="empty-state">No submitted parses match these filters.</p>';
+    const visibleEntries = filterSearch(catalog.entries, controls.search.value);
+    list.innerHTML = visibleEntries.length
+      ? `${visibleEntries.map(renderCatalogEntry).join("")}${renderLoadMore(catalog)}`
+      : '<p class="empty-state">No submitted parses match your search and filters.</p>';
+    status.textContent = `${visibleEntries.length.toLocaleString()} shown · ${catalog.total_entries.toLocaleString()} matched`;
     list.querySelectorAll<HTMLButtonElement>("[data-report-id]").forEach((button) => {
       button.addEventListener("click", () =>
         void openReport(button.dataset.reportId ?? "", Number(button.dataset.runIndex ?? "0")),
@@ -68,9 +83,10 @@ export async function mountParseBrowser(): Promise<void> {
     list.querySelector<HTMLButtonElement>("[data-load-more]")?.addEventListener("click", () => void loadMore());
   };
 
-  Object.values(controls).forEach((control) =>
+  [controls.region, controls.activity, controls.scene, controls.difficulty, controls.terminal].forEach((control) =>
     control.addEventListener("change", () => void refreshFilteredCatalog()),
   );
+  controls.search.addEventListener("input", renderList);
   renderList();
 
   const search = new URLSearchParams(location.search);
@@ -314,6 +330,7 @@ function catalogQuery(controls: ParseControls, offset = 0): string {
   if (controls.activity.value) params.set("activity", controls.activity.value);
   if (controls.scene.value) params.set("scene", controls.scene.value);
   if (controls.difficulty.value) params.set("difficulty", controls.difficulty.value);
+  if (controls.terminal.value) params.set("terminal", controls.terminal.value);
   if (offset) params.set("offset", String(offset));
   const value = params.toString();
   return value ? `&${value}` : "";
@@ -325,9 +342,36 @@ function filterDemoCatalog(catalog: PublicParseCatalog, controls: ParseControls)
       (!controls.region.value || controls.region.value === entry.region_id) &&
       (!controls.activity.value || controls.activity.value === entry.activity_id) &&
       (!controls.scene.value || Number(controls.scene.value) === entry.scene_id) &&
-      (!controls.difficulty.value || controls.difficulty.value === entry.difficulty_family),
+      (!controls.difficulty.value || controls.difficulty.value === entry.difficulty_family) &&
+      (!controls.terminal.value || controls.terminal.value === entry.terminal_state),
   );
   return { ...catalog, entries, total_entries: entries.length, next_offset: undefined };
+}
+
+export function filterSearch(
+  entries: PublicParseCatalogEntry[],
+  search: string,
+): PublicParseCatalogEntry[] {
+  const terms = search.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
+  if (!terms.length) return entries;
+  return entries.filter((entry) => {
+    const searchable = [
+      entry.scene_name,
+      entry.activity_id,
+      entry.activity_family_id,
+      entry.region_id,
+      entry.deployment_id,
+      entry.difficulty_family,
+      entry.terminal_state,
+      entry.report_id,
+      entry.run_group_id,
+      entry.scene_id == null ? undefined : String(entry.scene_id),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(" ")
+      .toLocaleLowerCase();
+    return terms.every((term) => searchable.includes(term));
+  });
 }
 
 function formatDifficulty(run: PublicRun): string {

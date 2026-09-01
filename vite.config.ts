@@ -1,8 +1,9 @@
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
-const pageRoutes = ["parses", "account", "profile-lab", "optimizer"] as const;
+// Keep the retired Profile Lab URL as a redirect target for older desktop receipts.
+const pageRoutes = ["parses", "account", "optimizer", "profile-lab"] as const;
 
 function publishPageRoutes(): Plugin {
   return {
@@ -19,6 +20,11 @@ function publishPageRoutes(): Plugin {
             resolve(routeDirectory, "index.html"),
           );
         }),
+      );
+      await Promise.all(
+        ["fixtures", "profiles"].map((directory) =>
+          rm(resolve(outputDirectory, directory), { recursive: true, force: true }),
+        ),
       );
     },
   };

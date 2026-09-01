@@ -93,6 +93,7 @@ async function loadSubmittedProfile(profileId: string): Promise<PublishedProfile
   const envelope = validation.envelope;
   const packageId = textField(value, "package_id");
   const created = positiveIntegerField(value, "created_unix_millis");
+  const updated = positiveIntegerField(value, "updated_unix_millis");
   const observations = positiveIntegerField(value, "source_observation_count");
   const clientBuild = textField(value, "source_client_build");
   const characterId = textField(value, "character_id");
@@ -113,6 +114,7 @@ async function loadSubmittedProfile(profileId: string): Promise<PublishedProfile
     payload_bytes: encoded.byteLength,
     source_package_id: packageId,
     source_created_unix_millis: created,
+    source_updated_unix_millis: updated,
     source_observation_count: observations,
     source_client_build: clientBuild,
   };

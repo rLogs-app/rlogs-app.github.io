@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Public web testbed for versioned rLogs profiles, reports, and tools."
+      content="Browse rLogs parses, scene rankings, synced BPSR character profiles, and the Module Optimizer."
     />
     <meta name="color-scheme" content="dark" />
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
@@ -17,7 +17,6 @@
           "/": "home",
           "/parses": "parses",
           "/account": "account",
-          "/profile-lab": "profile-lab",
           "/optimizer": "optimizer",
         };
         document.documentElement.dataset.rlogsPage = pages[route] || "home";
@@ -39,53 +38,53 @@
         <a href="/" data-nav-page="home">Home</a>
         <a href="/parses/" data-nav-page="parses">Parses</a>
         <a href="/account/" data-nav-page="account" data-account-nav>Account</a>
-        <a href="/profile-lab/" data-nav-page="profile-lab">Profile Lab</a>
-        <a href="/optimizer/" data-nav-page="optimizer">Optimizer</a>
+        <a href="/optimizer/" data-nav-page="optimizer">Module Optimizer</a>
       </nav>
-      <span class="build-chip">contract v1</span>
+      <a
+        class="header-download"
+        href="https://github.com/donneeee/RLogs/releases/download/v0.1.15/rLogs_0.1.15_x64-setup.exe"
+      >Download rLogs</a>
     </header>
 
     <main id="main-content">
-      <section id="overview" class="hero content-section" data-page="home">
-        <div class="hero-copy">
-          <p class="eyebrow">BPSR combat intelligence</p>
-          <h1>Capture locally. Review accurate rDPS anywhere.</h1>
-          <p class="hero-text">
-            rLogs records Blue Protocol: Star Resonance combat on your PC,
-            preserves ordinary damage, and transfers proven party contribution
-            into auditable rDPS. Publish only the parses and profiles you choose.
-          </p>
+      <section id="overview" class="content-section home-dashboard" data-page="home">
+        <div class="section-heading home-heading">
+          <div>
+            <p class="eyebrow">Blue Protocol: Star Resonance</p>
+            <h1>Latest rLogs activity</h1>
+          </div>
           <div class="button-row">
-            <a
-              class="button primary"
-              href="https://github.com/donneeee/RLogs/releases/download/v0.1.15/rLogs_0.1.15_x64-setup.exe"
-            >Download rLogs 0.1.15</a>
-            <a class="button primary" href="/parses/">Browse parses</a>
-            <a class="button secondary" href="/optimizer/">Open module optimizer</a>
+            <a class="button primary" href="/parses/">Browse all parses</a>
+            <a class="button secondary" href="/optimizer/">Module Optimizer</a>
           </div>
         </div>
-
-        <aside class="release-card" aria-label="Current integration state">
-          <p class="eyebrow">Test build 0.1.15</p>
-          <ol class="milestone-list">
-            <li class="complete">
-              <span>01</span>
-              <div><strong>Live combat meter</strong><small>Npcap capture; no dumpcap required</small></div>
-            </li>
-            <li class="complete">
-              <span>02</span>
-              <div><strong>Production rDPS</strong><small>29 exact effect IDs in build 24687926</small></div>
-            </li>
-            <li class="complete">
-              <span>03</span>
-              <div><strong>Account-linked UIDs</strong><small>Live-parse, device-bound claim proof</small></div>
-            </li>
-            <li class="complete">
-              <span>04</span>
-              <div><strong>Submission API</strong><small>Private artifacts, shareable projections</small></div>
-            </li>
-          </ol>
-        </aside>
+        <div class="home-activity-grid">
+          <article class="panel home-feed-panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Newest submissions</p><h2>Recent parses</h2></div>
+              <span id="home-parse-status" class="status-chip neutral" role="status">Loading…</span>
+            </div>
+            <div id="home-recent-parses" class="home-feed"><p class="empty-state">Loading recent parses…</p></div>
+          </article>
+          <article class="panel home-feed-panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Recently synced</p><h2>Latest players</h2></div>
+              <span id="home-profile-status" class="status-chip neutral" role="status">Loading…</span>
+            </div>
+            <div id="home-latest-profiles" class="home-feed"><p class="empty-state">Loading recently seen players…</p></div>
+          </article>
+        </div>
+        <article class="panel ranking-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Completed runs</p>
+              <h2>Top parses by scene</h2>
+              <p>Fastest five runs per scene. Stimen Remains is ranked at the highest submitted floor.</p>
+            </div>
+            <span id="home-ranking-status" class="status-chip neutral" role="status">Loading…</span>
+          </div>
+          <div id="home-rankings" class="scene-rankings"><p class="empty-state">Loading scene rankings…</p></div>
+        </article>
       </section>
 
       <section id="account" class="content-section" data-page="account">
@@ -99,32 +98,6 @@
         <article id="account-content" class="panel account-panel">
           <p class="empty-state">Checking account authentication…</p>
         </article>
-      </section>
-
-      <section class="content-section" data-page="home">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Clear boundaries</p>
-            <h2>One public contract, separate responsibilities</h2>
-          </div>
-        </div>
-        <div class="feature-grid">
-          <article class="feature-card">
-            <span class="feature-number">01</span>
-            <h3>Parser</h3>
-            <p>Captures, decodes, sanitizes, and creates versioned envelopes.</p>
-          </article>
-          <article class="feature-card">
-            <span class="feature-number">02</span>
-            <h3>Website</h3>
-            <p>Validates public envelopes and renders profiles, logs, and tools.</p>
-          </article>
-          <article class="feature-card">
-            <span class="feature-number">03</span>
-            <h3>Submission service</h3>
-            <p>Owns private artifacts, deterministic replay, verification, and discovery.</p>
-          </article>
-        </div>
       </section>
 
       <section id="parse" class="content-section parse-section" data-page="parses">
@@ -141,73 +114,15 @@
         </p>
         <div id="parse-browser">
           <div class="parse-filters" aria-label="Parse filters">
+            <label class="parse-search"><span>Search</span><input id="parse-search" type="search" placeholder="Scene, activity, region, or report ID" /></label>
             <label><span>Region</span><select id="parse-region"><option value="">All regions</option></select></label>
             <label><span>Activity</span><select id="parse-activity"><option value="">All activities</option></select></label>
             <label><span>Scene</span><select id="parse-scene"><option value="">All scenes</option></select></label>
             <label><span>Difficulty</span><select id="parse-difficulty"><option value="">All difficulties</option></select></label>
+            <label><span>State</span><select id="parse-terminal"><option value="">All states</option></select></label>
           </div>
           <div id="parse-list" class="parse-list"><p class="empty-state">Loading submitted parses…</p></div>
           <div id="parse-detail" class="parse-detail" aria-live="polite"></div>
-        </div>
-      </section>
-
-      <section id="profile-lab" class="content-section lab-section" data-page="profile-lab">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Live browser validation</p>
-            <h2>Character Profile Lab</h2>
-          </div>
-          <span id="profile-status" class="status-chip neutral" role="status">
-            Loading fixture…
-          </span>
-        </div>
-
-        <div class="lab-grid">
-          <article class="panel editor-panel">
-            <div class="panel-heading">
-              <div>
-                <h3>Profile package or public envelope</h3>
-                <p>
-                  Open rLogs current.profile.json to verify its seal, or paste a
-                  sanitized public envelope.
-                </p>
-              </div>
-            </div>
-            <textarea
-              id="profile-json"
-              class="json-editor"
-              aria-label="Character profile JSON"
-              spellcheck="false"
-            ></textarea>
-            <div class="editor-actions">
-              <button id="validate-profile" class="button primary" type="button">
-                Validate and render
-              </button>
-              <button id="load-profile-fixture" class="button secondary" type="button">
-                Reset demo
-              </button>
-              <button id="load-published-profile" class="button secondary" type="button">
-                Load published MarieRose
-              </button>
-              <label class="button secondary file-button">
-                Open profile package
-                <input id="profile-file" type="file" accept=".json,application/json" />
-              </label>
-            </div>
-            <ul id="profile-errors" class="error-list" aria-live="polite"></ul>
-          </article>
-
-          <article class="panel preview-panel">
-            <div class="panel-heading">
-              <div>
-                <h3>Public profile preview</h3>
-                <p>Unknown optional fields remain visible in the raw inspector.</p>
-              </div>
-            </div>
-            <div id="profile-preview" class="profile-preview">
-              <p class="empty-state">A valid character profile will appear here.</p>
-            </div>
-          </article>
         </div>
       </section>
 
@@ -215,7 +130,7 @@
         <div class="section-heading">
           <div>
             <p class="eyebrow">Runs locally in your browser</p>
-            <h2>Module optimizer</h2>
+            <h2>Module Optimizer</h2>
           </div>
           <span id="optimizer-status-chip" class="status-chip neutral" role="status">
             Loading Rust engine...
@@ -230,24 +145,13 @@
           </div>
 
           <div class="optimizer-source-bar">
-            <div class="button-row">
-              <button id="optimizer-load-capture" class="button primary" type="button">
-                Load published MarieRose
-              </button>
-              <button id="optimizer-load-demo" class="button secondary" type="button">
-                Load safe demo
-              </button>
-              <label class="button secondary file-button">
-                Open profile JSON
-                <input
-                  id="optimizer-file"
-                  type="file"
-                  accept=".json,application/json"
-                />
-              </label>
-            </div>
+            <label class="optimizer-profile-picker" hidden>
+              <span>Synced character</span>
+              <select id="optimizer-profile-select"></select>
+            </label>
+            <a id="optimizer-sign-in" class="button primary" href="/account/" hidden>Sign in to load synced modules</a>
             <p id="optimizer-inventory-status" class="muted" role="status">
-              Waiting for the optimizer engine.
+              Checking your synced module inventory…
             </p>
           </div>
 
@@ -349,8 +253,8 @@
     </main>
 
     <footer>
-      <p>rLogs Web Lab · Static, versioned, and privacy-reviewed by default.</p>
-      <p>Packet capture stays in the desktop app. Account tokens are issued only after explicit sign-in.</p>
+      <p>rLogs · Public combat reports and synced character profiles.</p>
+      <p>Packet capture and private account data stay in the desktop app.</p>
     </footer>
 
     <script type="module" src="/src/main.ts"></script>

@@ -3,11 +3,12 @@ import { mountSiteNavigation } from "./site-navigation";
 
 const page = mountSiteNavigation();
 
+if (page === "home") {
+  void import("./features/home/home").then(({ mountHome }) => mountHome());
+}
+
 if (page === "account") {
   void import("./features/account/account").then(({ mountAccount }) => mountAccount());
-}
-if (page === "profile-lab") {
-  void import("./features/profile-lab/profile-lab").then(({ mountProfileLab }) => mountProfileLab());
 }
 if (page === "optimizer") {
   void import("./features/module-optimizer/module-optimizer").then(({ mountModuleOptimizer }) =>

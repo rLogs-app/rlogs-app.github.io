@@ -1,3 +1,6 @@
+import { renderSyncedCharacterProfile } from "./profile-view";
+import { loadPublishedProfile } from "../profiles/published-profile-loader";
+
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 const sessionKey = "rlogs.web-session.v1";
 
@@ -242,13 +245,21 @@ async function renderSignedIn(
   });
   actions.append(generate, signOut);
   const linkedProfiles = await renderLinkedProfiles(session);
-  content.replaceChildren(identity, linkedProfiles, explanation, actions, output);
+  const connection = document.createElement("details");
+  connection.className = "account-connection";
+  connection.append(
+    element("summary", "", "Account & desktop connection"),
+    identity,
+    explanation,
+    actions,
+    output,
+  );
+  content.replaceChildren(linkedProfiles, connection);
 }
 
 async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
   const section = document.createElement("section");
   section.className = "linked-profile-section";
-  section.append(element("h3", "", "Linked game IDs"));
   try {
     const response = await fetch(`${apiBase}/v1/auth/profiles`, {
       headers: { Authorization: `Bearer ${session.access_token}` },
@@ -257,6 +268,7 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
     const catalog = parseLinkedProfileCatalog(await response.json());
     if (catalog.profiles.length === 0) {
       section.append(
+        element("h3", "", "My Profile"),
         message(
           "No UID is linked yet. Connect your local rLogs app, enable BPSR Profile Sync, then complete a live parse. Only device-bound personal profile evidence captured from the running game process can claim the UID; replayed, imported, offline, and shared logs are rejected.",
         ),
@@ -273,7 +285,7 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
         .filter((value): value is string => Boolean(value))
         .join(" · ");
       const link = document.createElement("a");
-      link.href = `/profile-lab/?profile=${encodeURIComponent(profile.profile_id)}`;
+      link.href = `/account/?profile=${encodeURIComponent(profile.profile_id)}`;
       link.textContent = profile.display_name ?? `UID ${profile.character_id}`;
       card.append(
         link,
@@ -287,7 +299,23 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
       );
       list.append(card);
     }
-    section.append(list);
+    if (catalog.profiles.length > 1) {
+      const switcher = element("div", "linked-profile-switcher");
+      switcher.append(element("p", "eyebrow", "Choose a synced character"), list);
+      section.append(switcher);
+    }
+
+    const requested = new URLSearchParams(location.search).get("profile");
+    const selected = catalog.profiles.find((profile) => profile.profile_id === requested) ?? catalog.profiles[0];
+    if (!selected) return section;
+    const loading = message("Loading your latest synced character snapshot…");
+    section.append(loading);
+    try {
+      const profile = await loadPublishedProfile(selected.profile_id);
+      loading.replaceWith(renderSyncedCharacterProfile(profile));
+    } catch (error) {
+      loading.replaceWith(message(errorText(error)));
+    }
   } catch (error) {
     section.append(message(errorText(error)));
   }

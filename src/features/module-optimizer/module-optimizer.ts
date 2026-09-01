@@ -3,7 +3,6 @@ import {
   DEFAULT_EXACT_COMBINATION_LIMIT,
   extractOptimizerInput,
   optimizerComputeBudget,
-  safeDemoModules,
 } from "./optimizer-data";
 import type {
   AttributeCatalogEntry,
@@ -16,11 +15,18 @@ import type {
   OptimizeResponse,
   SearchMode,
 } from "./optimizer-types";
-import { validateLocalProfilePackage } from "../../contracts/local-profile-package";
-import { loadPublishedProfile } from "../profile-lab/published-profile-loader";
+import { loadPublishedProfile } from "../profiles/published-profile-loader";
 
-const defaultPublishedProfile = "3296036";
+const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
+const sessionKey = "rlogs.web-session.v1";
 const computeBudget = optimizerComputeBudget(browserDeviceCapabilities());
+
+interface LinkedProfile {
+  profile_id: string;
+  character_id: string;
+  display_name: string | null;
+  updated_unix_millis: number;
+}
 
 let inventory: ModuleCandidate[] = [];
 let currentInstanceIds: string[] = [];
@@ -66,12 +72,7 @@ export async function mountModuleOptimizer(): Promise<void> {
     catalog = (await callWorker({ kind: "catalog" })) as OptimizerCatalog;
     renderCatalog(catalog);
     setEngineState("valid", "Rust + WASM ready");
-    const requestedProfile = new URLSearchParams(location.search).get("profile");
-    if (requestedProfile) {
-      await loadPublishedInventory(requestedProfile);
-    } else {
-      loadDemoInventory();
-    }
+    await loadSyncedInventory();
   } catch (error) {
     setEngineState("invalid", "Engine unavailable");
     setRunStatus(errorMessage(error), true);
@@ -80,17 +81,9 @@ export async function mountModuleOptimizer(): Promise<void> {
 }
 
 function bindControls(): void {
-  requiredElement<HTMLButtonElement>("optimizer-load-capture").addEventListener(
-    "click",
-    () => void loadPublishedInventory(defaultPublishedProfile),
-  );
-  requiredElement<HTMLButtonElement>("optimizer-load-demo").addEventListener(
-    "click",
-    loadDemoInventory,
-  );
-  requiredElement<HTMLInputElement>("optimizer-file").addEventListener(
+  requiredElement<HTMLSelectElement>("optimizer-profile-select").addEventListener(
     "change",
-    (event) => void loadInventoryFile(event),
+    (event) => void loadPublishedInventory((event.currentTarget as HTMLSelectElement).value),
   );
   requiredElement<HTMLButtonElement>("run-optimizer").addEventListener(
     "click",
@@ -114,6 +107,54 @@ function bindControls(): void {
   );
 }
 
+async function loadSyncedInventory(): Promise<void> {
+  const signIn = requiredElement<HTMLAnchorElement>("optimizer-sign-in");
+  const picker = requiredElement<HTMLSelectElement>("optimizer-profile-select");
+  const pickerLabel = picker.closest<HTMLLabelElement>(".optimizer-profile-picker");
+  const session = activeSession();
+  if (!apiBase || !session) {
+    signIn.hidden = false;
+    if (pickerLabel) pickerLabel.hidden = true;
+    setInventoryStatus("Sign in to rLogs to use the module inventory synced by your desktop app.");
+    setRunStatus("A synced module inventory is required.");
+    return;
+  }
+
+  const response = await fetch(`${apiBase}/v1/auth/profiles`, {
+    headers: { Authorization: `Bearer ${session.access_token}`, Accept: "application/json" },
+  });
+  if (response.status === 401) {
+    localStorage.removeItem(sessionKey);
+    window.dispatchEvent(new Event("rlogs:session-changed"));
+    signIn.hidden = false;
+    setInventoryStatus("Your website session expired. Sign in again to load synced modules.", true);
+    return;
+  }
+  if (!response.ok) throw new Error(`Synced-profile request failed with HTTP ${response.status}.`);
+  const profiles = parseLinkedProfiles(await response.json());
+  if (!profiles.length) {
+    setInventoryStatus(
+      "No synced character profile is linked yet. Connect the desktop app, enable BPSR Profile Sync, and complete a live parse.",
+    );
+    setRunStatus("Waiting for a synced module inventory.");
+    return;
+  }
+
+  picker.replaceChildren(
+    ...profiles.map((profile) => {
+      const option = document.createElement("option");
+      option.value = profile.profile_id;
+      option.textContent = `${profile.display_name ?? `UID ${profile.character_id}`} · ${profile.character_id}`;
+      return option;
+    }),
+  );
+  const requested = new URLSearchParams(location.search).get("profile");
+  if (requested && profiles.some((profile) => profile.profile_id === requested)) picker.value = requested;
+  if (pickerLabel) pickerLabel.hidden = profiles.length < 2;
+  signIn.hidden = true;
+  await loadPublishedInventory(picker.value);
+}
+
 async function loadPublishedInventory(profileId: string): Promise<void> {
   setInventoryStatus(`Loading published UID ${profileId} module inventory...`);
   try {
@@ -135,63 +176,46 @@ async function loadPublishedInventory(profileId: string): Promise<void> {
   }
 }
 
-function loadDemoInventory(): void {
-  inventory = safeDemoModules();
-  currentInstanceIds = inventory.slice(0, 4).map((module) => module.instance_id);
-  setCombinationSizeForCurrentSetup();
-  const strength = document.querySelector<HTMLSelectElement>(
-    '.optimizer-attribute-row[data-attribute-id="1110"] select',
-  );
-  if (strength) strength.value = "target";
-  requiredElement<HTMLInputElement>("optimizer-require-target").checked = false;
-  updateExactSearchAvailability();
-  setInventoryStatus("Safe demo loaded: 12 generated modules.");
-  setRunStatus("Choose attribute priorities, then optimize.");
-  enableRun();
-}
-
-async function loadInventoryFile(event: Event): Promise<void> {
-  const input = event.currentTarget as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
+function activeSession(): { access_token: string } | undefined {
   try {
-    const parsed: unknown = JSON.parse(await file.text());
-    const optimizerSource = await unwrapLocalProfilePackage(parsed);
-    const optimizerInput = extractOptimizerInput(optimizerSource);
-    inventory = optimizerInput.modules;
-    currentInstanceIds = optimizerInput.currentInstanceIds;
-    setCombinationSizeForCurrentSetup();
-    updateExactSearchAvailability();
-    setInventoryStatus(
-      `${file.name}: ${formatNumber(inventory.length)} modules and ` +
-        `${currentInstanceIds.length} equipped modules loaded locally.`,
-    );
-    setRunStatus("Choose attribute priorities, then optimize.");
-    enableRun();
-  } catch (error) {
-    setInventoryStatus(errorMessage(error), true);
-    setRunStatus("The selected file was not loaded.", true);
-  } finally {
-    input.value = "";
+    const value: unknown = JSON.parse(localStorage.getItem(sessionKey) ?? "null");
+    if (
+      isRecord(value) &&
+      typeof value.access_token === "string" &&
+      value.access_token.startsWith("rlw_") &&
+      typeof value.expires_unix_millis === "number" &&
+      value.expires_unix_millis > Date.now()
+    ) {
+      return { access_token: value.access_token };
+    }
+  } catch {
+    // The explicit signed-out state is rendered by the caller.
   }
+  return undefined;
 }
 
-async function unwrapLocalProfilePackage(value: unknown): Promise<unknown> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    (!("package_id" in value) && !("request" in value))
-  ) {
-    return value;
+function parseLinkedProfiles(value: unknown): LinkedProfile[] {
+  if (!isRecord(value) || value.schema_version !== 1 || !Array.isArray(value.profiles)) {
+    throw new Error("The synced-profile response is invalid.");
   }
-  const validation = await validateLocalProfilePackage(value);
-  if (!validation.package) {
-    throw new Error(
-      `Local profile package failed validation: ${validation.errors.join(" ")}`,
-    );
-  }
-  return validation.package.request.payload;
+  return value.profiles.map((profile) => {
+    if (
+      !isRecord(profile) ||
+      typeof profile.profile_id !== "string" ||
+      !/^prf_[0-9a-f]{32}$/u.test(profile.profile_id) ||
+      typeof profile.character_id !== "string" ||
+      !(profile.display_name === null || typeof profile.display_name === "string") ||
+      typeof profile.updated_unix_millis !== "number" ||
+      !Number.isSafeInteger(profile.updated_unix_millis)
+    ) {
+      throw new Error("The synced-profile response is invalid.");
+    }
+    return profile as unknown as LinkedProfile;
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function runOptimizer(): Promise<void> {
