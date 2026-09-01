@@ -53,6 +53,7 @@ const dungeons = Object.fromEntries(
     .map((dungeon) => [String(dungeon.Id), {
       name: dungeon.Name,
       play_type: dungeon.PlayType,
+      dungeon_type_name: dungeon.DungeonTypeName,
     }]),
 );
 

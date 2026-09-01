@@ -402,7 +402,7 @@ function masterDungeonBreakdown(values: JsonValue[]): HTMLElement {
     const table = element("div", "master-score-table");
     table.append(masterScoreRow("Dungeon", "Best difficulty", "Score", "Best time", true));
     for (const row of rows.sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))) {
-      table.append(masterScoreRow(row.name, String(row.difficultyId), row.score.toLocaleString(), formatDuration(row.passTime), false));
+      table.append(masterScoreRow(row.name, row.difficultyName, row.score.toLocaleString(), formatDuration(row.passTime), false));
     }
     details.append(table);
     container.append(details);
@@ -492,6 +492,7 @@ interface MasterDungeonRow {
   dungeonId: number;
   name: string;
   difficultyId: number;
+  difficultyName: string;
   score: number;
   passTime?: number;
 }
@@ -509,11 +510,13 @@ function masterDungeonRows(values: JsonValue[]): Map<number, MasterDungeonRow[]>
     const passTime = numericValue(dungeon?.pass_time);
     const season = seasons.get(seasonId) ?? new Map<number, MasterDungeonRow>();
     const current = season.get(dungeonId);
+    const localizedDungeon = presentation.dungeons[String(difficultyId)];
     if (!current || score > current.score || (score === current.score && passTime != null && (current.passTime == null || passTime < current.passTime))) {
       season.set(dungeonId, {
         dungeonId,
-        name: presentation.dungeons[String(dungeonId)]?.name ?? `Dungeon ${dungeonId}`,
+        name: localizedDungeon?.name ?? `Dungeon ${dungeonId}`,
         difficultyId,
+        difficultyName: localizedDungeon?.dungeon_type_name ?? `Difficulty ${difficultyId}`,
         score,
         passTime,
       });

@@ -5,6 +5,7 @@ export interface PresentationRecord {
   item_id?: number;
   item_tier?: number;
   maximum_tier?: number;
+  dungeon_type_name?: string;
   levels?: Array<{ level: number; enhancement_num: number }>;
 }
 
