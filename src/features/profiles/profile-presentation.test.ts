@@ -21,8 +21,22 @@ describe("BPSR profile presentation catalog", () => {
     expect(catalog.source_item_table_sha256).toBe(
       "a5807d7b028ab5fa90e76fb519aea77493c79637576471b2e458efddf1846f99",
     );
+    expect(catalog.source_achievement_table_sha256).toBe(
+      "b3d6a677984dadb5fc664579d42bf0e029206c7d4a0ce3a90ea1bf949d99ef4a",
+    );
     expect(Object.keys(catalog.titles)).toHaveLength(599);
     expect(catalog.titles["9062067"]?.name).toBe("Power from the Other Side");
+  });
+
+  it("localizes every exact-build general and seasonal achievement", () => {
+    expect(Object.keys(catalog.achievements)).toHaveLength(807);
+    expect(catalog.achievements["100010101"]).toEqual(expect.objectContaining({
+      name: "Adventure Ladder I",
+      description: "Reach Adventurer Lv.20",
+      target: 1,
+      season_id: 0,
+    }));
+    expect(catalog.achievements["101010101"]?.season_id).toBe(1);
   });
 
   it("covers every reviewed sigil family and exact level with an image", () => {
@@ -46,7 +60,9 @@ describe("BPSR profile presentation catalog", () => {
   it("keeps localized profiles usable during a legacy catalog edge-cache overlap", () => {
     const legacyCatalog = { ...catalog } as Partial<ProfilePresentationCatalog>;
     delete legacyCatalog.sigils;
+    delete legacyCatalog.achievements;
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.sigils).toEqual({});
+    expect(normalizeProfilePresentationCatalog(legacyCatalog)?.achievements).toEqual({});
     expect(normalizeProfilePresentationCatalog({ sigils: {} })).toBeUndefined();
   });
 });

@@ -392,7 +392,68 @@ function achievementSection(body: JsonRecord): HTMLElement {
       .toLocaleString(),
   );
   section.append(facts);
+  const groups = element("div", "achievement-groups");
+  if (general.length) groups.append(achievementGroup("General achievements", general));
+  for (const value of [...seasons].sort((left, right) =>
+    (numericValue(recordValue(right)?.season_id) ?? 0) - (numericValue(recordValue(left)?.season_id) ?? 0))) {
+    const season = recordValue(value);
+    if (!season) continue;
+    const seasonId = numericValue(season.season_id);
+    const values = arrayValue(season.achievements);
+    if (values.length) groups.append(achievementGroup(`Season ${displayValue(seasonId)}`, values));
+  }
+  if (groups.childElementCount) section.append(groups);
   return section;
+}
+
+function achievementGroup(label: string, values: JsonValue[]): HTMLDetailsElement {
+  const details = element("details", "achievement-group") as HTMLDetailsElement;
+  details.append(element("summary", "", `${label} · ${values.length.toLocaleString()}`));
+  let rendered = false;
+  details.addEventListener("toggle", () => {
+    if (!details.open || rendered) return;
+    rendered = true;
+    const list = element("div", "achievement-list");
+    for (const value of values) {
+      const achievement = recordValue(value);
+      if (!achievement) continue;
+      const achievementId = numericValue(achievement.achievement_id);
+      const localized = achievementId == null
+        ? undefined
+        : presentation.achievements[String(achievementId)];
+      const row = element("article", "profile-achievement-row");
+      const category = cleanAchievementCategory(localized?.category);
+      row.append(
+        element("strong", "", localized?.name ?? `Unlocalized achievement ${displayValue(achievementId)}`),
+        element("small", "", joinFacts([
+          category,
+          pair("Level", localized?.achievement_level),
+          achievementProgress(achievement, localized),
+          achievement.reward_claimed === true ? "Reward claimed" : "",
+        ])),
+      );
+      if (localized?.description) row.append(element("span", "", localized.description));
+      list.append(row);
+    }
+    details.append(list);
+  }, { once: false });
+  return details;
+}
+
+function achievementProgress(
+  achievement: JsonRecord,
+  localized: ProfilePresentationCatalog["achievements"][string] | undefined,
+): string {
+  const progress = numericValue(achievement.finish_count ?? achievement.begin_progress);
+  const target = numericValue(localized?.target);
+  if (progress == null) return "Not completed";
+  if (target == null || target <= 0) return `Progress ${progress.toLocaleString()}`;
+  return `Progress ${progress.toLocaleString()} / ${target.toLocaleString()}`;
+}
+
+function cleanAchievementCategory(value: string | null | undefined): string {
+  if (!value || value.length > 64 || /<br\s*\/?>/iu.test(value)) return "";
+  return value;
 }
 
 function progressSection(body: JsonRecord): HTMLElement {

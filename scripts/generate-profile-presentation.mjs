@@ -23,6 +23,8 @@ const itemsTablePath = path.join(tableRoot, "ItemTable.json");
 const itemsTable = readJson(itemsTablePath);
 const skillsTable = readJson(path.join(tableRoot, "SkillTable.json"));
 const dungeonsTable = readJson(path.join(tableRoot, "DungeonsTable.json"));
+const achievementsTablePath = path.join(tableRoot, "AchievementDateTable.json");
+const achievementsTable = readJson(achievementsTablePath);
 const moduleEffectsTable = readJson(path.join(tableRoot, "ModEffectTable.json"));
 const equipmentAttributesTable = readJson(path.join(tableRoot, "EquipAttrLibTable.json"));
 const equipmentSchoolAttributesTable = readJson(path.join(tableRoot, "EquipAttrSchoolLibTable.json"));
@@ -183,6 +185,19 @@ const dungeons = Object.fromEntries(
     }]),
 );
 
+const achievements = Object.fromEntries(
+  Object.values(achievementsTable)
+    .filter((achievement) => Number.isInteger(achievement.Id) && achievement.Name)
+    .map((achievement) => [String(achievement.Id), {
+      name: achievement.Name,
+      description: achievement.Des ?? null,
+      category: achievement.Sma11ClassName ?? null,
+      target: achievement.Num ?? null,
+      season_id: achievement.SeasonId ?? null,
+      achievement_level: achievement.AchievementLevel ?? null,
+    }]),
+);
+
 const imagines = Object.fromEntries(imaginePresentation.imagines.map((imagine) => {
   const source = path.join(rlogsRoot, "assets/blue-protocol-star-resonance/shared", imagine.icon);
   const fileName = path.basename(imagine.icon);
@@ -232,6 +247,7 @@ const catalog = {
   game_build: sourceBuildId,
   source: "Exact-build BPSR Global Steam client tables and reviewed rLogs game-data catalogs",
   source_item_table_sha256: createHash("sha256").update(readFileSync(itemsTablePath)).digest("hex"),
+  source_achievement_table_sha256: createHash("sha256").update(readFileSync(achievementsTablePath)).digest("hex"),
   equipment_slots: {
     "200": "Weapon", "201": "Headwear", "202": "Armor", "203": "Gloves",
     "204": "Shoes", "205": "Earrings", "206": "Necklace", "207": "Ring",
@@ -246,6 +262,7 @@ const catalog = {
   talents,
   talent_nodes: talentNodes,
   dungeons,
+  achievements,
   imagines,
   modules,
   module_effects: localizedModuleEffects,
@@ -255,7 +272,7 @@ const output = path.join(websiteRoot, "public/data/bpsr/profile-presentation.en-
 mkdirSync(path.dirname(output), { recursive: true });
 writeFileSync(output, `${JSON.stringify(catalog)}\n`);
 console.log(`wrote ${output}`);
-console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes, ${Object.keys(dungeons).length} dungeons, ${Object.keys(imagines).length} imagines; all sigil icons present`);
+console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes, ${Object.keys(dungeons).length} dungeons, ${Object.keys(achievements).length} achievements, ${Object.keys(imagines).length} imagines; all sigil icons present`);
 
 function cleanAttributeDescription(value) {
   if (typeof value !== "string") return undefined;

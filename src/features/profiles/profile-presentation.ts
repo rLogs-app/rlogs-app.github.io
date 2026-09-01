@@ -10,6 +10,11 @@ export interface PresentationRecord {
   effects?: string[];
   attribute_library_id?: number | null;
   levels?: Array<{ level: number; enhancement_num: number }>;
+  description?: string | null;
+  category?: string | null;
+  target?: number | null;
+  season_id?: number | null;
+  achievement_level?: number | null;
 }
 
 export interface SigilLevelPresentation {
@@ -27,6 +32,7 @@ export interface ProfilePresentationCatalog {
   game_build?: string;
   source?: string;
   source_item_table_sha256?: string;
+  source_achievement_table_sha256?: string;
   equipment_slots: Record<string, string>;
   quality_names: Record<string, string>;
   equipment_attributes: Record<string, PresentationRecord>;
@@ -37,6 +43,7 @@ export interface ProfilePresentationCatalog {
   talents: Record<string, PresentationRecord>;
   talent_nodes: Record<string, PresentationRecord>;
   dungeons: Record<string, PresentationRecord>;
+  achievements: Record<string, PresentationRecord>;
   imagines: Record<string, PresentationRecord>;
   modules: Record<string, PresentationRecord>;
   module_effects: Record<string, PresentationRecord>;
@@ -44,7 +51,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=6`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=7`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -91,6 +98,9 @@ export function normalizeProfilePresentationCatalog(
     ...(value as unknown as ProfilePresentationCatalog),
     sigils: isRecord(value.sigils)
       ? (value.sigils as ProfilePresentationCatalog["sigils"])
+      : {},
+    achievements: isRecord(value.achievements)
+      ? (value.achievements as ProfilePresentationCatalog["achievements"])
       : {},
   };
 }
