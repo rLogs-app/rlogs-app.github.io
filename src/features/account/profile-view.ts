@@ -265,9 +265,286 @@ function moduleSection(inventory: JsonValue[], slots: JsonRecord | undefined): H
 function skillsSection(body: JsonRecord): HTMLElement {
   const skills = arrayValue(body.active_skills);
   const talents = arrayValue(body.talents);
-  const actions = arrayValue(body.equipped_action_slots);
-  const section = profileSection("Skills & talents", `${skills.length} skills · ${talents.length} talents`);
-  const list = element("div", "profile-compact-list");
+  const equippedSlots = resolveEquippedSkillSlots(body);
+  const equippedRoleSlots = resolveEquippedRoleSkillSlots(body);
+  const tree = resolveTalentTreeLayout(body, presentation);
+  const section = profileSection(
+    "Combat loadout & talents",
+    `${equippedSlots.length} combat actions · ${equippedRoleSlots.length} role skills · ${tree?.selectedCount ?? talents.length} talent points`,
+  );
+  section.classList.add("profile-combat-talents-section");
+
+  if (equippedSlots.length) {
+    section.append(equippedSkillsPanel(skills, equippedSlots));
+  } else {
+    section.append(empty("The latest snapshot did not include an equipped combat loadout."));
+  }
+  if (equippedRoleSlots.length) section.append(equippedRoleSkillsPanel(skills, equippedRoleSlots));
+
+  const equippedSkillIds = new Set(
+    [...equippedSlots, ...equippedRoleSlots].map((slot) => slot.skillId),
+  );
+  const learnedSkills = skills.filter((value) => {
+    const skill = recordValue(value);
+    const skillId = skill == null ? undefined : numericValue(skill.skill_id ?? skill.base_skill_id);
+    return skillId != null && !equippedSkillIds.has(skillId);
+  });
+  if (learnedSkills.length) section.append(learnedSkillsPanel(learnedSkills));
+
+  if (tree) {
+    section.append(talentTreePanel(tree));
+  } else if (talents.length) {
+    section.append(empty("Talent points were observed, but this build's exact tree layout is unavailable."));
+  }
+  return section;
+}
+
+export interface EquippedSkillSlotView {
+  slotId: number;
+  skillId: number;
+}
+
+interface TalentTreeNodeView {
+  nodeId: number;
+  talentId: number;
+  branch: number;
+  talentStage: number;
+  prerequisiteNodeIds: number[];
+  x: number;
+  y: number;
+  selected: boolean;
+}
+
+export interface TalentTreeLayoutView {
+  nodes: TalentTreeNodeView[];
+  selectedCount: number;
+  branch: number;
+  specializationName: string;
+}
+
+export function resolveEquippedSkillSlots(body: JsonRecord): EquippedSkillSlotView[] {
+  const direct = arrayValue(body.equipped_action_slots)
+    .map(recordValue)
+    .filter((slot): slot is JsonRecord => slot != null)
+    .map((slot) => ({
+      slotId: numericValue(slot.slot_id),
+      skillId: numericValue(slot.skill_id),
+    }))
+    .filter((slot): slot is EquippedSkillSlotView =>
+      slot.slotId != null && slot.skillId != null && slot.slotId >= 1 && slot.slotId <= 9
+    );
+  if (direct.length) return uniqueEquippedSkillSlots(direct);
+
+  const classId = numericValue(body.class_id);
+  const profession = arrayValue(body.combat_professions)
+    .map(recordValue)
+    .find((entry) => entry != null && numericValue(entry.profession_id) === classId);
+  const slotted = recordValue(profession?.slotted_skill_ids);
+  const professionSlots = slotted == null
+    ? []
+    : Object.entries(slotted)
+      .map(([slotId, skillId]) => ({
+        slotId: Number(slotId),
+        skillId: numericValue(skillId),
+      }))
+      .filter((slot): slot is EquippedSkillSlotView =>
+        Number.isInteger(slot.slotId) &&
+        slot.skillId != null &&
+        slot.slotId >= 1 &&
+        slot.slotId <= 9
+      );
+  const imagineSlots = arrayValue(body.battle_imagine_skills)
+    .map(recordValue)
+    .filter((entry): entry is JsonRecord => entry != null)
+    .map((entry) => ({
+      slotId: numericValue(entry.equipped_slot),
+      skillId: numericValue(entry.skill_id),
+    }))
+    .filter((slot): slot is EquippedSkillSlotView =>
+      slot.slotId != null && slot.skillId != null && slot.slotId >= 1 && slot.slotId <= 9
+    );
+  return uniqueEquippedSkillSlots([...professionSlots, ...imagineSlots]);
+}
+
+export function resolveEquippedRoleSkillSlots(body: JsonRecord): EquippedSkillSlotView[] {
+  return uniqueEquippedSkillSlots(
+    arrayValue(body.equipped_action_slots)
+      .map(recordValue)
+      .filter((slot): slot is JsonRecord => slot != null)
+      .map((slot) => ({
+        slotId: numericValue(slot.slot_id),
+        skillId: numericValue(slot.skill_id),
+      }))
+      .filter((slot): slot is EquippedSkillSlotView =>
+        slot.slotId != null && slot.skillId != null && slot.slotId >= 21 && slot.slotId <= 24
+      ),
+  );
+}
+
+function uniqueEquippedSkillSlots(slots: EquippedSkillSlotView[]): EquippedSkillSlotView[] {
+  return [...new Map(
+    slots
+      .sort((left, right) => left.slotId - right.slotId)
+      .map((slot) => [slot.slotId, slot]),
+  ).values()];
+}
+
+export function resolveTalentTreeLayout(
+  body: JsonRecord,
+  catalog: ProfilePresentationCatalog,
+): TalentTreeLayoutView | undefined {
+  const professionId = numericValue(body.class_id);
+  if (professionId == null) return undefined;
+  const selectedNodeIds = new Set(
+    arrayValue(body.talents)
+      .map(recordValue)
+      .map((talent) => talent == null
+        ? undefined
+        : numericValue(talent.node_id ?? talent.talent_id))
+      .filter((nodeId): nodeId is number => nodeId != null),
+  );
+  const candidates = Object.entries(catalog.talent_nodes)
+    .map(([nodeId, node]) => {
+      const position = node.position;
+      if (
+        node.profession_id !== professionId ||
+        node.talent_id == null ||
+        node.branch == null ||
+        node.talent_stage == null ||
+        position == null ||
+        !Number.isFinite(position.x) ||
+        !Number.isFinite(position.y)
+      ) return undefined;
+      return {
+        nodeId: Number(nodeId),
+        talentId: node.talent_id,
+        branch: node.branch,
+        talentStage: node.talent_stage,
+        prerequisiteNodeIds: node.prerequisite_node_ids ?? [],
+        x: position.x,
+        y: position.y,
+        selected: selectedNodeIds.has(Number(nodeId)),
+      } satisfies TalentTreeNodeView;
+    })
+    .filter((node): node is TalentTreeNodeView => node != null && Number.isInteger(node.nodeId));
+  if (!candidates.length) return undefined;
+
+  const selectedBranches = new Map<number, number>();
+  for (const node of candidates) {
+    if (node.talentStage !== 1 || !node.selected) continue;
+    selectedBranches.set(node.branch, (selectedBranches.get(node.branch) ?? 0) + 1);
+  }
+  const branch = [...selectedBranches.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0] - right[0])[0]?.[0] ?? 0;
+  const nodes = candidates
+    .filter((node) => node.talentStage === 0 || (node.talentStage === 1 && node.branch === branch))
+    .sort((left, right) => left.y - right.y || left.x - right.x || left.nodeId - right.nodeId);
+  if (!nodes.length) return undefined;
+  const specializationNode = nodes.find((node) =>
+    node.selected && presentationTalent(catalog, node.talentId)?.talent_type === 5
+  );
+  return {
+    nodes,
+    selectedCount: nodes.filter((node) => node.selected).length,
+    branch,
+    specializationName: specializationNode == null
+      ? `Specialization branch ${branch + 1}`
+      : presentationTalent(catalog, specializationNode.talentId)?.name ?? `Specialization branch ${branch + 1}`,
+  };
+}
+
+function equippedSkillsPanel(
+  skills: JsonValue[],
+  equippedSlots: EquippedSkillSlotView[],
+): HTMLElement {
+  const panel = element("div", "profile-loadout-panel");
+  panel.append(
+    element("h4", "profile-subsection-title", "Equipped combat actions"),
+    element("p", "profile-subsection-copy", "Displayed in the exact action-slot order observed from the game."),
+  );
+  const skillsById = new Map<number, JsonRecord>();
+  for (const value of skills) {
+    const skill = recordValue(value);
+    const skillId = skill == null ? undefined : numericValue(skill.skill_id ?? skill.base_skill_id);
+    if (skill != null && skillId != null) skillsById.set(skillId, skill);
+  }
+  const slotsById = new Map(equippedSlots.map((slot) => [slot.slotId, slot]));
+  const bar = element("div", "profile-action-bar");
+  for (let slotId = 1; slotId <= 9; slotId += 1) {
+    const slot = slotsById.get(slotId);
+    const tile = element("article", slot == null ? "profile-action-slot is-empty" : "profile-action-slot");
+    tile.append(element("span", "profile-action-key", String(slotId)));
+    if (slot == null) {
+      tile.append(element("span", "profile-action-empty", "Empty"));
+      bar.append(tile);
+      continue;
+    }
+    const localized = presentation.skills[String(slot.skillId)];
+    const skill = skillsById.get(slot.skillId);
+    appendPresentationIcon(tile, localized?.icon, localized?.name ?? "Equipped skill", "profile-action-icon");
+    tile.append(
+      element("strong", "profile-action-name", localized?.name ?? `Unknown skill ${slot.skillId}`),
+      element("small", "profile-action-meta", joinFacts([
+        slotId === 7 || slotId === 8 ? "Battle Imagine" : "Class skill",
+        pair("Lv.", skill?.level),
+        pair("Remodel", skill?.remodel_level),
+      ])),
+    );
+    tile.title = localized?.name ?? `Skill ${slot.skillId}`;
+    bar.append(tile);
+  }
+  panel.append(bar);
+  return panel;
+}
+
+function equippedRoleSkillsPanel(
+  skills: JsonValue[],
+  equippedSlots: EquippedSkillSlotView[],
+): HTMLElement {
+  const panel = element("div", "profile-loadout-panel profile-role-loadout-panel");
+  panel.append(
+    element("h4", "profile-subsection-title", "Equipped role skills"),
+    element("p", "profile-subsection-copy", "Displayed in the exact role-slot order observed from the game."),
+  );
+  const skillsById = new Map<number, JsonRecord>();
+  for (const value of skills) {
+    const skill = recordValue(value);
+    const skillId = skill == null ? undefined : numericValue(skill.skill_id ?? skill.base_skill_id);
+    if (skill != null && skillId != null) skillsById.set(skillId, skill);
+  }
+  const slotsById = new Map(equippedSlots.map((slot) => [slot.slotId, slot]));
+  const bar = element("div", "profile-action-bar profile-role-action-bar");
+  for (let slotId = 21; slotId <= 24; slotId += 1) {
+    const slot = slotsById.get(slotId);
+    const tile = element("article", slot == null ? "profile-action-slot is-empty" : "profile-action-slot");
+    tile.append(element("span", "profile-action-key", `R${slotId - 20}`));
+    if (slot == null) {
+      tile.append(element("span", "profile-action-empty", "Empty"));
+      bar.append(tile);
+      continue;
+    }
+    const localized = presentation.skills[String(slot.skillId)];
+    const skill = skillsById.get(slot.skillId);
+    appendPresentationIcon(tile, localized?.icon, localized?.name ?? "Equipped role skill", "profile-action-icon");
+    tile.append(
+      element("strong", "profile-action-name", localized?.name ?? `Unknown role skill ${slot.skillId}`),
+      element("small", "profile-action-meta", joinFacts([
+        "Role skill",
+        pair("Lv.", skill?.level),
+        pair("Remodel", skill?.remodel_level),
+      ])),
+    );
+    tile.title = localized?.name ?? `Role skill ${slot.skillId}`;
+    bar.append(tile);
+  }
+  panel.append(bar);
+  return panel;
+}
+
+function learnedSkillsPanel(skills: JsonValue[]): HTMLElement {
+  const details = element("details", "profile-learned-skills");
+  details.append(element("summary", "", `Other learned skills · ${skills.length}`));
+  const list = element("div", "profile-compact-list profile-learned-skill-list");
   for (const value of skills) {
     const skill = recordValue(value);
     if (!skill) continue;
@@ -283,26 +560,127 @@ function skillsSection(body: JsonRecord): HTMLElement {
     row.append(copy);
     list.append(row);
   }
-  for (const value of talents) {
-    const talent = recordValue(value);
-    if (!talent) continue;
-    const rawTalentId = numericValue(talent.talent_id);
-    const nodeId = numericValue(talent.node_id) ?? rawTalentId;
-    const node = nodeId == null ? undefined : presentation.talent_nodes[String(nodeId)];
-    const talentId = numericValue(talent.node_id) == null && node?.talent_id != null ? node.talent_id : rawTalentId;
-    const localized = talentId == null ? undefined : presentation.talents[String(talentId)];
-    const row = element("div", "profile-skill-row");
-    appendPresentationIcon(row, localized?.icon, localized?.name ?? "Talent", "profile-skill-icon");
-    const copy = element("span");
-    copy.append(element("strong", "", localized?.name ?? `Unknown talent ${displayValue(talentId ?? nodeId)}`));
-    const facts = talentPresentationFacts(talent);
-    if (facts) copy.append(element("small", "", facts));
-    row.append(copy);
-    list.append(row);
+  details.append(list);
+  return details;
+}
+
+function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
+  const panel = element("div", "profile-talent-panel");
+  const heading = element("div", "profile-talent-heading");
+  heading.append(
+    element("div", "", "Talent tree"),
+    element("small", "", `${tree.specializationName} · ${tree.selectedCount} / ${tree.nodes.length} nodes selected`),
+  );
+  const legend = element("div", "profile-talent-legend");
+  legend.append(
+    talentLegendItem("is-selected", "Selected"),
+    talentLegendItem("", "Available path"),
+  );
+  heading.append(legend);
+
+  const detail = element("div", "profile-talent-detail");
+  const viewport = element("div", "profile-talent-viewport");
+  const canvas = element("div", "profile-talent-canvas");
+  const minimumX = Math.min(...tree.nodes.map((node) => node.x));
+  const maximumX = Math.max(...tree.nodes.map((node) => node.x));
+  const minimumY = Math.min(...tree.nodes.map((node) => node.y));
+  const maximumY = Math.max(...tree.nodes.map((node) => node.y));
+  const xScale = 0.23;
+  const yScale = 0.15;
+  const margin = 52;
+  const nodeSize = 52;
+  const width = Math.max(720, Math.round((maximumX - minimumX) * xScale + margin * 2 + nodeSize));
+  const height = Math.max(640, Math.round((maximumY - minimumY) * yScale + margin * 2 + nodeSize));
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  const coordinates = new Map(tree.nodes.map((node) => [node.nodeId, {
+    x: Math.round((node.x - minimumX) * xScale + margin),
+    y: Math.round((node.y - minimumY) * yScale + margin),
+  }]));
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.classList.add("profile-talent-links");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("aria-hidden", "true");
+  const displayedNodeIds = new Set(tree.nodes.map((node) => node.nodeId));
+  const selectedNodeIds = new Set(tree.nodes.filter((node) => node.selected).map((node) => node.nodeId));
+  for (const node of tree.nodes) {
+    const target = coordinates.get(node.nodeId);
+    if (!target) continue;
+    for (const prerequisiteId of node.prerequisiteNodeIds) {
+      if (!displayedNodeIds.has(prerequisiteId)) continue;
+      const source = coordinates.get(prerequisiteId);
+      if (!source) continue;
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", String(source.x + nodeSize / 2));
+      line.setAttribute("y1", String(source.y + nodeSize / 2));
+      line.setAttribute("x2", String(target.x + nodeSize / 2));
+      line.setAttribute("y2", String(target.y + nodeSize / 2));
+      if (node.selected && selectedNodeIds.has(prerequisiteId)) line.classList.add("is-selected");
+      svg.append(line);
+    }
   }
-  if (actions.length) list.append(compactRow("Equipped action slots", `${actions.length} bindings`));
-  section.append(list.childElementCount ? list : empty("No skill or talent data was present in the latest snapshot."));
-  return section;
+  canvas.append(svg);
+
+  const baseLabel = element("span", "profile-talent-stage-label", "Foundation");
+  baseLabel.style.top = "12px";
+  canvas.append(baseLabel);
+  const specializationStart = Math.min(...tree.nodes.filter((node) => node.talentStage === 1).map((node) => node.y));
+  if (Number.isFinite(specializationStart)) {
+    const specializationLabel = element("span", "profile-talent-stage-label", tree.specializationName);
+    specializationLabel.style.top = `${Math.max(24, Math.round((specializationStart - minimumY) * yScale + 10))}px`;
+    canvas.append(specializationLabel);
+  }
+
+  const selectNode = (node: TalentTreeNodeView) => {
+    const localized = presentationTalent(presentation, node.talentId);
+    detail.replaceChildren();
+    appendPresentationIcon(detail, localized?.icon, localized?.name ?? "Talent", "profile-talent-detail-icon");
+    const copy = element("span");
+    copy.append(
+      element("strong", "", localized?.name ?? "Unknown talent"),
+      element("small", node.selected ? "is-selected" : "", node.selected ? "Selected" : "Not selected"),
+    );
+    const description = cleanGameText(localized?.description);
+    if (description) copy.append(element("p", "", description));
+    detail.append(copy);
+  };
+  for (const node of tree.nodes) {
+    const coordinate = coordinates.get(node.nodeId);
+    if (!coordinate) continue;
+    const localized = presentationTalent(presentation, node.talentId);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = node.selected ? "profile-talent-node is-selected" : "profile-talent-node";
+    button.style.left = `${coordinate.x}px`;
+    button.style.top = `${coordinate.y}px`;
+    button.title = `${localized?.name ?? "Unknown talent"} · ${node.selected ? "Selected" : "Not selected"}`;
+    button.setAttribute("aria-label", button.title);
+    appendPresentationIcon(button, localized?.icon, localized?.name ?? "Talent", "profile-talent-node-icon");
+    button.addEventListener("click", () => selectNode(node));
+    canvas.append(button);
+  }
+  viewport.append(canvas);
+  panel.append(heading, detail, viewport);
+  selectNode(
+    tree.nodes.find((node) =>
+      node.selected && presentationTalent(presentation, node.talentId)?.talent_type === 5
+    ) ?? tree.nodes.find((node) => node.selected) ?? tree.nodes[0]!,
+  );
+  return panel;
+}
+
+function presentationTalent(
+  catalog: ProfilePresentationCatalog,
+  talentId: number,
+): ProfilePresentationCatalog["talents"][string] | undefined {
+  return catalog.talents[String(talentId)];
+}
+
+function talentLegendItem(className: string, label: string): HTMLElement {
+  const item = element("span", className);
+  item.append(element("i"), document.createTextNode(label));
+  return item;
 }
 
 export function talentPresentationFacts(talent: { level?: JsonValue; node_id?: JsonValue }): string {
@@ -400,6 +778,18 @@ function medalCollection(medals: OwnedMedalEntry[]): HTMLDetailsElement {
 function cleanMedalDescription(value: string | null | undefined): string | undefined {
   if (!value || /^personalzone_medal_icon_/iu.test(value)) return undefined;
   return value;
+}
+
+export function cleanGameText(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const cleaned = value
+    .replace(/<br\s*\/?>/giu, "\n")
+    .replace(/<[^>]+>/gu, "")
+    .replace(/[ \t]+/gu, " ")
+    .replace(/ *\n */gu, "\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+  return cleaned || undefined;
 }
 
 function photoWallSection(body: JsonRecord): HTMLElement {

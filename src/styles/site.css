@@ -1714,6 +1714,343 @@ footer {
   background: rgb(17 27 42 / 58%);
 }
 
+.profile-loadout-panel,
+.profile-talent-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.profile-combat-talents-section {
+  grid-column: 1 / -1;
+}
+
+.profile-subsection-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.profile-subsection-copy {
+  margin: -5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.profile-action-bar {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(78px, 1fr));
+  gap: 7px;
+  padding: 12px;
+  overflow-x: auto;
+  border: 1px solid rgb(52 82 119 / 78%);
+  border-radius: 11px;
+  background:
+    linear-gradient(180deg, rgb(18 31 49 / 88%), rgb(8 15 26 / 94%)),
+    radial-gradient(circle at 50% 0%, rgb(90 230 240 / 9%), transparent 60%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%);
+}
+
+.profile-role-loadout-panel {
+  padding-top: 4px;
+}
+
+.profile-role-action-bar {
+  grid-template-columns: repeat(4, minmax(92px, 112px));
+  width: fit-content;
+  max-width: 100%;
+}
+
+.profile-action-slot {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 5px;
+  min-width: 78px;
+  padding: 7px;
+  overflow: hidden;
+  border: 1px solid rgb(67 102 143 / 76%);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgb(23 39 59 / 94%), rgb(10 19 31 / 96%));
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 3%), 0 7px 18px rgb(0 0 0 / 20%);
+}
+
+.profile-action-slot::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgb(89 225 235 / 10%);
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
+.profile-action-slot.is-empty {
+  min-height: 122px;
+  place-items: center;
+  border-style: dashed;
+  color: rgb(127 145 168 / 62%);
+  background: rgb(8 15 25 / 60%);
+}
+
+.profile-action-key {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 1;
+  display: grid;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  border: 1px solid rgb(151 182 214 / 35%);
+  border-radius: 5px;
+  color: #d8e8f7;
+  background: rgb(4 9 16 / 86%);
+  font: 700 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.profile-action-icon {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: rgb(4 9 16 / 82%);
+  object-fit: contain;
+}
+
+.profile-action-name {
+  min-height: 2.55em;
+  overflow: hidden;
+  color: #edf6ff;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.profile-action-meta {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-action-empty {
+  font-size: 10px;
+}
+
+.profile-learned-skills {
+  margin-top: 8px;
+  border: 1px solid rgb(32 49 73 / 72%);
+  border-radius: 8px;
+  background: rgb(17 27 42 / 44%);
+}
+
+.profile-learned-skills > summary {
+  padding: 9px 11px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.profile-learned-skill-list {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  padding: 0 8px 8px;
+}
+
+.profile-talent-panel {
+  padding-top: 13px;
+  border-top: 1px solid rgb(42 65 93 / 72%);
+}
+
+.profile-talent-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.profile-talent-heading > div:first-child {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.profile-talent-heading > small {
+  flex: 1;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.profile-talent-legend {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.profile-talent-legend span {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.profile-talent-legend i {
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgb(91 118 150 / 75%);
+  border-radius: 50%;
+  background: rgb(18 31 48 / 96%);
+}
+
+.profile-talent-legend .is-selected i {
+  border-color: #65eff5;
+  background: #27bfc9;
+  box-shadow: 0 0 8px rgb(71 227 236 / 72%);
+}
+
+.profile-talent-detail {
+  display: flex;
+  gap: 11px;
+  min-height: 66px;
+  align-items: center;
+  padding: 9px 11px;
+  border: 1px solid rgb(48 77 108 / 78%);
+  border-radius: 9px;
+  background: linear-gradient(100deg, rgb(17 31 48 / 90%), rgb(10 19 31 / 72%));
+}
+
+.profile-talent-detail-icon {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border: 1px solid rgb(100 233 241 / 42%);
+  border-radius: 50%;
+  background: rgb(5 12 21 / 94%);
+  object-fit: contain;
+}
+
+.profile-talent-detail > span {
+  display: grid;
+  gap: 2px;
+}
+
+.profile-talent-detail small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.profile-talent-detail small.is-selected {
+  color: #61e9ef;
+}
+
+.profile-talent-detail p {
+  max-width: 700px;
+  max-height: 132px;
+  margin: 3px 0 0;
+  overflow: auto;
+  color: #aebfd1;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.profile-talent-viewport {
+  max-height: 760px;
+  overflow: auto;
+  border: 1px solid rgb(43 67 94 / 78%);
+  border-radius: 11px;
+  background:
+    linear-gradient(rgb(56 91 119 / 7%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(56 91 119 / 7%) 1px, transparent 1px),
+    radial-gradient(circle at 50% 12%, rgb(46 178 192 / 8%), transparent 34%),
+    linear-gradient(180deg, #091320, #07101a);
+  background-size: 28px 28px, 28px 28px, auto, auto;
+  scrollbar-color: rgb(67 106 137) rgb(8 17 27);
+}
+
+.profile-talent-canvas {
+  position: relative;
+  min-width: 720px;
+  isolation: isolate;
+}
+
+.profile-talent-links {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.profile-talent-links line {
+  stroke: rgb(58 80 105 / 72%);
+  stroke-width: 3;
+}
+
+.profile-talent-links line.is-selected {
+  stroke: rgb(62 214 224 / 88%);
+  stroke-width: 4;
+  filter: drop-shadow(0 0 4px rgb(58 220 231 / 48%));
+}
+
+.profile-talent-stage-label {
+  position: absolute;
+  z-index: 1;
+  left: 18px;
+  padding: 4px 8px;
+  border: 1px solid rgb(53 86 117 / 72%);
+  border-radius: 999px;
+  color: #8ba9c4;
+  background: rgb(7 16 26 / 88%);
+  font: 700 9px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.profile-talent-node {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  width: 52px;
+  height: 52px;
+  padding: 4px;
+  border: 2px solid rgb(71 95 123 / 78%);
+  border-radius: 50%;
+  cursor: pointer;
+  background: radial-gradient(circle, rgb(29 45 64), rgb(8 16 26));
+  box-shadow: 0 5px 12px rgb(0 0 0 / 34%);
+  opacity: 0.6;
+  transition: border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease, transform 120ms ease;
+}
+
+.profile-talent-node:hover,
+.profile-talent-node:focus-visible {
+  z-index: 3;
+  border-color: #b5e8ed;
+  outline: none;
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.profile-talent-node.is-selected {
+  border-color: #6ceaf0;
+  background: radial-gradient(circle, rgb(32 100 112), rgb(8 25 34));
+  box-shadow: 0 0 0 2px rgb(75 224 233 / 15%), 0 0 14px rgb(63 219 229 / 58%);
+  opacity: 1;
+}
+
+.profile-talent-node-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: contain;
+}
+
 .photo-wall-image {
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -2066,6 +2403,15 @@ footer p {
 
   .profile-data-section {
     border-right: 0;
+  }
+
+  .profile-talent-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .profile-talent-detail {
+    align-items: flex-start;
   }
 
   .character-profile-heading,

@@ -6,6 +6,15 @@ export interface PresentationRecord {
   item_tier?: number;
   maximum_tier?: number;
   talent_id?: number;
+  profession_id?: number | null;
+  specialization_id?: number | null;
+  talent_type?: number | null;
+  talent_level?: number | null;
+  branch?: number;
+  talent_stage?: number;
+  prerequisite_node_ids?: number[];
+  dependent_node_ids?: number[];
+  position?: { x: number; y: number };
   dungeon_type_name?: string;
   effects?: string[];
   equipment_effects?: EquipmentAttributeEffectPresentation[];
@@ -79,7 +88,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=10`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=11`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {

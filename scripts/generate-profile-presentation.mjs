@@ -22,6 +22,8 @@ const publicIconRoot = path.join(websiteRoot, "public/assets/bpsr/profile");
 const itemsTablePath = path.join(tableRoot, "ItemTable.json");
 const itemsTable = readJson(itemsTablePath);
 const skillsTable = readJson(path.join(tableRoot, "SkillTable.json"));
+const talentTreeTablePath = path.join(tableRoot, "TalentTreeTable.json");
+const talentTreeTable = readJson(talentTreeTablePath);
 const dungeonsTable = readJson(path.join(tableRoot, "DungeonsTable.json"));
 const achievementsTablePath = path.join(tableRoot, "AchievementDateTable.json");
 const achievementsTable = readJson(achievementsTablePath);
@@ -210,27 +212,46 @@ const titles = Object.fromEntries(
 );
 
 const talents = {};
-const talentNodes = {};
 for (const file of readJsonFiles(talentCatalogRoot)) {
   const talent = readJson(file);
   if (talent?.kind !== "talent" || !Number.isInteger(talent.id)) continue;
   const attributes = talent.attributes ?? {};
   talents[String(talent.id)] = {
     name: talentLocale.get(talent.localization_key) ?? talentLocale.get(`talent.${talent.id}.name`) ?? `Unknown talent ${talent.id}`,
+    description: talentLocale.get(attributes.description_localization_key ?? `talent.${talent.id}.description`) ?? null,
     icon: copyNamedIcon(talent.icon, "talents"),
     profession_id: attributes.profession_id ?? null,
     talent_type: attributes.talent_type ?? null,
     talent_level: attributes.talent_level ?? null,
   };
-  for (const node of attributes.tree_nodes ?? []) {
-    if (!Number.isInteger(node?.node_id)) continue;
-    talentNodes[String(node.node_id)] = {
-      talent_id: talent.id,
-      profession_id: node.profession_id ?? attributes.profession_id ?? null,
-      specialization_id: node.specialization_id ?? null,
-    };
-  }
 }
+
+const talentNodes = Object.fromEntries(
+  Object.values(talentTreeTable)
+    .filter((node) =>
+      Number.isInteger(node?.Id) &&
+      Number.isInteger(node?.TalentId) &&
+      Number.isInteger(node?.WeaponType) &&
+      Number.isInteger(node?.BdType) &&
+      Number.isInteger(node?.TalentStage) &&
+      Array.isArray(node?.TalentPosition) &&
+      node.TalentPosition.length === 2 &&
+      node.TalentPosition.every(Number.isInteger)
+    )
+    .map((node) => [String(node.Id), {
+      talent_id: node.TalentId,
+      profession_id: node.WeaponType,
+      branch: node.BdType,
+      talent_stage: node.TalentStage,
+      prerequisite_node_ids: Array.isArray(node.PreTalent)
+        ? node.PreTalent.filter(Number.isInteger)
+        : [],
+      dependent_node_ids: Array.isArray(node.NextTalent)
+        ? node.NextTalent.filter(Number.isInteger)
+        : [],
+      position: { x: node.TalentPosition[0], y: node.TalentPosition[1] },
+    }]),
+);
 
 const dungeons = Object.fromEntries(
   Object.values(dungeonsTable)
@@ -323,6 +344,7 @@ const catalog = {
   source_item_table_sha256: createHash("sha256").update(readFileSync(itemsTablePath)).digest("hex"),
   source_achievement_table_sha256: createHash("sha256").update(readFileSync(achievementsTablePath)).digest("hex"),
   source_medal_table_sha256: createHash("sha256").update(readFileSync(medalsTablePath)).digest("hex"),
+  source_talent_tree_table_sha256: createHash("sha256").update(readFileSync(talentTreeTablePath)).digest("hex"),
   source_equipment_attribute_table_sha256: createHash("sha256").update(readFileSync(equipmentAttributesTablePath)).digest("hex"),
   source_buff_table_sha256: createHash("sha256").update(readFileSync(buffTablePath)).digest("hex"),
   equipment_slots: {
