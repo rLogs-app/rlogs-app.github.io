@@ -131,6 +131,8 @@ function equipmentSection(items: JsonValue[]): HTMLElement {
       ])),
       element("small", "", equipmentAttributeSummary(item)),
     );
+    const attributeList = equipmentAttributeList(item);
+    if (attributeList) card.append(attributeList);
     const enchantments = arrayValue(item.enchantments);
     if (enchantments.length) {
       const sigils = element("div", "profile-sigil-list");
@@ -144,7 +146,7 @@ function equipmentSection(items: JsonValue[]): HTMLElement {
         const copy = element("span");
         copy.append(
           element("strong", "", sigil?.name ?? `Unknown sigil ${displayValue(enchantment.enchantment_id)}`),
-          element("small", "", pair("Level", enchantment.level)),
+          element("small", "", joinFacts([qualityLabel(sigil?.quality), pair("Roll level", enchantment.level)])),
         );
         row.append(copy);
         sigils.append(row);
@@ -176,9 +178,8 @@ function imagineSection(owned: JsonValue[], skills: JsonValue[]): HTMLElement {
     card.append(
       element("strong", "", localized?.name ?? `Unknown Battle Imagine ${displayValue(item.imagine_id ?? item.skill_id)}`),
       element("small", "", joinFacts([
-        localized?.item_tier == null ? "" : `Tier ${localized.item_tier}`,
+        pair("Tier", item.remodel_level ?? item.breakthrough_level),
         pair("Level", item.level),
-        pair("Breakthrough", item.breakthrough_level ?? item.remodel_level),
         item.equipped_slot == null ? "" : `Equipped · Slot ${displayValue(item.equipped_slot)}`,
       ])),
     );
@@ -209,7 +210,7 @@ function moduleSection(inventory: JsonValue[], slots: JsonRecord | undefined): H
     const totalLink = parts.reduce<number>((sum, value) => sum + Math.max(0, numericValue(recordValue(value)?.initial_link_points) ?? 0), 0);
     copy.append(
       element("strong", "", `Slot ${slot} · ${localized?.name ?? `Unknown module ${displayValue(module?.config_id)}`}`),
-      element("small", "", joinFacts([pair("Level", module?.level), qualityLabel(module?.quality), `${totalLink} Link total`, successRateLabel(module?.success_rate)])),
+      element("small", "", joinFacts([pair("Level", module?.level), qualityLabel(module?.quality), `${totalLink} Link total`])),
     );
     if (parts.length) {
       const partList = element("div", "profile-module-parts");
@@ -267,7 +268,21 @@ function skillsSection(body: JsonRecord): HTMLElement {
   }
   for (const value of talents) {
     const talent = recordValue(value);
-    if (talent) list.append(compactRow(`Talent ${displayValue(talent.talent_id)}`, pair("Level", talent.level)));
+    if (!talent) continue;
+    const rawTalentId = numericValue(talent.talent_id);
+    const nodeId = numericValue(talent.node_id) ?? rawTalentId;
+    const node = nodeId == null ? undefined : presentation.talent_nodes[String(nodeId)];
+    const talentId = numericValue(talent.node_id) == null && node?.talent_id != null ? node.talent_id : rawTalentId;
+    const localized = talentId == null ? undefined : presentation.talents[String(talentId)];
+    const row = element("div", "profile-skill-row");
+    appendPresentationIcon(row, localized?.icon, localized?.name ?? "Talent", "profile-skill-icon");
+    const copy = element("span");
+    copy.append(
+      element("strong", "", localized?.name ?? `Unknown talent ${displayValue(talentId ?? nodeId)}`),
+      element("small", "", joinFacts([pair("Level", talent.level), nodeId == null ? "" : `Node ${nodeId}`])),
+    );
+    row.append(copy);
+    list.append(row);
   }
   if (actions.length) list.append(compactRow("Equipped action slots", `${actions.length} bindings`));
   section.append(list.childElementCount ? list : empty("No skill or talent data was present in the latest snapshot."));
@@ -290,8 +305,10 @@ function collectionsSection(body: JsonRecord): HTMLElement {
     ["Mounts owned", arrayValue(collection?.owned_mount_ids).length],
     ["Weapon skins owned", arrayValue(collection?.owned_weapon_skin_ids).length],
     ["Vanity pets", arrayValue(collection?.vanity_pet_ids).length],
-    ["Guild", social?.guild_name],
+    ["Guild", social?.guild_name ?? social?.guild_id],
     ["Titles", arrayValue(social?.title_ids).length],
+    ["Equipped title", social?.equipped_title_id ?? arrayValue(social?.title_ids)[0]],
+    ["Equipped title level", social?.equipped_title_level],
     ["Medals", arrayValue(social?.medal_ids).length],
   ] as Array<[string, JsonValue | number | undefined]>) appendFact(facts, label, displayValue(value));
   section.append(facts);
@@ -447,6 +464,28 @@ function equipmentAttributeSummary(item: JsonRecord): string {
   return `${count} attributes · ${arrayValue(item.enchantments).length} enchantments`;
 }
 
+function equipmentAttributeList(item: JsonRecord): HTMLElement | undefined {
+  const attributes = recordValue(item.attributes);
+  if (!attributes) return undefined;
+  const rows = element("div", "profile-compact-list profile-equipment-attributes");
+  for (const [category, key] of [
+    ["Base", "base"],
+    ["Basic", "basic"],
+    ["Advanced", "advanced"],
+    ["Recast", "recast"],
+    ["Rare quality", "rare_quality"],
+  ] as const) {
+    for (const [attributeId, value] of Object.entries(recordValue(attributes[key]) ?? {})) {
+      const localized = presentation.equipment_attributes[attributeId];
+      rows.append(compactRow(
+        localized?.name ?? `Unknown equipment attribute ${attributeId}`,
+        `${category} · Roll value ${displayValue(value)}`,
+      ));
+    }
+  }
+  return rows.childElementCount ? rows : undefined;
+}
+
 function appendPresentationIcon(target: HTMLElement, value: string | null | undefined, alt: string, className: string): void {
   const url = safePresentationImageUrl(value);
   if (!url) return;
@@ -462,12 +501,6 @@ function qualityLabel(value: JsonValue | undefined): string {
   const quality = numericValue(value);
   if (quality == null) return "";
   return presentation.quality_names[String(quality)] ?? `Quality ${quality}`;
-}
-
-function successRateLabel(value: JsonValue | undefined): string {
-  const basisPoints = numericValue(value);
-  if (basisPoints == null) return "";
-  return `Success ${(basisPoints / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
 }
 
 function resolvedModuleEffectLevel(
@@ -505,25 +538,28 @@ function masterDungeonRows(values: JsonValue[]): Map<number, MasterDungeonRow[]>
     const seasonId = numericValue(entry?.season_id);
     const difficultyId = numericValue(entry?.difficulty_id);
     const dungeonId = numericValue(dungeon?.dungeon_id);
-    if (seasonId == null || difficultyId == null || dungeonId == null) continue;
+    if (seasonId == null || difficultyId == null || dungeonId == null || dungeonId < 1 || dungeonId > 20) continue;
     const score = Math.max(0, numericValue(dungeon?.score) ?? 0);
     const passTime = numericValue(dungeon?.pass_time);
     const season = seasons.get(seasonId) ?? new Map<number, MasterDungeonRow>();
-    const current = season.get(dungeonId);
+    const current = season.get(difficultyId);
     const localizedDungeon = presentation.dungeons[String(difficultyId)];
     if (!current || score > current.score || (score === current.score && passTime != null && (current.passTime == null || passTime < current.passTime))) {
-      season.set(dungeonId, {
-        dungeonId,
-        name: localizedDungeon?.name ?? `Dungeon ${dungeonId}`,
-        difficultyId,
-        difficultyName: localizedDungeon?.dungeon_type_name ?? `Difficulty ${difficultyId}`,
+      season.set(difficultyId, {
+        dungeonId: difficultyId,
+        name: localizedDungeon?.name ?? `Dungeon ${difficultyId}`,
+        difficultyId: dungeonId,
+        difficultyName: `Master ${dungeonId}`,
         score,
         passTime,
       });
     }
     seasons.set(seasonId, season);
   }
-  return new Map([...seasons].map(([seasonId, rows]) => [seasonId, [...rows.values()]]));
+  return new Map([...seasons].map(([seasonId, rows]) => [
+    seasonId,
+    [...rows.values()].sort((left, right) => left.dungeonId - right.dungeonId).slice(0, 6),
+  ]));
 }
 
 function resolvedMasterScore(body: JsonRecord): number | undefined {

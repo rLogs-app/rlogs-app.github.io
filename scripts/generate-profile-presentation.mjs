@@ -10,6 +10,8 @@ const tableRoot = process.env.BPSR_TABLE_DATA_DIR
   ? path.resolve(process.env.BPSR_TABLE_DATA_DIR)
   : path.join(rlogsRoot, "tmp-rdps-audit/external/BPSR-ZDPS/BPSR-ZDPS/Data");
 const gameDataRoot = path.join(rlogsRoot, "plugins/games/blue-protocol-star-resonance/game-data");
+const talentCatalogRoot = path.join(gameDataRoot, "catalog/talents");
+const talentLocaleRoot = path.join(gameDataRoot, "catalog/localization/en-US/talents");
 const sourceIconRoot = path.join(rlogsRoot, "assets/blue-protocol-star-resonance/shared/icons");
 const publicIconRoot = path.join(websiteRoot, "public/assets/bpsr/profile");
 
@@ -18,9 +20,18 @@ const itemsTable = readJson(path.join(tableRoot, "ItemTable.json"));
 const skillsTable = readJson(path.join(tableRoot, "SkillTable.json"));
 const dungeonsTable = readJson(path.join(tableRoot, "DungeonsTable.json"));
 const moduleEffectsTable = readJson(path.join(tableRoot, "ModEffectTable.json"));
+const equipmentAttributesTable = readJson(path.join(tableRoot, "EquipAttrLibTable.json"));
+const equipmentSchoolAttributesTable = readJson(path.join(tableRoot, "EquipAttrSchoolLibTable.json"));
+const fightAttributesTable = readJson(path.join(tableRoot, "FightAttrTable.json"));
 const imaginePresentation = readJson(path.join(gameDataRoot, "runtime/battle-imagine-presentation.v1.json"));
 const imagineNames = new Map(readJson(path.join(gameDataRoot, "runtime/localization/en-US/battle-imagine-names.v1.json")).imagines);
 const moduleLocale = readJson(path.join(gameDataRoot, "catalog/localization/en-US/modules/profile-catalog.json"));
+const talentLocale = new Map(
+  readJsonFiles(talentLocaleRoot)
+    .flatMap((file) => readJson(file))
+    .filter((entry) => typeof entry?.key === "string" && typeof entry?.text === "string")
+    .map((entry) => [entry.key, entry.text]),
+);
 
 const sourceIcons = new Map();
 indexIcons(sourceIconRoot);
@@ -36,6 +47,36 @@ const items = Object.fromEntries(
       icon: copyNamedIcon(item.Icon, "items"),
     }]),
 );
+const missingSigilIcons = Object.values(itemsTable)
+  .filter((item) => typeof item.Icon === "string" && item.Icon.toLowerCase().startsWith("item_icons_enchantformula"))
+  .filter((item) => !items[String(item.Id)]?.icon)
+  .map((item) => `${item.Id}:${item.Icon ?? "no-icon-key"}`);
+if (missingSigilIcons.length) {
+  throw new Error(`Missing ${missingSigilIcons.length} sigil icons: ${missingSigilIcons.join(", ")}`);
+}
+
+const fightAttributeByMemberId = new Map();
+for (const row of Object.values(fightAttributesTable)) {
+  for (const member of [row.AttrFinal, row.AttrTotal, row.AttrAdd, row.AttrExAdd, row.AttrPer, row.AttrExPer]) {
+    if (Number.isInteger(member)) fightAttributeByMemberId.set(member, row);
+  }
+}
+const equipmentAttributes = Object.fromEntries(
+  [...Object.values(equipmentAttributesTable), ...Object.values(equipmentSchoolAttributesTable)]
+    .filter((row) => Number.isInteger(row.Id))
+    .map((row) => {
+      const names = (row.AttrEffect ?? [])
+        .flatMap((effect) => Array.isArray(effect) ? effect.slice(1) : [])
+        .map((id) => fightAttributeByMemberId.get(id)?.OfficialName)
+        .filter((name) => typeof name === "string" && name.trim())
+        .filter((name, index, all) => all.indexOf(name) === index);
+      return [String(row.Id), {
+        name: names.length ? names.join(" + ") : `Equipment attribute ${row.Id}`,
+        effects: names,
+        attribute_library_id: row.AttrLibId ?? null,
+      }];
+    }),
+);
 
 const skills = Object.fromEntries(
   Object.values(skillsTable)
@@ -46,6 +87,29 @@ const skills = Object.fromEntries(
       skill_type: skill.SkillType,
     }]),
 );
+
+const talents = {};
+const talentNodes = {};
+for (const file of readJsonFiles(talentCatalogRoot)) {
+  const talent = readJson(file);
+  if (talent?.kind !== "talent" || !Number.isInteger(talent.id)) continue;
+  const attributes = talent.attributes ?? {};
+  talents[String(talent.id)] = {
+    name: talentLocale.get(talent.localization_key) ?? talentLocale.get(`talent.${talent.id}.name`) ?? `Unknown talent ${talent.id}`,
+    icon: copyNamedIcon(talent.icon, "talents"),
+    profession_id: attributes.profession_id ?? null,
+    talent_type: attributes.talent_type ?? null,
+    talent_level: attributes.talent_level ?? null,
+  };
+  for (const node of attributes.tree_nodes ?? []) {
+    if (!Number.isInteger(node?.node_id)) continue;
+    talentNodes[String(node.node_id)] = {
+      talent_id: talent.id,
+      profession_id: node.profession_id ?? attributes.profession_id ?? null,
+      specialization_id: node.specialization_id ?? null,
+    };
+  }
+}
 
 const dungeons = Object.fromEntries(
   Object.values(dungeonsTable)
@@ -110,8 +174,11 @@ const catalog = {
     "208": "Left Bracelet", "209": "Right Bracelet", "210": "Charm",
   },
   quality_names: { "1": "Common", "2": "Uncommon", "3": "Rare", "4": "Epic", "5": "Legendary" },
+  equipment_attributes: equipmentAttributes,
   items,
   skills,
+  talents,
+  talent_nodes: talentNodes,
   dungeons,
   imagines,
   modules,
@@ -122,7 +189,16 @@ const output = path.join(websiteRoot, "public/data/bpsr/profile-presentation.en-
 mkdirSync(path.dirname(output), { recursive: true });
 writeFileSync(output, `${JSON.stringify(catalog)}\n`);
 console.log(`wrote ${output}`);
-console.log(`${Object.keys(items).length} items, ${Object.keys(skills).length} skills, ${Object.keys(dungeons).length} dungeons, ${Object.keys(imagines).length} imagines`);
+console.log(`${Object.keys(items).length} items, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes, ${Object.keys(dungeons).length} dungeons, ${Object.keys(imagines).length} imagines; all sigil icons present`);
+
+function readJsonFiles(directory) {
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) return readJsonFiles(file);
+    return entry.isFile() && entry.name.endsWith(".json") ? [file] : [];
+  });
+}
 
 function indexIcons(directory) {
   if (!existsSync(directory)) return;

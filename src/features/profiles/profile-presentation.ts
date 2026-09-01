@@ -5,15 +5,21 @@ export interface PresentationRecord {
   item_id?: number;
   item_tier?: number;
   maximum_tier?: number;
+  talent_id?: number;
   dungeon_type_name?: string;
+  effects?: string[];
+  attribute_library_id?: number | null;
   levels?: Array<{ level: number; enhancement_num: number }>;
 }
 
 export interface ProfilePresentationCatalog {
   equipment_slots: Record<string, string>;
   quality_names: Record<string, string>;
+  equipment_attributes: Record<string, PresentationRecord>;
   items: Record<string, PresentationRecord>;
   skills: Record<string, PresentationRecord>;
+  talents: Record<string, PresentationRecord>;
+  talent_nodes: Record<string, PresentationRecord>;
   dungeons: Record<string, PresentationRecord>;
   imagines: Record<string, PresentationRecord>;
   modules: Record<string, PresentationRecord>;
@@ -41,8 +47,11 @@ function isCatalog(value: unknown): value is ProfilePresentationCatalog {
   return [
     "equipment_slots",
     "quality_names",
+    "equipment_attributes",
     "items",
     "skills",
+    "talents",
+    "talent_nodes",
     "dungeons",
     "imagines",
     "modules",
