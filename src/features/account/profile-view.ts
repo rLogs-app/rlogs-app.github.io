@@ -7,6 +7,7 @@ import {
 
 type JsonRecord = Record<string, JsonValue>;
 let presentation: ProfilePresentationCatalog;
+const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
 export async function renderSyncedCharacterProfile(profile: PublishedProfile): Promise<HTMLElement> {
   presentation = await loadProfilePresentation();
@@ -332,7 +333,9 @@ function photoWallSection(body: JsonRecord): HTMLElement {
   for (const [slot, photoId] of placements) {
     const card = element("article", "profile-item-card photo-wall-card");
     const asset = assets.get(String(photoId));
-    const imageUrl = safeImageUrl(asset?.image_url ?? asset?.thumbnail_url);
+    const imageUrl =
+      resolvePublishedPhotoUrl(asset?.image_path) ??
+      safeImageUrl(asset?.image_url ?? asset?.thumbnail_url);
     if (imageUrl) {
       const image = document.createElement("img");
       image.className = "photo-wall-image";
@@ -635,6 +638,34 @@ function safeImageUrl(value: JsonValue | undefined): string | undefined {
   try {
     const url = new URL(value);
     return url.protocol === "https:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function resolvePublishedPhotoUrl(
+  value: JsonValue | undefined,
+  configuredApiBase = apiBase,
+): string | undefined {
+  if (
+    typeof value !== "string" ||
+    !/^\/v1\/profiles\/prf_[a-z0-9_]+\/photo-wall\/[1-9][0-9]*$/u.test(value)
+  ) {
+    return undefined;
+  }
+  try {
+    const base = new URL(configuredApiBase);
+    if (
+      base.protocol !== "https:" ||
+      base.username ||
+      base.password ||
+      base.pathname !== "/" ||
+      base.search ||
+      base.hash
+    ) {
+      return undefined;
+    }
+    return new URL(value, base).href;
   } catch {
     return undefined;
   }
