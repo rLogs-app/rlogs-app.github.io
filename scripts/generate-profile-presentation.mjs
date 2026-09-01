@@ -21,7 +21,10 @@ const publicIconRoot = path.join(websiteRoot, "public/assets/bpsr/profile");
 
 const itemsTablePath = path.join(tableRoot, "ItemTable.json");
 const itemsTable = readJson(itemsTablePath);
+const equipmentTable = readJson(path.join(tableRoot, "EquipTable.json"));
 const skillsTable = readJson(path.join(tableRoot, "SkillTable.json"));
+const talentTablePath = path.join(tableRoot, "TalentTable.json");
+const talentTable = readJson(talentTablePath);
 const talentTreeTablePath = path.join(tableRoot, "TalentTreeTable.json");
 const talentTreeTable = readJson(talentTreeTablePath);
 const dungeonsTable = readJson(path.join(tableRoot, "DungeonsTable.json"));
@@ -63,6 +66,7 @@ const items = Object.fromEntries(
       name: item.Name,
       quality: item.Quality,
       type: item.Type,
+      equipment_level: equipmentTable[String(item.Id)]?.EquipGs ?? null,
       icon: copyNamedIcon(item.Icon, "items"),
     }]),
 );
@@ -218,7 +222,9 @@ for (const file of readJsonFiles(talentCatalogRoot)) {
   const attributes = talent.attributes ?? {};
   talents[String(talent.id)] = {
     name: talentLocale.get(talent.localization_key) ?? talentLocale.get(`talent.${talent.id}.name`) ?? `Unknown talent ${talent.id}`,
-    description: talentLocale.get(attributes.description_localization_key ?? `talent.${talent.id}.description`) ?? null,
+    description: talentLocale.get(attributes.description_localization_key ?? `talent.${talent.id}.description`)
+      ?? exactTalentDescription(talentTable[String(talent.id)])
+      ?? null,
     icon: copyNamedIcon(talent.icon, "talents"),
     profession_id: attributes.profession_id ?? null,
     talent_type: attributes.talent_type ?? null,
@@ -315,8 +321,8 @@ for (const [nodeId, node] of Object.entries(talentNodes)) {
   if (!indexedTalentNodeIds.has(Number(nodeId))) {
     throw new Error(`Talent node ${nodeId} is absent from the website tree index`);
   }
-  if (!talent?.name || talent.name.startsWith("Unknown talent ") || !talent.icon) {
-    throw new Error(`Talent node ${nodeId} is missing a localized name or icon`);
+  if (!talent?.name || talent.name.startsWith("Unknown talent ") || !talent.icon || !talent.description) {
+    throw new Error(`Talent node ${nodeId} is missing a localized name, icon, or exact description`);
   }
   const allowedNodeIds = new Set([
     ...talentTreeIndex[String(node.profession_id)].foundation_node_ids,
@@ -367,6 +373,39 @@ function materializeAchievementDescription(description, target) {
   return Number.isFinite(target)
     ? description.replaceAll("{*val*}", Number(target).toLocaleString("en-US"))
     : description;
+}
+
+function exactTalentDescription(row) {
+  if (!row) return null;
+  const authored = typeof row.TalentDes === "string" ? row.TalentDes.trim() : "";
+  if (authored && authored !== "力量+10") return authored;
+  const descriptions = (row.TalentEffect ?? []).flatMap((effect) => {
+    if (!Array.isArray(effect)) return [];
+    if (effect[0] === 1) {
+      const attribute = fightAttributeByMemberId.get(effect[1]);
+      if (!attribute || !Number.isFinite(effect[2])) return [];
+      const formatted = formatTalentEffectValue(effect[2], attribute.AttrNumType, effect[1] % 10);
+      return [`${attribute.OfficialName} ${effect[2] > 0 ? "+" : ""}${formatted}.`];
+    }
+    if (effect[0] === 3) {
+      const buff = buffTable[String(effect[1])];
+      const description = attributeDescriptionsTable[String(buff?.TipsDescription)]?.Description;
+      return typeof description === "string" && description.trim() ? [description.trim()] : [];
+    }
+    if (effect[0] === 6) {
+      const previousSkill = skillsTable[String(effect[1])]?.Name;
+      const replacementSkill = skillsTable[String(effect[2])]?.Name;
+      return previousSkill && replacementSkill ? [`Replaces ${previousSkill} with ${replacementSkill}.`] : [];
+    }
+    return [];
+  });
+  return [...new Set(descriptions)].join("<br>") || null;
+}
+
+function formatTalentEffectValue(value, numberType, formatType) {
+  if (numberType === 1 || (numberType === 0 && formatType === 4)) return `${value / 100}%`;
+  if (numberType === 2) return `${value / 1_000}s`;
+  return Number(value).toLocaleString("en-US", { maximumFractionDigits: 6 });
 }
 
 const imagines = Object.fromEntries(imaginePresentation.imagines.map((imagine) => {
@@ -420,6 +459,7 @@ const catalog = {
   source_item_table_sha256: createHash("sha256").update(readFileSync(itemsTablePath)).digest("hex"),
   source_achievement_table_sha256: createHash("sha256").update(readFileSync(achievementsTablePath)).digest("hex"),
   source_medal_table_sha256: createHash("sha256").update(readFileSync(medalsTablePath)).digest("hex"),
+  source_talent_table_sha256: createHash("sha256").update(readFileSync(talentTablePath)).digest("hex"),
   source_talent_tree_table_sha256: createHash("sha256").update(readFileSync(talentTreeTablePath)).digest("hex"),
   source_equipment_attribute_table_sha256: createHash("sha256").update(readFileSync(equipmentAttributesTablePath)).digest("hex"),
   source_buff_table_sha256: createHash("sha256").update(readFileSync(buffTablePath)).digest("hex"),

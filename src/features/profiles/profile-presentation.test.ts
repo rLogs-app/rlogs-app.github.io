@@ -100,8 +100,13 @@ describe("BPSR profile presentation catalog", () => {
     expect([...indexedNodeIds].every((nodeId) => {
       const node = catalog.talent_nodes[String(nodeId)];
       const talent = node?.talent_id == null ? undefined : catalog.talents[String(node.talent_id)];
-      return node?.position != null && Boolean(talent?.name) && Boolean(talent?.icon);
+      return node?.position != null && Boolean(talent?.name) && Boolean(talent?.icon) && Boolean(talent?.description);
     })).toBe(true);
+  });
+
+  it("publishes exact static item levels for equipment cards", () => {
+    expect(catalog.items["2000631"]?.equipment_level).toBe(220);
+    expect(catalog.items["2011341"]?.equipment_level).toBe(240);
   });
 
   it("resolves all exact Final Sigil levels and rolled attribute values", () => {

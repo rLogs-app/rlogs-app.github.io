@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   battleImagineOwnershipFacts,
+  calculateTalentTreeGeometry,
   cleanGameText,
   formatFightAttributeValue,
   interpolateEquipmentAttributeValue,
@@ -133,6 +134,20 @@ describe("talent presentation", () => {
         expect(layout?.nodes.filter((node) => node.talentStage === 1), specialization.name).toHaveLength(60);
       }
     }
+  });
+
+  it("uses one scale on both axes and leaves full-size nodes room between game rows", () => {
+    const geometry = calculateTalentTreeGeometry([
+      { nodeId: 1, talentId: 100, branch: 0, talentStage: 0, prerequisiteNodeIds: [], x: 0, y: 0, selected: true },
+      { nodeId: 2, talentId: 101, branch: 0, talentStage: 0, prerequisiteNodeIds: [1], x: 240, y: 0, selected: true },
+      { nodeId: 3, talentId: 102, branch: 0, talentStage: 1, prerequisiteNodeIds: [1], x: 0, y: 240, selected: false },
+    ]);
+    const first = geometry.coordinates.get(1)!;
+    const horizontal = geometry.coordinates.get(2)!;
+    const vertical = geometry.coordinates.get(3)!;
+    expect(horizontal.x - first.x).toBe(vertical.y - first.y);
+    expect(horizontal.x - first.x).toBeGreaterThan(geometry.nodeSize);
+    expect(geometry.width).toBeGreaterThanOrEqual(920);
   });
 });
 

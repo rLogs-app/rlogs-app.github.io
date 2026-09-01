@@ -73,7 +73,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
 
   const sections = element("div", "profile-section-grid");
   sections.append(
-    equipmentSection(arrayValue(body.equipment)),
+    equipmentSection(body),
     imagineSection(arrayValue(body.owned_imagines), arrayValue(body.battle_imagine_skills)),
     moduleSection(inventory, equippedSlots),
     skillsSection(body),
@@ -89,6 +89,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   const facts = element("dl", "profile-facts");
   const represented = new Set([
     "equipment",
+    "equipment_suit_entries",
     "modules",
     "owned_imagines",
     "battle_imagine_skills",
@@ -109,9 +110,10 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   return root;
 }
 
-function equipmentSection(items: JsonValue[]): HTMLElement {
+function equipmentSection(body: JsonRecord): HTMLElement {
+  const items = arrayValue(body.equipment);
   const section = profileSection("Current equipment", `${items.length} equipped pieces`);
-  const grid = element("div", "profile-item-grid");
+  const grid = element("div", "profile-item-grid profile-equipment-grid");
   for (const value of items) {
     const item = recordValue(value);
     if (!item) continue;
@@ -119,22 +121,27 @@ function equipmentSection(items: JsonValue[]): HTMLElement {
     const slotId = numericValue(item.slot_id);
     const localized = itemId == null ? undefined : presentation.items[String(itemId)];
     const slotName = slotId == null ? "Equipment" : presentation.equipment_slots[String(slotId)] ?? `Equipment slot ${slotId}`;
-    const card = element("article", "profile-item-card");
+    const card = element("article", "profile-item-card profile-equipment-card");
     appendPresentationIcon(card, localized?.icon, localized?.name ?? slotName, "profile-item-icon");
-    card.append(
+    const copy = element("div", "profile-equipment-copy");
+    copy.append(
       element("small", "profile-item-kicker", slotName),
       element("strong", "", localized?.name ?? `Unknown equipment ${displayValue(item.item_id)}`),
       element("small", "", joinFacts([
-        pair("Level", item.level),
+        pair("Item level", item.level ?? localized?.equipment_level),
         qualityLabel(item.quality),
         pair("Refinement +", item.refinement_level),
-        pair("Set", item.set_id),
       ])),
-      element("small", "", equipmentAttributeSummary(item)),
     );
+    card.append(copy);
     const attributeList = equipmentAttributeList(item);
-    if (attributeList) card.append(attributeList);
     const enchantments = arrayValue(item.enchantments);
+    if (attributeList || enchantments.length) {
+      const details = element("details", "profile-equipment-details");
+      details.append(element("summary", "", equipmentAttributeSummary(item)));
+      if (attributeList) details.append(attributeList);
+      card.append(details);
+    }
     if (enchantments.length) {
       const sigils = element("div", "profile-sigil-list");
       for (const value of enchantments) {
@@ -159,12 +166,36 @@ function equipmentSection(items: JsonValue[]): HTMLElement {
         row.append(copy);
         sigils.append(row);
       }
-      card.append(sigils);
+      const details = card.querySelector<HTMLDetailsElement>(".profile-equipment-details");
+      details?.append(sigils);
     }
     grid.append(card);
   }
   section.append(items.length ? grid : empty("No equipment was present in the latest synced snapshot."));
+  const setEffects = activeEquipmentSetEffects(arrayValue(body.equipment_suit_entries));
+  if (setEffects) section.append(setEffects);
   return section;
+}
+
+function activeEquipmentSetEffects(entries: JsonValue[]): HTMLElement | undefined {
+  const active = entries
+    .map(recordValue)
+    .filter((entry): entry is JsonRecord => entry != null && Object.keys(recordValue(entry.attributes) ?? {}).length > 0);
+  if (!active.length) return undefined;
+  const panel = element("div", "profile-active-set-effects");
+  panel.append(element("strong", "", "Active set effects"));
+  for (const entry of active) {
+    for (const [attributeId, rawValue] of Object.entries(recordValue(entry.attributes) ?? {})) {
+      const value = numericValue(rawValue);
+      const attribute = presentation.fight_attributes[attributeId];
+      if (value == null || !attribute) continue;
+      panel.append(compactRow(
+        attribute.name,
+        formatSignedFightAttributeValue(value, attribute.number_type, attribute.format_type),
+      ));
+    }
+  }
+  return panel.childElementCount > 1 ? panel : undefined;
 }
 
 function imagineSection(owned: JsonValue[], skills: JsonValue[]): HTMLElement {
@@ -315,11 +346,51 @@ interface TalentTreeNodeView {
   selected: boolean;
 }
 
+export interface TalentTreeGeometry {
+  width: number;
+  height: number;
+  nodeSize: number;
+  scale: number;
+  coordinates: Map<number, { x: number; y: number }>;
+}
+
 export interface TalentTreeLayoutView {
   nodes: TalentTreeNodeView[];
   selectedCount: number;
   branch: number;
   specializationName: string;
+}
+
+const talentTreeNodeSize = 64;
+const talentTreeCoordinateScale = 0.36;
+const talentTreeMargin = 104;
+const talentTreeMinimumWidth = 920;
+
+export function calculateTalentTreeGeometry(nodes: TalentTreeNodeView[]): TalentTreeGeometry {
+  const minimumX = Math.min(...nodes.map((node) => node.x));
+  const maximumX = Math.max(...nodes.map((node) => node.x));
+  const minimumY = Math.min(...nodes.map((node) => node.y));
+  const maximumY = Math.max(...nodes.map((node) => node.y));
+  const contentWidth = (maximumX - minimumX) * talentTreeCoordinateScale + talentTreeNodeSize;
+  const width = Math.max(
+    talentTreeMinimumWidth,
+    Math.round(contentWidth + talentTreeMargin * 2),
+  );
+  const height = Math.round(
+    (maximumY - minimumY) * talentTreeCoordinateScale + talentTreeMargin * 2 + talentTreeNodeSize,
+  );
+  const horizontalOffset = (width - contentWidth) / 2;
+  const coordinates = new Map(nodes.map((node) => [node.nodeId, {
+    x: Math.round((node.x - minimumX) * talentTreeCoordinateScale + horizontalOffset),
+    y: Math.round((node.y - minimumY) * talentTreeCoordinateScale + talentTreeMargin),
+  }]));
+  return {
+    width,
+    height,
+    nodeSize: talentTreeNodeSize,
+    scale: talentTreeCoordinateScale,
+    coordinates,
+  };
 }
 
 export function resolveEquippedSkillSlots(body: JsonRecord): EquippedSkillSlotView[] {
@@ -580,7 +651,8 @@ function learnedSkillsPanel(skills: JsonValue[]): HTMLElement {
 function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
   const panel = element("div", "profile-talent-panel");
   const heading = element("div", "profile-talent-heading");
-  heading.append(
+  const headingCopy = element("div", "profile-talent-heading-copy");
+  headingCopy.append(
     element("div", "", "Talent tree"),
     element("small", "", `${tree.specializationName} · ${tree.selectedCount} / ${tree.nodes.length} nodes selected`),
   );
@@ -589,27 +661,21 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
     talentLegendItem("is-selected", "Selected"),
     talentLegendItem("", "Available path"),
   );
-  heading.append(legend);
+  heading.append(headingCopy, legend);
 
   const detail = element("div", "profile-talent-detail");
+  const navigation = element("div", "profile-talent-navigation");
+  navigation.append(element("small", "profile-talent-navigation-hint", "Drag or swipe to explore the full tree"));
+  const controls = element("div", "profile-talent-controls");
   const viewport = element("div", "profile-talent-viewport");
+  viewport.tabIndex = 0;
+  viewport.setAttribute("aria-label", `${tree.specializationName} talent tree. Scroll in both directions to explore.`);
+  const zoomSpace = element("div", "profile-talent-zoom-space");
   const canvas = element("div", "profile-talent-canvas");
-  const minimumX = Math.min(...tree.nodes.map((node) => node.x));
-  const maximumX = Math.max(...tree.nodes.map((node) => node.x));
-  const minimumY = Math.min(...tree.nodes.map((node) => node.y));
-  const maximumY = Math.max(...tree.nodes.map((node) => node.y));
-  const xScale = 0.23;
-  const yScale = 0.15;
-  const margin = 52;
-  const nodeSize = 52;
-  const width = Math.max(720, Math.round((maximumX - minimumX) * xScale + margin * 2 + nodeSize));
-  const height = Math.max(640, Math.round((maximumY - minimumY) * yScale + margin * 2 + nodeSize));
+  const geometry = calculateTalentTreeGeometry(tree.nodes);
+  const { width, height, nodeSize, coordinates } = geometry;
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
-  const coordinates = new Map(tree.nodes.map((node) => [node.nodeId, {
-    x: Math.round((node.x - minimumX) * xScale + margin),
-    y: Math.round((node.y - minimumY) * yScale + margin),
-  }]));
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.classList.add("profile-talent-links");
@@ -636,12 +702,20 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
   canvas.append(svg);
 
   const baseLabel = element("span", "profile-talent-stage-label", "Foundation");
-  baseLabel.style.top = "12px";
+  baseLabel.style.top = "26px";
   canvas.append(baseLabel);
-  const specializationStart = Math.min(...tree.nodes.filter((node) => node.talentStage === 1).map((node) => node.y));
-  if (Number.isFinite(specializationStart)) {
+  const specializationStartNode = tree.nodes
+    .filter((node) => node.talentStage === 1)
+    .sort((left, right) => left.y - right.y || left.x - right.x)[0];
+  const specializationStart = specializationStartNode == null
+    ? undefined
+    : coordinates.get(specializationStartNode.nodeId)?.y;
+  if (specializationStart != null) {
+    const divider = element("span", "profile-talent-stage-divider");
+    divider.style.top = `${Math.max(78, specializationStart - 48)}px`;
+    canvas.append(divider);
     const specializationLabel = element("span", "profile-talent-stage-label", tree.specializationName);
-    specializationLabel.style.top = `${Math.max(24, Math.round((specializationStart - minimumY) * yScale + 10))}px`;
+    specializationLabel.style.top = `${Math.max(66, specializationStart - 62)}px`;
     canvas.append(specializationLabel);
   }
 
@@ -673,14 +747,82 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
     button.addEventListener("click", () => selectNode(node));
     canvas.append(button);
   }
-  viewport.append(canvas);
-  panel.append(heading, detail, viewport);
-  selectNode(
-    tree.nodes.find((node) =>
-      node.selected && presentationTalent(presentation, node.talentId)?.talent_type === 5
-    ) ?? tree.nodes.find((node) => node.selected) ?? tree.nodes[0]!,
-  );
+  const focusNode = tree.nodes.find((node) =>
+    node.selected && presentationTalent(presentation, node.talentId)?.talent_type === 5
+  ) ?? tree.nodes.find((node) => node.selected) ?? tree.nodes[0]!;
+  let zoom = window.matchMedia("(max-width: 620px)").matches ? 0.75 : 1;
+  const zoomOutput = element("output", "profile-talent-zoom-value", `${Math.round(zoom * 100)}%`);
+  zoomOutput.setAttribute("aria-live", "polite");
+  const zoomOut = talentTreeControl("−", "Zoom out");
+  const zoomIn = talentTreeControl("+", "Zoom in");
+  const center = talentTreeControl("Center selected", "Center the selected specialization node");
+  const centerNode = (behavior: ScrollBehavior = "smooth") => {
+    const coordinate = coordinates.get(focusNode.nodeId);
+    if (!coordinate) return;
+    viewport.scrollTo({
+      left: Math.max(0, (coordinate.x + nodeSize / 2) * zoom - viewport.clientWidth / 2),
+      top: Math.max(0, (coordinate.y - 88) * zoom),
+      behavior,
+    });
+  };
+  const applyZoom = (nextZoom: number) => {
+    const previousZoom = zoom;
+    const centerX = (viewport.scrollLeft + viewport.clientWidth / 2) / previousZoom;
+    const centerY = (viewport.scrollTop + viewport.clientHeight / 2) / previousZoom;
+    zoom = Math.max(0.75, Math.min(1.5, nextZoom));
+    canvas.style.transform = `scale(${zoom})`;
+    zoomSpace.style.width = `${Math.round(width * zoom)}px`;
+    zoomSpace.style.height = `${Math.round(height * zoom)}px`;
+    zoomOutput.value = `${Math.round(zoom * 100)}%`;
+    zoomOut.disabled = zoom <= 0.75;
+    zoomIn.disabled = zoom >= 1.5;
+    requestAnimationFrame(() => viewport.scrollTo({
+      left: Math.max(0, centerX * zoom - viewport.clientWidth / 2),
+      top: Math.max(0, centerY * zoom - viewport.clientHeight / 2),
+    }));
+  };
+  zoomOut.addEventListener("click", () => applyZoom(zoom - 0.25));
+  zoomIn.addEventListener("click", () => applyZoom(zoom + 0.25));
+  center.addEventListener("click", () => centerNode());
+  controls.append(zoomOut, zoomOutput, zoomIn, center);
+  navigation.append(controls);
+
+  let drag: { pointerId: number; x: number; y: number; left: number; top: number } | undefined;
+  viewport.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "mouse" || event.button !== 0 || (event.target as Element).closest("button")) return;
+    drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+    viewport.setPointerCapture(event.pointerId);
+    viewport.classList.add("is-dragging");
+  });
+  viewport.addEventListener("pointermove", (event) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    viewport.scrollLeft = drag.left - (event.clientX - drag.x);
+    viewport.scrollTop = drag.top - (event.clientY - drag.y);
+  });
+  const stopDragging = (event: PointerEvent) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag = undefined;
+    viewport.classList.remove("is-dragging");
+  };
+  viewport.addEventListener("pointerup", stopDragging);
+  viewport.addEventListener("pointercancel", stopDragging);
+
+  zoomSpace.append(canvas);
+  viewport.append(zoomSpace);
+  panel.append(heading, detail, navigation, viewport);
+  selectNode(focusNode);
+  applyZoom(zoom);
+  requestAnimationFrame(() => centerNode("auto"));
   return panel;
+}
+
+function talentTreeControl(label: string, ariaLabel: string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "profile-talent-control";
+  button.textContent = label;
+  button.setAttribute("aria-label", ariaLabel);
+  return button;
 }
 
 function presentationTalent(
@@ -1052,23 +1194,20 @@ function compactRow(label: string, value: string): HTMLElement {
 
 function equipmentAttributeSummary(item: JsonRecord): string {
   const attributes = recordValue(item.attributes);
-  if (!attributes) return `${arrayValue(item.enchantments).length} enchantments`;
-  const count = ["base", "basic", "advanced", "recast", "rare_quality"]
+  const count = attributes == null ? 0 : ["base", "basic", "advanced", "recast", "rare_quality"]
     .reduce((sum, key) => sum + Object.keys(recordValue(attributes[key]) ?? {}).length, 0);
-  return `${count} attributes · ${arrayValue(item.enchantments).length} enchantments`;
+  const sigilCount = arrayValue(item.enchantments).length;
+  return joinFacts([
+    count ? `${count} stat ${count === 1 ? "roll" : "rolls"}` : "Stats awaiting sync",
+    `${sigilCount} ${sigilCount === 1 ? "sigil" : "sigils"}`,
+  ]);
 }
 
 function equipmentAttributeList(item: JsonRecord): HTMLElement | undefined {
   const attributes = recordValue(item.attributes);
   if (!attributes) return undefined;
   const rows = element("div", "profile-compact-list profile-equipment-attributes");
-  for (const [category, key] of [
-    ["Base", "base"],
-    ["Basic", "basic"],
-    ["Advanced", "advanced"],
-    ["Recast", "recast"],
-    ["Rare quality", "rare_quality"],
-  ] as const) {
+  for (const key of ["base", "basic", "advanced", "recast", "rare_quality"] as const) {
     for (const [attributeId, value] of Object.entries(recordValue(attributes[key]) ?? {})) {
       const rollValue = numericValue(value);
       if (key === "base") {
@@ -1076,8 +1215,8 @@ function equipmentAttributeList(item: JsonRecord): HTMLElement | undefined {
         rows.append(compactRow(
           fightAttribute?.name ?? `Unknown fight attribute ${attributeId}`,
           rollValue == null || !fightAttribute
-            ? category
-            : `${category} · ${formatSignedFightAttributeValue(rollValue, fightAttribute.number_type, fightAttribute.format_type)}`,
+            ? "Value unavailable"
+            : formatSignedFightAttributeValue(rollValue, fightAttribute.number_type, fightAttribute.format_type),
         ));
         continue;
       }
@@ -1098,14 +1237,14 @@ function equipmentAttributeList(item: JsonRecord): HTMLElement | undefined {
       const effectDetails = effects.map((effect) =>
         `${effect.name} ${formatSignedFightAttributeValue(effect.value, effect.numberType, effect.formatType)}`
       );
-      rows.append(compactRow(
-        !effectDetails.length && buffDescriptions.length
-          ? buffDescriptions.join(" · ")
-          : localized?.name ?? `Unknown equipment attribute ${attributeId}`,
-        effectDetails.length || (!effectDetails.length && !buffDescriptions.length)
-          ? [category, ...effectDetails, ...buffDescriptions].join(" · ")
-          : category,
-      ));
+      for (const effect of effectDetails) {
+        const match = /^(.*?)\s+([+-].*)$/u.exec(effect);
+        rows.append(compactRow(match?.[1] ?? localized?.name ?? "Equipment attribute", match?.[2] ?? effect));
+      }
+      for (const description of buffDescriptions) rows.append(compactRow("Equipment effect", description));
+      if (!effectDetails.length && !buffDescriptions.length) {
+        rows.append(compactRow(localized?.name ?? `Unknown equipment attribute ${attributeId}`, "Value unavailable"));
+      }
     }
   }
   return rows.childElementCount ? rows : undefined;

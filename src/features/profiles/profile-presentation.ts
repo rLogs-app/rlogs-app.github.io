@@ -3,6 +3,7 @@ export interface PresentationRecord {
   icon?: string | null;
   quality?: number | null;
   item_id?: number;
+  equipment_level?: number | null;
   item_tier?: number;
   maximum_tier?: number;
   talent_id?: number;
@@ -79,6 +80,7 @@ export interface ProfilePresentationCatalog {
   source_item_table_sha256?: string;
   source_achievement_table_sha256?: string;
   source_medal_table_sha256?: string;
+  source_talent_table_sha256?: string;
   source_talent_tree_table_sha256?: string;
   source_equipment_attribute_table_sha256?: string;
   source_buff_table_sha256?: string;
@@ -103,7 +105,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=12`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=13`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
