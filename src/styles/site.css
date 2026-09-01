@@ -1926,7 +1926,7 @@ footer {
 
 .profile-stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   border-bottom: 1px solid var(--line);
 }
 
@@ -1949,6 +1949,7 @@ footer {
   margin-bottom: 6px;
   color: var(--muted);
   font-size: 10px;
+  white-space: nowrap;
   text-transform: uppercase;
 }
 
@@ -2981,7 +2982,7 @@ footer p {
     border-right: 0;
   }
 
-  .profile-stat:nth-child(-n + 3) {
+  .profile-stat:nth-child(-n + 6) {
     border-bottom: 1px solid var(--line);
   }
 
@@ -3097,7 +3098,7 @@ footer p {
     border-right: 0;
   }
 
-  .profile-stat:nth-child(-n + 4) {
+  .profile-stat:nth-child(-n + 6) {
     border-bottom: 1px solid var(--line);
   }
 

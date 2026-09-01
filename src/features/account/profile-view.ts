@@ -63,7 +63,6 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     ["Season strength", displayNumber(body.season_strength)],
     ["Master score", masterScore == null ? "—" : masterScore.toLocaleString()],
     ["Meowlux score", meowluxScore == null ? "—" : meowluxScore.toLocaleString()],
-    ["Equipment", String(arrayValue(body.equipment).length)],
     ["Modules", String(inventory.length)],
     ["Imagines", String(Math.max(arrayValue(body.owned_imagines).length, arrayValue(body.battle_imagine_skills).length))],
   ]) {
