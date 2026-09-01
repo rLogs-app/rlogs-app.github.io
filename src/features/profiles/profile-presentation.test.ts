@@ -3,7 +3,10 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import type { ProfilePresentationCatalog } from "./profile-presentation";
+import {
+  normalizeProfilePresentationCatalog,
+  type ProfilePresentationCatalog,
+} from "./profile-presentation";
 
 const catalog = JSON.parse(
   readFileSync(
@@ -29,5 +32,12 @@ describe("BPSR profile presentation catalog", () => {
       { attribute_id: 11502, name: "All Element Attack", value: 72 },
       { attribute_id: 11032, name: "Agility", value: 95 },
     ]);
+  });
+
+  it("keeps localized profiles usable during a legacy catalog edge-cache overlap", () => {
+    const legacyCatalog = { ...catalog } as Partial<ProfilePresentationCatalog>;
+    delete legacyCatalog.sigils;
+    expect(normalizeProfilePresentationCatalog(legacyCatalog)?.sigils).toEqual({});
+    expect(normalizeProfilePresentationCatalog({ sigils: {} })).toBeUndefined();
   });
 });

@@ -39,7 +39,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=4`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=5`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -48,30 +48,46 @@ export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
       if (!response.ok) {
         throw new Error(`BPSR localization catalog request failed with HTTP ${response.status}.`);
       }
-      const value: unknown = await response.json();
-      if (!isCatalog(value)) throw new Error("The BPSR localization catalog is invalid.");
+      const value = normalizeProfilePresentationCatalog(await response.json());
+      if (!value) throw new Error("The BPSR localization catalog is invalid.");
       return value;
     });
   return request;
 }
 
-function isCatalog(value: unknown): value is ProfilePresentationCatalog {
-  if (!isRecord(value)) return false;
-  return [
-    "equipment_slots",
-    "quality_names",
-    "equipment_attributes",
-    "items",
-    "sigils",
-    "titles",
-    "skills",
-    "talents",
-    "talent_nodes",
-    "dungeons",
-    "imagines",
-    "modules",
-    "module_effects",
-  ].every((key) => isRecord(value[key]));
+export function normalizeProfilePresentationCatalog(
+  value: unknown,
+): ProfilePresentationCatalog | undefined {
+  if (!isRecord(value)) return undefined;
+  if (
+    ![
+      "equipment_slots",
+      "quality_names",
+      "equipment_attributes",
+      "items",
+      "titles",
+      "skills",
+      "talents",
+      "talent_nodes",
+      "dungeons",
+      "imagines",
+      "modules",
+      "module_effects",
+    ].every((key) => isRecord(value[key]))
+  ) {
+    return undefined;
+  }
+
+  // A Pages edge can briefly pair a newly deployed JavaScript bundle with the
+  // preceding catalog response. Keep the rest of the localized profile usable
+  // while that immutable deployment converges; exact sigils appear as soon as
+  // the current catalog is returned.
+  return {
+    ...(value as unknown as ProfilePresentationCatalog),
+    sigils: isRecord(value.sigils)
+      ? (value.sigils as ProfilePresentationCatalog["sigils"])
+      : {},
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
