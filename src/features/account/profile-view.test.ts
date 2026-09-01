@@ -8,6 +8,7 @@ import {
   orderedMedalEntries,
   photoWallIdentityCount,
   resolvePublishedPhotoUrl,
+  resolvedMasterDungeonCount,
 } from "./profile-view";
 
 describe("Battle Imagine ownership presentation", () => {
@@ -87,5 +88,34 @@ describe("published medal ordering", () => {
       [9040008, 9040008],
       { "1": 9999999, "2": 9040008, "3": 9040008 },
     )).toEqual([{ id: 9040008, slot: 2 }]);
+  });
+});
+
+describe("master-mode dungeon summary", () => {
+  it("counts the six current-season dungeons instead of every observed difficulty row", () => {
+    const observation = (seasonId: number, dungeonConfigId: number, masterDifficulty: number) => ({
+      season_id: seasonId,
+      difficulty_id: dungeonConfigId,
+      dungeon: {
+        dungeon_id: masterDifficulty,
+        score: masterDifficulty * 10,
+        pass_time: 100,
+      },
+    });
+    const observations = [
+      observation(2, 6101, 1),
+      observation(2, 6101, 20),
+      observation(3, 6501, 1),
+      observation(3, 6501, 16),
+      observation(3, 6502, 16),
+      observation(3, 6503, 16),
+      observation(3, 6504, 16),
+      observation(3, 6505, 16),
+      observation(3, 6506, 16),
+    ];
+
+    expect(resolvedMasterDungeonCount(observations, 3)).toBe(6);
+    expect(resolvedMasterDungeonCount(observations, 2)).toBe(1);
+    expect(resolvedMasterDungeonCount(observations, undefined)).toBe(6);
   });
 });

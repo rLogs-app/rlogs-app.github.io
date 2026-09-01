@@ -556,6 +556,11 @@ function progressSection(body: JsonRecord): HTMLElement {
   const combatProfessions = arrayValue(body.combat_professions);
   const lifeProfessions = arrayValue(body.life_professions);
   const season = recordValue(body.season);
+  const masterDungeons = arrayValue(activity?.master_mode_dungeons);
+  const masterDungeonCount = resolvedMasterDungeonCount(
+    masterDungeons,
+    numericValue(season?.season_id),
+  );
   const section = profileSection("Progression & activities", "Latest observed progress");
   const facts = element("dl", "profile-facts");
   for (const [label, value] of [
@@ -564,13 +569,12 @@ function progressSection(body: JsonRecord): HTMLElement {
     ["Master score", resolvedMasterScore(body)],
     ["Weekly tower highest floor", weekly?.maximum_floor_id],
     ["Challenge dungeons", arrayValue(activity?.challenge_dungeons).length],
-    ["Master-mode dungeons", arrayValue(activity?.master_mode_dungeons).length],
+    ["Master-mode dungeons", masterDungeonCount],
     ["Combat professions", combatProfessions.length],
     ["Life professions", lifeProfessions.length],
     ["Reputations", arrayValue(body.reputations).length],
   ] as Array<[string, JsonValue | number | undefined]>) appendFact(facts, label, displayValue(value));
   section.append(facts);
-  const masterDungeons = arrayValue(activity?.master_mode_dungeons);
   if (masterDungeons.length) section.append(masterDungeonBreakdown(masterDungeons));
   return section;
 }
@@ -817,6 +821,35 @@ function masterDungeonRows(values: JsonValue[]): Map<number, MasterDungeonRow[]>
     seasonId,
     [...rows.values()].sort((left, right) => left.dungeonId - right.dungeonId).slice(0, 6),
   ]));
+}
+
+export function resolvedMasterDungeonCount(
+  values: JsonValue[],
+  currentSeason: number | undefined,
+): number {
+  const bySeason = new Map<number, Set<number>>();
+  for (const value of values) {
+    const entry = recordValue(value);
+    const dungeon = recordValue(entry?.dungeon);
+    const seasonId = numericValue(entry?.season_id);
+    const dungeonConfigId = numericValue(entry?.difficulty_id);
+    const masterDifficulty = numericValue(dungeon?.dungeon_id);
+    if (
+      seasonId == null
+      || dungeonConfigId == null
+      || masterDifficulty == null
+      || masterDifficulty < 1
+      || masterDifficulty > 20
+    ) continue;
+    const dungeonIds = bySeason.get(seasonId) ?? new Set<number>();
+    dungeonIds.add(dungeonConfigId);
+    bySeason.set(seasonId, dungeonIds);
+  }
+  if (!bySeason.size) return 0;
+  const selectedSeason = currentSeason != null && bySeason.has(currentSeason)
+    ? currentSeason
+    : Math.max(...bySeason.keys());
+  return Math.min(bySeason.get(selectedSeason)?.size ?? 0, 6);
 }
 
 function resolvedMasterScore(body: JsonRecord): number | undefined {
