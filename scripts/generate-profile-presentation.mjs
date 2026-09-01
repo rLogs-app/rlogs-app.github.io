@@ -364,8 +364,18 @@ const medals = Object.fromEntries(
     .map((medal) => [String(medal.Id), {
       name: medal.Name,
       description: medal.UnlockDes ?? null,
+      icon: copyNamedIcon(medal.Image, "medals"),
     }]),
 );
+const missingVisibleMedalIcons = Object.values(medalsTable)
+  .filter((medal) => Number.isInteger(medal.Id) && medal.Name && medal.IsHide !== 1 && medal.NotUnlock !== 1)
+  .filter((medal) => !medals[String(medal.Id)]?.icon)
+  .map((medal) => `${medal.Id}:${medal.Image || "no-image-key"}`);
+if (missingVisibleMedalIcons.length) {
+  throw new Error(
+    `Missing ${missingVisibleMedalIcons.length} visible medal icons: ${missingVisibleMedalIcons.join(", ")}`,
+  );
+}
 
 function materializeAchievementDescription(description, target) {
   if (typeof description !== "string") return null;
@@ -490,7 +500,7 @@ const output = path.join(websiteRoot, "public/data/bpsr/profile-presentation.en-
 mkdirSync(path.dirname(output), { recursive: true });
 writeFileSync(output, `${JSON.stringify(catalog)}\n`);
 console.log(`wrote ${output}`);
-console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes across ${Object.keys(talentTreeIndex).length} professions and ${Object.values(talentTreeIndex).reduce((sum, tree) => sum + tree.specializations.length, 0)} specializations, ${Object.keys(dungeons).length} dungeons, ${Object.keys(achievements).length} achievements, ${Object.keys(medals).length} medals, ${Object.keys(imagines).length} imagines; all sigil and talent-tree completeness gates passed`);
+console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes across ${Object.keys(talentTreeIndex).length} professions and ${Object.values(talentTreeIndex).reduce((sum, tree) => sum + tree.specializations.length, 0)} specializations, ${Object.keys(dungeons).length} dungeons, ${Object.keys(achievements).length} achievements, ${Object.keys(medals).length} medals, ${Object.keys(imagines).length} imagines; all sigil, visible-medal, and talent-tree completeness gates passed`);
 
 function cleanAttributeDescription(value) {
   if (typeof value !== "string") return undefined;

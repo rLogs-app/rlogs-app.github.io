@@ -2674,37 +2674,90 @@ footer {
   background: rgb(17 27 42 / 58%);
 }
 
-.profile-medal-collection > summary {
+.profile-medal-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
   padding: 10px 12px;
+}
+
+.profile-medal-heading strong {
   color: var(--accent);
-  cursor: pointer;
-  font-weight: 700;
+}
+
+.profile-medal-heading small {
+  color: var(--muted);
 }
 
 .profile-medal-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 8px;
-  max-height: 480px;
   padding: 8px;
-  overflow: auto;
   border-top: 1px solid var(--line);
 }
 
 .profile-medal-card {
   display: grid;
-  align-content: start;
-  gap: 4px;
-  padding: 11px 12px;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 68px;
+  padding: 8px;
   border: 1px solid rgb(32 49 73 / 55%);
   border-radius: 7px;
   background: linear-gradient(145deg, rgb(24 37 56 / 78%), rgb(8 16 27 / 64%));
+}
+
+.profile-medal-card.has-no-icon {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.profile-medal-icon {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+}
+
+.profile-medal-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.profile-medal-copy strong,
+.profile-medal-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .profile-medal-card small,
 .profile-medal-card span {
   color: var(--muted);
   font-size: 11px;
+}
+
+.profile-medal-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+}
+
+.profile-medal-more {
+  border-top: 1px solid var(--line);
+}
+
+.profile-medal-more > summary {
+  padding: 10px 12px;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.profile-medal-more > .profile-medal-list {
+  border-top: 1px solid var(--line);
 }
 
 .master-score-season {

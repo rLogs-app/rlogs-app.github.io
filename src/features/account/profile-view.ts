@@ -936,28 +936,48 @@ export function orderedMedalEntries(
   return entries;
 }
 
-function medalCollection(medals: OwnedMedalEntry[]): HTMLDetailsElement {
-  const details = element("details", "profile-medal-collection") as HTMLDetailsElement;
-  details.append(element("summary", "", `Owned badges · ${medals.length.toLocaleString()}`));
-  let rendered = false;
-  details.addEventListener("toggle", () => {
-    if (!details.open || rendered) return;
-    rendered = true;
-    const list = element("div", "profile-medal-list");
-    for (const medal of medals) {
-      const localized = presentation.medals[String(medal.id)];
-      const card = element("article", "profile-medal-card");
-      card.append(
-        element("strong", "", localized?.name ?? `Unlocalized medal ${medal.id}`),
-        element("small", "", medal.slot == null ? `Medal ${medal.id}` : `Display slot ${medal.slot}`),
-      );
-      const description = cleanMedalDescription(localized?.description);
-      if (description) card.append(element("span", "", description));
-      list.append(card);
+function medalCollection(medals: OwnedMedalEntry[]): HTMLElement {
+  const collection = element("div", "profile-medal-collection");
+  const heading = element("div", "profile-medal-heading");
+  heading.append(
+    element("strong", "", "Badge collection"),
+    element("small", "", `${medals.length.toLocaleString()} observed · in display order`),
+  );
+  const previewCount = 12;
+  collection.append(heading, medalList(medals.slice(0, previewCount)));
+  if (medals.length > previewCount) {
+    const more = element("details", "profile-medal-more") as HTMLDetailsElement;
+    more.append(
+      element("summary", "", `Show ${medals.length - previewCount} more badges`),
+      medalList(medals.slice(previewCount)),
+    );
+    collection.append(more);
+  }
+  return collection;
+}
+
+function medalList(medals: OwnedMedalEntry[]): HTMLElement {
+  const list = element("div", "profile-medal-list");
+  for (const medal of medals) {
+    const localized = presentation.medals[String(medal.id)];
+    const name = localized?.name ?? `Unlocalized medal ${medal.id}`;
+    const card = element("article", "profile-medal-card");
+    appendPresentationIcon(card, localized?.icon, name, "profile-medal-icon");
+    if (!card.querySelector(".profile-medal-icon")) card.classList.add("has-no-icon");
+    const copy = element("span", "profile-medal-copy");
+    copy.append(
+      element("strong", "", name),
+      element("small", "", medal.slot == null ? "Observed badge" : `Display slot ${medal.slot}`),
+    );
+    const description = cleanMedalDescription(localized?.description);
+    if (description) {
+      copy.append(element("span", "profile-medal-description", description));
+      card.title = `${name}\n${description}`;
     }
-    details.append(list);
-  });
-  return details;
+    card.append(copy);
+    list.append(card);
+  }
+  return list;
 }
 
 function cleanMedalDescription(value: string | null | undefined): string | undefined {

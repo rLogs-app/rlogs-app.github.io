@@ -36,7 +36,9 @@ describe("BPSR profile presentation catalog", () => {
     expect(catalog.medals["9040100"]).toEqual(expect.objectContaining({
       name: "Crimson Sky",
       description: "Obtain through the limited-time event \"Master's Trial: Dream Resonance.\"",
+      icon: "/assets/bpsr/profile/medals/personalzone_medal_icon_01_103.png",
     }));
+    expect(Object.values(catalog.medals).filter((medal) => medal.icon)).toHaveLength(179);
   });
 
   it("localizes every exact-build general and seasonal achievement", () => {
