@@ -4,7 +4,10 @@ import {
   isPublicProfileCatalog,
 } from "../../contracts/public-profiles";
 import { renderSyncedCharacterProfile } from "../account/profile-view";
-import { loadPublishedProfile } from "./published-profile-loader";
+import {
+  loadPublishedProfile,
+  loadPublishedProfileIndex,
+} from "./published-profile-loader";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
@@ -13,7 +16,7 @@ export async function mountProfileBrowser(): Promise<void> {
   const search = requiredInput("profile-search");
   const list = requiredElement("profile-browser-list");
   const detail = requiredElement("profile-browser-detail");
-  if (!apiBase) {
+  if (!apiBase && !import.meta.env.DEV) {
     status.textContent = "API unavailable";
     list.replaceChildren(message("The public profile API is not configured for this deployment."));
     return;
@@ -21,11 +24,33 @@ export async function mountProfileBrowser(): Promise<void> {
 
   let catalog: PublicProfileCatalog;
   try {
-    const response = await fetch(`${apiBase}/v1/profiles`);
-    if (!response.ok) throw new Error(`Profile catalog request failed with HTTP ${response.status}.`);
-    const value: unknown = await response.json();
-    if (!isPublicProfileCatalog(value)) throw new Error("The public profile catalog is invalid.");
-    catalog = value;
+    if (apiBase) {
+      const response = await fetch(`${apiBase}/v1/profiles`);
+      if (!response.ok) throw new Error(`Profile catalog request failed with HTTP ${response.status}.`);
+      const value: unknown = await response.json();
+      if (!isPublicProfileCatalog(value)) throw new Error("The public profile catalog is invalid.");
+      catalog = value;
+    } else {
+      const index = await loadPublishedProfileIndex();
+      catalog = {
+        schema_version: 1,
+        profiles: index.profiles.map((entry) => ({
+          profile_id: entry.profile_id,
+          claimed: false,
+          package_id: entry.source_package_id ?? "developer-fixture",
+          updated_unix_millis: entry.source_updated_unix_millis ?? entry.source_created_unix_millis ?? Date.now(),
+          source_client_build: entry.source_client_build ?? "developer-fixture",
+          deployment: entry.deployment,
+          region: entry.region,
+          realm: entry.realm ?? null,
+          world: entry.world ?? null,
+          character_id: entry.character_id,
+          display_name: entry.label,
+          module_inventory_count: 0,
+          equipped_module_count: 0,
+        })),
+      };
+    }
   } catch (error) {
     status.textContent = "Unavailable";
     list.replaceChildren(message(errorText(error)));
@@ -77,7 +102,7 @@ export async function mountProfileBrowser(): Promise<void> {
   detail.replaceChildren(message("Loading the latest verified character snapshot…"));
   try {
     const profile = await loadPublishedProfile(selected.profile_id);
-    detail.replaceChildren(renderSyncedCharacterProfile(profile));
+    detail.replaceChildren(await renderSyncedCharacterProfile(profile));
   } catch (error) {
     detail.replaceChildren(message(errorText(error)));
   }

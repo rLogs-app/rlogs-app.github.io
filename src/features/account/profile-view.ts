@@ -1,9 +1,15 @@
 import type { JsonValue } from "../../contracts/website-payload";
 import type { PublishedProfile } from "../profiles/published-profile-loader";
+import {
+  loadProfilePresentation,
+  type ProfilePresentationCatalog,
+} from "../profiles/profile-presentation";
 
 type JsonRecord = Record<string, JsonValue>;
+let presentation: ProfilePresentationCatalog;
 
-export function renderSyncedCharacterProfile(profile: PublishedProfile): HTMLElement {
+export async function renderSyncedCharacterProfile(profile: PublishedProfile): Promise<HTMLElement> {
+  presentation = await loadProfilePresentation();
   const body = profile.envelope.body;
   const root = element("article", "synced-character-profile");
   const heading = element("header", "character-profile-heading");
@@ -48,14 +54,17 @@ export function renderSyncedCharacterProfile(profile: PublishedProfile): HTMLEle
   const modules = recordValue(body.modules);
   const inventory = arrayValue(modules?.inventory);
   const equippedSlots = recordValue(modules?.equipped_slots);
+  const masterScore = resolvedMasterScore(body);
+  const meowluxScore = resolvedMeowluxScore(body);
   for (const [label, value] of [
     ["Level", displayValue(body.level)],
     ["Combat power", displayNumber(body.combat_power)],
     ["Season strength", displayNumber(body.season_strength)],
-    ["Master score", displayNumber(body.master_score)],
+    ["Master score", masterScore == null ? "—" : masterScore.toLocaleString()],
+    ["Meowlux score", meowluxScore == null ? "—" : meowluxScore.toLocaleString()],
     ["Equipment", String(arrayValue(body.equipment).length)],
     ["Modules", String(inventory.length)],
-    ["Imagines", String(arrayValue(body.owned_imagines).length)],
+    ["Imagines", String(Math.max(arrayValue(body.owned_imagines).length, arrayValue(body.battle_imagine_skills).length))],
   ]) {
     summary.append(stat(label, value));
   }
@@ -105,18 +114,43 @@ function equipmentSection(items: JsonValue[]): HTMLElement {
   for (const value of items) {
     const item = recordValue(value);
     if (!item) continue;
+    const itemId = numericValue(item.item_id);
+    const slotId = numericValue(item.slot_id);
+    const localized = itemId == null ? undefined : presentation.items[String(itemId)];
+    const slotName = slotId == null ? "Equipment" : presentation.equipment_slots[String(slotId)] ?? `Equipment slot ${slotId}`;
     const card = element("article", "profile-item-card");
+    appendPresentationIcon(card, localized?.icon, localized?.name ?? slotName, "profile-item-icon");
     card.append(
-      element("strong", "", `Slot ${displayValue(item.slot_id)}`),
-      element("span", "", `Item ${displayValue(item.item_id)}`),
+      element("small", "profile-item-kicker", slotName),
+      element("strong", "", localized?.name ?? `Unknown equipment ${displayValue(item.item_id)}`),
       element("small", "", joinFacts([
         pair("Level", item.level),
-        pair("Quality", item.quality),
-        pair("Refinement", item.refinement_level),
+        qualityLabel(item.quality),
+        pair("Refinement +", item.refinement_level),
         pair("Set", item.set_id),
       ])),
       element("small", "", equipmentAttributeSummary(item)),
     );
+    const enchantments = arrayValue(item.enchantments);
+    if (enchantments.length) {
+      const sigils = element("div", "profile-sigil-list");
+      for (const value of enchantments) {
+        const enchantment = recordValue(value);
+        if (!enchantment) continue;
+        const enchantmentId = numericValue(enchantment.enchantment_id);
+        const sigil = enchantmentId == null ? undefined : presentation.items[String(enchantmentId)];
+        const row = element("div", "profile-sigil-row");
+        appendPresentationIcon(row, sigil?.icon, sigil?.name ?? "Sigil", "profile-sigil-icon");
+        const copy = element("span");
+        copy.append(
+          element("strong", "", sigil?.name ?? `Unknown sigil ${displayValue(enchantment.enchantment_id)}`),
+          element("small", "", pair("Level", enchantment.level)),
+        );
+        row.append(copy);
+        sigils.append(row);
+      }
+      card.append(sigils);
+    }
     grid.append(card);
   }
   section.append(items.length ? grid : empty("No equipment was present in the latest synced snapshot."));
@@ -124,19 +158,33 @@ function equipmentSection(items: JsonValue[]): HTMLElement {
 }
 
 function imagineSection(owned: JsonValue[], skills: JsonValue[]): HTMLElement {
-  const equipped = owned.filter((value) => recordValue(value)?.equipped_slot != null).length;
-  const section = profileSection("Battle Imagines", `${owned.length} unlocked · ${equipped} equipped`);
-  const list = element("div", "profile-compact-list");
-  for (const value of owned) {
+  const records = skills.length ? skills : owned;
+  const equipped = records.filter((value) => recordValue(value)?.equipped_slot != null).length;
+  const section = profileSection("Battle Imagines", `${records.length} observed · ${equipped} equipped`);
+  const grid = element("div", "profile-item-grid profile-imagine-grid");
+  const sorted = [...records].sort((left, right) => Number(recordValue(right)?.equipped_slot != null) - Number(recordValue(left)?.equipped_slot != null));
+  for (const value of sorted) {
     const item = recordValue(value);
     if (!item) continue;
-    list.append(compactRow(
-      `Imagine ${displayValue(item.imagine_id)}`,
-      joinFacts([pair("Level", item.level), pair("Breakthrough", item.breakthrough_level), pair("Slot", item.equipped_slot)]),
-    ));
+    const skillId = numericValue(item.skill_id ?? item.base_skill_id);
+    const imagineId = numericValue(item.imagine_id);
+    const localized = skillId == null
+      ? Object.values(presentation.imagines).find((entry) => entry.item_id === imagineId)
+      : presentation.imagines[String(skillId)];
+    const card = element("article", "profile-item-card profile-imagine-card");
+    appendPresentationIcon(card, localized?.icon, localized?.name ?? "Battle Imagine", "profile-item-icon");
+    card.append(
+      element("strong", "", localized?.name ?? `Unknown Battle Imagine ${displayValue(item.imagine_id ?? item.skill_id)}`),
+      element("small", "", joinFacts([
+        localized?.item_tier == null ? "" : `Tier ${localized.item_tier}/${localized.maximum_tier ?? 5}`,
+        pair("Level", item.level),
+        pair("Breakthrough", item.breakthrough_level ?? item.remodel_level),
+        item.equipped_slot == null ? "" : `Equipped · Slot ${displayValue(item.equipped_slot)}`,
+      ])),
+    );
+    grid.append(card);
   }
-  if (skills.length) list.append(compactRow("Equipped Imagine skills", `${skills.length} synced skill records`));
-  section.append(owned.length || skills.length ? list : empty("No unlocked Imagine data was present in the latest snapshot."));
+  section.append(records.length ? grid : empty("No Battle Imagine data was present in the latest snapshot."));
   return section;
 }
 
@@ -152,10 +200,42 @@ function moduleSection(inventory: JsonValue[], slots: JsonRecord | undefined): H
   const list = element("div", "profile-compact-list");
   for (const [slot, instanceId] of equipped) {
     const module = byInstance.get(String(instanceId));
-    list.append(compactRow(
-      `Slot ${slot} · Module ${displayValue(module?.config_id)}`,
-      joinFacts([pair("Level", module?.level), pair("Quality", module?.quality), pair("Success", module?.success_rate, "%")]),
-    ));
+    const configId = numericValue(module?.config_id);
+    const localized = configId == null ? undefined : presentation.modules[String(configId)];
+    const row = element("article", "profile-module-row");
+    appendPresentationIcon(row, localized?.icon, localized?.name ?? "Module", "profile-module-icon");
+    const copy = element("div", "profile-module-copy");
+    const parts = arrayValue(module?.parts);
+    const totalLink = parts.reduce<number>((sum, value) => sum + Math.max(0, numericValue(recordValue(value)?.initial_link_points) ?? 0), 0);
+    copy.append(
+      element("strong", "", `Slot ${slot} · ${localized?.name ?? `Unknown module ${displayValue(module?.config_id)}`}`),
+      element("small", "", joinFacts([pair("Level", module?.level), qualityLabel(module?.quality), `${totalLink} Link total`, successRateLabel(module?.success_rate)])),
+    );
+    if (parts.length) {
+      const partList = element("div", "profile-module-parts");
+      for (const partValue of parts) {
+        const part = recordValue(partValue);
+        if (!part) continue;
+        const partId = numericValue(part.part_id);
+        const effect = partId == null ? undefined : presentation.module_effects[String(partId)];
+        const successfulUpgrades = partId == null ? 0 : arrayValue(module?.upgrade_records)
+          .map(recordValue)
+          .filter((record) => record?.part_id === partId && record.succeeded === true)
+          .length;
+        const effectLevel = resolvedModuleEffectLevel(effect?.levels, successfulUpgrades);
+        const chip = element("span", "profile-module-part");
+        appendPresentationIcon(chip, effect?.icon, effect?.name ?? "Module effect", "profile-module-part-icon");
+        chip.append(element("span", "", joinFacts([
+          effect?.name ?? `Effect ${displayValue(part.part_id)}`,
+          effectLevel > 0 ? `Lv. ${effectLevel}` : "Unleveled",
+          `${displayValue(part.initial_link_points)} Link`,
+        ])));
+        partList.append(chip);
+      }
+      copy.append(partList);
+    }
+    row.append(copy);
+    list.append(row);
   }
   section.append(equipped.length ? list : empty("No equipped modules were present in the latest snapshot."));
   const link = element("a", "profile-section-link", "Open this inventory in Module Optimizer →");
@@ -172,7 +252,18 @@ function skillsSection(body: JsonRecord): HTMLElement {
   const list = element("div", "profile-compact-list");
   for (const value of skills) {
     const skill = recordValue(value);
-    if (skill) list.append(compactRow(`Skill ${displayValue(skill.skill_id)}`, joinFacts([pair("Level", skill.level), pair("Remodel", skill.remodel_level)])));
+    if (!skill) continue;
+    const skillId = numericValue(skill.skill_id ?? skill.base_skill_id);
+    const localized = skillId == null ? undefined : presentation.skills[String(skillId)];
+    const row = element("div", "profile-skill-row");
+    appendPresentationIcon(row, localized?.icon, localized?.name ?? "Skill", "profile-skill-icon");
+    const copy = element("span");
+    copy.append(
+      element("strong", "", localized?.name ?? `Unknown skill ${displayValue(skill.skill_id)}`),
+      element("small", "", joinFacts([pair("Level", skill.level), pair("Remodel", skill.remodel_level)])),
+    );
+    row.append(copy);
+    list.append(row);
   }
   for (const value of talents) {
     const talent = recordValue(value);
@@ -189,6 +280,7 @@ function collectionsSection(body: JsonRecord): HTMLElement {
   const social = recordValue(body.social_display);
   const section = profileSection("Collections & appearance", "Privacy-reviewed unlock data");
   const facts = element("dl", "profile-facts");
+  appendFact(facts, "Meowlux score", resolvedMeowluxScore(body)?.toLocaleString() ?? "—");
   for (const [label, value] of [
     ["Fashion points", collection?.fashion_points],
     ["Mount points", collection?.mount_points],
@@ -210,14 +302,30 @@ function photoWallSection(body: JsonRecord): HTMLElement {
   const collection = recordValue(body.collection_summary);
   const photos = arrayValue(collection?.photo_ids);
   const wall = recordValue(collection?.photo_wall);
+  const assets = new Map(arrayValue(collection?.photo_assets).flatMap((value) => {
+    const asset = recordValue(value);
+    const photoId = asset == null ? undefined : numericValue(asset.photo_id);
+    return asset && photoId != null ? [[String(photoId), asset] as const] : [];
+  }));
   const placements = wall ? Object.entries(wall) : [];
   const section = profileSection("Photo Wall", `${photos.length} photos · ${placements.length} displayed`);
   const grid = element("div", "profile-item-grid photo-wall-grid");
   for (const [slot, photoId] of placements) {
     const card = element("article", "profile-item-card photo-wall-card");
+    const asset = assets.get(String(photoId));
+    const imageUrl = safeImageUrl(asset?.image_url ?? asset?.thumbnail_url);
+    if (imageUrl) {
+      const image = document.createElement("img");
+      image.className = "photo-wall-image";
+      image.src = imageUrl;
+      image.alt = stringValue(asset?.alt_text) ?? `Photo Wall image ${slot}`;
+      image.loading = "lazy";
+      image.referrerPolicy = "no-referrer";
+      card.append(image);
+    }
     card.append(
       element("strong", "", `Wall slot ${slot}`),
-      element("span", "", `Photo ${displayValue(photoId)}`),
+      imageUrl ? element("small", "", stringValue(asset?.caption) ?? "Published from the in-game Photo Wall") : element("span", "", `Photo ${displayValue(photoId)} · image not uploaded yet`),
     );
     grid.append(card);
   }
@@ -269,7 +377,7 @@ function progressSection(body: JsonRecord): HTMLElement {
   for (const [label, value] of [
     ["Season", season?.season_id],
     ["Season level", season?.level],
-    ["Master score", body.master_score],
+    ["Master score", resolvedMasterScore(body)],
     ["Weekly tower highest floor", weekly?.maximum_floor_id],
     ["Challenge dungeons", arrayValue(activity?.challenge_dungeons).length],
     ["Master-mode dungeons", arrayValue(activity?.master_mode_dungeons).length],
@@ -278,7 +386,37 @@ function progressSection(body: JsonRecord): HTMLElement {
     ["Reputations", arrayValue(body.reputations).length],
   ] as Array<[string, JsonValue | number | undefined]>) appendFact(facts, label, displayValue(value));
   section.append(facts);
+  const masterDungeons = arrayValue(activity?.master_mode_dungeons);
+  if (masterDungeons.length) section.append(masterDungeonBreakdown(masterDungeons));
   return section;
+}
+
+function masterDungeonBreakdown(values: JsonValue[]): HTMLElement {
+  const bySeason = masterDungeonRows(values);
+  const container = element("div", "master-score-seasons");
+  for (const [seasonId, rows] of [...bySeason.entries()].sort(([left], [right]) => right - left)) {
+    const details = element("details", "master-score-season");
+    if (seasonId === Math.max(...bySeason.keys())) details.open = true;
+    const total = rows.reduce((sum, row) => sum + row.score, 0);
+    details.append(element("summary", "", `Season ${seasonId} · ${total.toLocaleString()} Master Score`));
+    const table = element("div", "master-score-table");
+    table.append(masterScoreRow("Dungeon", "Best difficulty", "Score", "Best time", true));
+    for (const row of rows.sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))) {
+      table.append(masterScoreRow(row.name, String(row.difficultyId), row.score.toLocaleString(), formatDuration(row.passTime), false));
+    }
+    details.append(table);
+    container.append(details);
+  }
+  return container;
+}
+
+function masterScoreRow(dungeon: string, difficulty: string, score: string, time: string, heading: boolean): HTMLElement {
+  const row = element("div", heading ? "master-score-row master-score-heading" : "master-score-row");
+  row.append(element(heading ? "strong" : "span", "", dungeon));
+  row.append(element("span", "", difficulty));
+  row.append(element("span", "", score));
+  row.append(element("span", "", time));
+  return row;
 }
 
 function profileSection(titleText: string, subtitle: string): HTMLElement {
@@ -307,6 +445,102 @@ function equipmentAttributeSummary(item: JsonRecord): string {
   const count = ["base", "basic", "advanced", "recast", "rare_quality"]
     .reduce((sum, key) => sum + Object.keys(recordValue(attributes[key]) ?? {}).length, 0);
   return `${count} attributes · ${arrayValue(item.enchantments).length} enchantments`;
+}
+
+function appendPresentationIcon(target: HTMLElement, value: string | null | undefined, alt: string, className: string): void {
+  const url = safePresentationImageUrl(value);
+  if (!url) return;
+  const image = document.createElement("img");
+  image.className = className;
+  image.src = url;
+  image.alt = alt;
+  image.loading = "lazy";
+  target.append(image);
+}
+
+function qualityLabel(value: JsonValue | undefined): string {
+  const quality = numericValue(value);
+  if (quality == null) return "";
+  return presentation.quality_names[String(quality)] ?? `Quality ${quality}`;
+}
+
+function successRateLabel(value: JsonValue | undefined): string {
+  const basisPoints = numericValue(value);
+  if (basisPoints == null) return "";
+  return `Success ${(basisPoints / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+}
+
+function resolvedModuleEffectLevel(
+  levels: Array<{ level: number; enhancement_num: number }> | undefined,
+  successfulUpgrades: number,
+): number {
+  return (levels ?? []).reduce(
+    (current, row) => successfulUpgrades >= row.enhancement_num ? Math.max(current, row.level) : current,
+    0,
+  );
+}
+
+function resolvedMeowluxScore(body: JsonRecord): number | undefined {
+  const collection = recordValue(body.collection_summary);
+  const points = [collection?.fashion_points, collection?.mount_points, collection?.weapon_skin_points]
+    .map(numericValue)
+    .filter((value): value is number => value != null);
+  return points.length ? points.reduce((sum, value) => sum + value, 0) : undefined;
+}
+
+interface MasterDungeonRow {
+  dungeonId: number;
+  name: string;
+  difficultyId: number;
+  score: number;
+  passTime?: number;
+}
+
+function masterDungeonRows(values: JsonValue[]): Map<number, MasterDungeonRow[]> {
+  const seasons = new Map<number, Map<number, MasterDungeonRow>>();
+  for (const value of values) {
+    const entry = recordValue(value);
+    const dungeon = recordValue(entry?.dungeon);
+    const seasonId = numericValue(entry?.season_id);
+    const difficultyId = numericValue(entry?.difficulty_id);
+    const dungeonId = numericValue(dungeon?.dungeon_id);
+    if (seasonId == null || difficultyId == null || dungeonId == null) continue;
+    const score = Math.max(0, numericValue(dungeon?.score) ?? 0);
+    const passTime = numericValue(dungeon?.pass_time);
+    const season = seasons.get(seasonId) ?? new Map<number, MasterDungeonRow>();
+    const current = season.get(dungeonId);
+    if (!current || score > current.score || (score === current.score && passTime != null && (current.passTime == null || passTime < current.passTime))) {
+      season.set(dungeonId, {
+        dungeonId,
+        name: presentation.dungeons[String(dungeonId)]?.name ?? `Dungeon ${dungeonId}`,
+        difficultyId,
+        score,
+        passTime,
+      });
+    }
+    seasons.set(seasonId, season);
+  }
+  return new Map([...seasons].map(([seasonId, rows]) => [seasonId, [...rows.values()]]));
+}
+
+function resolvedMasterScore(body: JsonRecord): number | undefined {
+  const observed = numericValue(body.master_score);
+  if (observed != null) return observed;
+  const activity = recordValue(body.activity_progress);
+  const bySeason = masterDungeonRows(arrayValue(activity?.master_mode_dungeons));
+  if (!bySeason.size) return undefined;
+  const currentSeason = numericValue(recordValue(body.season)?.season_id);
+  const selectedSeason = currentSeason != null && bySeason.has(currentSeason)
+    ? currentSeason
+    : Math.max(...bySeason.keys());
+  return (bySeason.get(selectedSeason) ?? []).reduce((sum, row) => sum + row.score, 0);
+}
+
+function formatDuration(value: number | undefined): string {
+  if (value == null || value < 0) return "—";
+  const seconds = Math.round(value);
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function appendFact(target: HTMLDListElement, label: string, value: string): void {
@@ -343,6 +577,16 @@ function displayValue(value: JsonValue | number | undefined): string {
 
 function stringValue(value: JsonValue | undefined): string | undefined {
   return typeof value === "string" && value.length ? value : undefined;
+}
+
+function numericValue(value: JsonValue | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function safePresentationImageUrl(value: string | null | undefined): string | undefined {
+  if (typeof value !== "string" || value.length > 2_048) return undefined;
+  if (value.startsWith("/assets/")) return value;
+  return safeImageUrl(value);
 }
 
 function safeImageUrl(value: JsonValue | undefined): string | undefined {

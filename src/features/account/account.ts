@@ -317,7 +317,7 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
     section.append(loading);
     try {
       const profile = await loadPublishedProfile(selected.profile_id);
-      loading.replaceWith(renderSyncedCharacterProfile(profile));
+      loading.replaceWith(await renderSyncedCharacterProfile(profile));
     } catch (error) {
       loading.replaceWith(message(errorText(error)));
     }
