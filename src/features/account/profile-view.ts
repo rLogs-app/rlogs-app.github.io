@@ -367,8 +367,21 @@ const talentTreeMargin = 104;
 const talentTreeMinimumWidth = 920;
 
 export function calculateTalentTreeGeometry(nodes: TalentTreeNodeView[]): TalentTreeGeometry {
-  const minimumX = Math.min(...nodes.map((node) => node.x));
-  const maximumX = Math.max(...nodes.map((node) => node.x));
+  const stageCenters = new Map<number, number>();
+  for (const talentStage of new Set(nodes.map((node) => node.talentStage))) {
+    const stageNodes = nodes.filter((node) => node.talentStage === talentStage);
+    const stageMinimumX = Math.min(...stageNodes.map((node) => node.x));
+    const stageMaximumX = Math.max(...stageNodes.map((node) => node.x));
+    stageCenters.set(talentStage, (stageMinimumX + stageMaximumX) / 2);
+  }
+  // BPSR stores the shared foundation tree and the selected specialization in
+  // separate horizontal coordinate frames. Align their bounds centers before
+  // drawing while preserving every within-stage offset and connection.
+  const targetCenter = stageCenters.get(0) ?? stageCenters.values().next().value ?? 0;
+  const alignedX = (node: TalentTreeNodeView) =>
+    node.x - ((stageCenters.get(node.talentStage) ?? targetCenter) - targetCenter);
+  const minimumX = Math.min(...nodes.map(alignedX));
+  const maximumX = Math.max(...nodes.map(alignedX));
   const minimumY = Math.min(...nodes.map((node) => node.y));
   const maximumY = Math.max(...nodes.map((node) => node.y));
   const contentWidth = (maximumX - minimumX) * talentTreeCoordinateScale + talentTreeNodeSize;
@@ -381,7 +394,7 @@ export function calculateTalentTreeGeometry(nodes: TalentTreeNodeView[]): Talent
   );
   const horizontalOffset = (width - contentWidth) / 2;
   const coordinates = new Map(nodes.map((node) => [node.nodeId, {
-    x: Math.round((node.x - minimumX) * talentTreeCoordinateScale + horizontalOffset),
+    x: Math.round((alignedX(node) - minimumX) * talentTreeCoordinateScale + horizontalOffset),
     y: Math.round((node.y - minimumY) * talentTreeCoordinateScale + talentTreeMargin),
   }]));
   return {

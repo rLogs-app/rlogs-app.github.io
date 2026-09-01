@@ -132,6 +132,15 @@ describe("talent presentation", () => {
         expect(layout?.nodes, specialization.name).toHaveLength(90);
         expect(layout?.nodes.filter((node) => node.talentStage === 0), specialization.name).toHaveLength(30);
         expect(layout?.nodes.filter((node) => node.talentStage === 1), specialization.name).toHaveLength(60);
+        if (!layout) throw new Error(`Missing layout for ${specialization.name}`);
+        const geometry = calculateTalentTreeGeometry(layout.nodes);
+        const stageCenter = (talentStage: number) => {
+          const positions = layout.nodes
+            .filter((node) => node.talentStage === talentStage)
+            .map((node) => geometry.coordinates.get(node.nodeId)!.x);
+          return (Math.min(...positions) + Math.max(...positions)) / 2;
+        };
+        expect(stageCenter(1), specialization.name).toBeCloseTo(stageCenter(0), 0);
       }
     }
   });
@@ -148,6 +157,23 @@ describe("talent presentation", () => {
     expect(horizontal.x - first.x).toBe(vertical.y - first.y);
     expect(horizontal.x - first.x).toBeGreaterThan(geometry.nodeSize);
     expect(geometry.width).toBeGreaterThanOrEqual(920);
+  });
+
+  it("aligns foundation and specialization coordinate frames by their bounds centers", () => {
+    const geometry = calculateTalentTreeGeometry([
+      { nodeId: 1, talentId: 100, branch: 0, talentStage: 0, prerequisiteNodeIds: [], x: -240, y: 0, selected: true },
+      { nodeId: 2, talentId: 101, branch: 0, talentStage: 0, prerequisiteNodeIds: [1], x: 840, y: 240, selected: true },
+      { nodeId: 3, talentId: 102, branch: 1, talentStage: 1, prerequisiteNodeIds: [2], x: 1380, y: 480, selected: true },
+      { nodeId: 4, talentId: 103, branch: 1, talentStage: 1, prerequisiteNodeIds: [3], x: 3180, y: 720, selected: false },
+    ]);
+    const foundationCenter = (
+      geometry.coordinates.get(1)!.x + geometry.coordinates.get(2)!.x
+    ) / 2;
+    const specializationCenter = (
+      geometry.coordinates.get(3)!.x + geometry.coordinates.get(4)!.x
+    ) / 2;
+    expect(specializationCenter).toBe(foundationCenter);
+    expect(geometry.coordinates.get(4)!.x - geometry.coordinates.get(3)!.x).toBe(648);
   });
 });
 
