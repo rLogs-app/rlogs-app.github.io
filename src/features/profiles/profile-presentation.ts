@@ -22,6 +22,11 @@ export interface SigilLevelPresentation {
 }
 
 export interface ProfilePresentationCatalog {
+  schema_version?: number;
+  locale?: string;
+  game_build?: string;
+  source?: string;
+  source_item_table_sha256?: string;
   equipment_slots: Record<string, string>;
   quality_names: Record<string, string>;
   equipment_attributes: Record<string, PresentationRecord>;
@@ -39,7 +44,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=5`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=6`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {

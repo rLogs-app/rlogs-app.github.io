@@ -1,22 +1,26 @@
 #!/usr/bin/env node
 
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+const readJson = (file) => JSON.parse(readFileSync(file, "utf8"));
 const websiteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const rlogsRoot = path.resolve(websiteRoot, "../RLogs");
 const tableRoot = process.env.BPSR_TABLE_DATA_DIR
   ? path.resolve(process.env.BPSR_TABLE_DATA_DIR)
-  : path.join(rlogsRoot, "tmp-rdps-audit/external/BPSR-ZDPS/BPSR-ZDPS/Data");
+  : path.join(rlogsRoot, "Excels");
 const gameDataRoot = path.join(rlogsRoot, "plugins/games/blue-protocol-star-resonance/game-data");
+const runtimeManifest = readJson(path.join(gameDataRoot, "runtime/rdps-formula-runtime.v1.json"));
+const sourceBuildId = process.env.BPSR_TABLE_BUILD_ID ?? runtimeManifest.game_build;
 const talentCatalogRoot = path.join(gameDataRoot, "catalog/talents");
 const talentLocaleRoot = path.join(gameDataRoot, "catalog/localization/en-US/talents");
 const sourceIconRoot = path.join(rlogsRoot, "assets/blue-protocol-star-resonance/shared/icons");
 const publicIconRoot = path.join(websiteRoot, "public/assets/bpsr/profile");
 
-const readJson = (file) => JSON.parse(readFileSync(file, "utf8"));
-const itemsTable = readJson(path.join(tableRoot, "ItemTable.json"));
+const itemsTablePath = path.join(tableRoot, "ItemTable.json");
+const itemsTable = readJson(itemsTablePath);
 const skillsTable = readJson(path.join(tableRoot, "SkillTable.json"));
 const dungeonsTable = readJson(path.join(tableRoot, "DungeonsTable.json"));
 const moduleEffectsTable = readJson(path.join(tableRoot, "ModEffectTable.json"));
@@ -225,7 +229,9 @@ const localizedModuleEffects = Object.fromEntries(Object.entries(moduleEffects).
 const catalog = {
   schema_version: 1,
   locale: "en-US",
-  source: "BPSR Global Steam client localization and reviewed rLogs game-data catalogs",
+  game_build: sourceBuildId,
+  source: "Exact-build BPSR Global Steam client tables and reviewed rLogs game-data catalogs",
+  source_item_table_sha256: createHash("sha256").update(readFileSync(itemsTablePath)).digest("hex"),
   equipment_slots: {
     "200": "Weapon", "201": "Headwear", "202": "Armor", "203": "Gloves",
     "204": "Shoes", "205": "Earrings", "206": "Necklace", "207": "Ring",

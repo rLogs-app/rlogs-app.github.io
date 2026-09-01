@@ -16,6 +16,15 @@ const catalog = JSON.parse(
 ) as ProfilePresentationCatalog;
 
 describe("BPSR profile presentation catalog", () => {
+  it("is generated from the exact current-build game table instead of a parser snapshot", () => {
+    expect(catalog.game_build).toBe("24687926");
+    expect(catalog.source_item_table_sha256).toBe(
+      "a5807d7b028ab5fa90e76fb519aea77493c79637576471b2e458efddf1846f99",
+    );
+    expect(Object.keys(catalog.titles)).toHaveLength(599);
+    expect(catalog.titles["9062067"]?.name).toBe("Power from the Other Side");
+  });
+
   it("covers every reviewed sigil family and exact level with an image", () => {
     expect(Object.keys(catalog.sigils)).toHaveLength(107);
     expect(Object.values(catalog.sigils).flat()).toHaveLength(321);
