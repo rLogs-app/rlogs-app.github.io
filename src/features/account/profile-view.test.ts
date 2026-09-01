@@ -9,12 +9,22 @@ import {
   photoWallIdentityCount,
   resolvePublishedPhotoUrl,
   resolvedMasterDungeonCount,
+  talentPresentationFacts,
 } from "./profile-view";
 
 describe("Battle Imagine ownership presentation", () => {
   it("shows tier and equipped slot without the irrelevant character level", () => {
     expect(battleImagineOwnershipFacts(5, 7)).toBe("Tier 5 · Equipped · Slot 7");
     expect(battleImagineOwnershipFacts(5, undefined)).toBe("Tier 5");
+  });
+});
+
+describe("talent presentation", () => {
+  it("shows player-facing progression without leaking an internal tree-node ID", () => {
+    expect(talentPresentationFacts({ level: 1, node_id: 3_061 })).toBe("Level 1");
+    expect(talentPresentationFacts({ node_id: 3_061 })).toBe("");
+    expect(talentPresentationFacts({ level: 1, node_id: 3_061 })).not.toContain("3061");
+    expect(talentPresentationFacts({ level: 1, node_id: 3_061 })).not.toContain("Node");
   });
 });
 

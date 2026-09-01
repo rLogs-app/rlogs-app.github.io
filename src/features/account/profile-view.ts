@@ -294,16 +294,19 @@ function skillsSection(body: JsonRecord): HTMLElement {
     const row = element("div", "profile-skill-row");
     appendPresentationIcon(row, localized?.icon, localized?.name ?? "Talent", "profile-skill-icon");
     const copy = element("span");
-    copy.append(
-      element("strong", "", localized?.name ?? `Unknown talent ${displayValue(talentId ?? nodeId)}`),
-      element("small", "", joinFacts([pair("Level", talent.level), nodeId == null ? "" : `Node ${nodeId}`])),
-    );
+    copy.append(element("strong", "", localized?.name ?? `Unknown talent ${displayValue(talentId ?? nodeId)}`));
+    const facts = talentPresentationFacts(talent);
+    if (facts) copy.append(element("small", "", facts));
     row.append(copy);
     list.append(row);
   }
   if (actions.length) list.append(compactRow("Equipped action slots", `${actions.length} bindings`));
   section.append(list.childElementCount ? list : empty("No skill or talent data was present in the latest snapshot."));
   return section;
+}
+
+export function talentPresentationFacts(talent: { level?: JsonValue; node_id?: JsonValue }): string {
+  return pair("Level", talent.level);
 }
 
 function collectionsSection(body: JsonRecord): HTMLElement {
