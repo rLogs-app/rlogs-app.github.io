@@ -16,6 +16,11 @@ import type {
   SearchMode,
 } from "./optimizer-types";
 import { loadPublishedProfile } from "../profiles/published-profile-loader";
+import {
+  loadProfilePresentation,
+  type ProfilePresentationCatalog,
+} from "../profiles/profile-presentation";
+import { moduleCardModel, sortModuleInventory } from "./optimizer-presentation";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 const sessionKey = "rlogs.web-session.v1";
@@ -31,6 +36,8 @@ interface LinkedProfile {
 let inventory: ModuleCandidate[] = [];
 let currentInstanceIds: string[] = [];
 let catalog: OptimizerCatalog | undefined;
+let presentation: ProfilePresentationCatalog | undefined;
+let inventoryVisibleLimit = 80;
 let nextWorkerRequestId = 1;
 const pendingWorkerCalls = new Map<
   number,
@@ -69,9 +76,14 @@ optimizerWorker.addEventListener("error", (event) => {
 export async function mountModuleOptimizer(): Promise<void> {
   bindControls();
   try {
-    catalog = (await callWorker({ kind: "catalog" })) as OptimizerCatalog;
+    const [workerCatalog, presentationCatalog] = await Promise.all([
+      callWorker({ kind: "catalog" }) as Promise<OptimizerCatalog>,
+      loadProfilePresentation(),
+    ]);
+    catalog = workerCatalog;
+    presentation = presentationCatalog;
     renderCatalog(catalog);
-    setEngineState("valid", "Rust + WASM ready");
+    setEngineState("valid", "Optimizer ready");
     await loadSyncedInventory();
   } catch (error) {
     setEngineState("invalid", "Engine unavailable");
@@ -105,6 +117,21 @@ function bindControls(): void {
     "change",
     updateExactSearchAvailability,
   );
+  requiredElement<HTMLInputElement>("optimizer-inventory-search").addEventListener("input", () => {
+    inventoryVisibleLimit = 80;
+    renderInventoryBrowser();
+  });
+  requiredElement<HTMLSelectElement>("optimizer-inventory-family").addEventListener("change", () => {
+    inventoryVisibleLimit = 80;
+    renderInventoryBrowser();
+  });
+  requiredElement<HTMLButtonElement>("optimizer-inventory-more").addEventListener("click", () => {
+    inventoryVisibleLimit += 80;
+    renderInventoryBrowser();
+  });
+  requiredElement<HTMLDetailsElement>("optimizer-inventory-browser").addEventListener("toggle", (event) => {
+    if ((event.currentTarget as HTMLDetailsElement).open) renderInventoryBrowser();
+  });
 }
 
 async function loadSyncedInventory(): Promise<void> {
@@ -112,6 +139,13 @@ async function loadSyncedInventory(): Promise<void> {
   const picker = requiredElement<HTMLSelectElement>("optimizer-profile-select");
   const pickerLabel = picker.closest<HTMLLabelElement>(".optimizer-profile-picker");
   const session = activeSession();
+  const requestedProfile = new URLSearchParams(location.search).get("profile");
+  if (import.meta.env.DEV && requestedProfile) {
+    signIn.hidden = true;
+    if (pickerLabel) pickerLabel.hidden = true;
+    await loadPublishedInventory(requestedProfile);
+    return;
+  }
   if (!apiBase || !session) {
     signIn.hidden = false;
     if (pickerLabel) pickerLabel.hidden = true;
@@ -148,8 +182,7 @@ async function loadSyncedInventory(): Promise<void> {
       return option;
     }),
   );
-  const requested = new URLSearchParams(location.search).get("profile");
-  if (requested && profiles.some((profile) => profile.profile_id === requested)) picker.value = requested;
+  if (requestedProfile && profiles.some((profile) => profile.profile_id === requestedProfile)) picker.value = requestedProfile;
   if (pickerLabel) pickerLabel.hidden = profiles.length < 2;
   signIn.hidden = true;
   await loadPublishedInventory(picker.value);
@@ -162,6 +195,7 @@ async function loadPublishedInventory(profileId: string): Promise<void> {
     const input = extractOptimizerInput(published.envelope);
     inventory = input.modules;
     currentInstanceIds = input.currentInstanceIds;
+    renderInventoryPreview();
     setCombinationSizeForCurrentSetup();
     updateExactSearchAvailability();
     setInventoryStatus(
@@ -171,6 +205,7 @@ async function loadPublishedInventory(profileId: string): Promise<void> {
     setRunStatus("Choose attribute priorities, then optimize.");
     enableRun();
   } catch (error) {
+    requiredElement("optimizer-inventory-preview").hidden = true;
     setInventoryStatus(errorMessage(error), true);
     setRunStatus(`Could not load the UID ${profileId} inventory.`, true);
   }
@@ -311,7 +346,8 @@ function buildRequest(): OptimizeRequest {
 
 function renderCatalog(value: OptimizerCatalog): void {
   requiredElement("optimizer-catalog-revision").textContent =
-    `${value.catalog_revision} / build ${value.client_builds.join(", ")}`;
+    `Game build ${value.client_builds.map((build) => Number(build).toLocaleString("en-US")).join(", ")}`;
+  requiredElement("optimizer-catalog-revision").title = value.catalog_revision;
   const root = requiredElement("optimizer-attributes");
   root.replaceChildren(
     ...value.attributes.map((attribute) => attributeRow(attribute)),
@@ -322,23 +358,28 @@ function renderCatalog(value: OptimizerCatalog): void {
 function attributeRow(attribute: AttributeCatalogEntry): HTMLElement {
   const row = element("div", "optimizer-attribute-row");
   row.dataset.attributeId = String(attribute.id);
+  const localized = presentation?.module_effects[String(attribute.id)];
 
   const identity = element("div", "optimizer-attribute-name");
+  appendOptimizerIcon(identity, localized?.icon ?? attribute.icon, localized?.name ?? attribute.name, "optimizer-attribute-icon");
+  const copy = element("span", "optimizer-attribute-copy");
+  const thresholdCopy = attribute.thresholds.length
+    ? `Power steps at ${attribute.thresholds.join(", ")} Link`
+    : "No activation thresholds";
+  copy.append(
+    element("strong", "", localized?.name ?? attribute.name),
+    element("small", "", thresholdCopy),
+  );
   identity.append(
-    element("strong", "", attribute.name),
-    element(
-      "small",
-      "",
-      `${attribute.id} / ${attribute.thresholds.join("/")}`,
-    ),
+    copy,
   );
 
   const mode = element("select");
   mode.setAttribute("aria-label", `Scoring policy for ${attribute.name}`);
   for (const [value, label] of [
-    ["normal", "Normal"],
-    ["target", "Priority"],
-    ["exclude", "Ignore"],
+    ["normal", "Balanced"],
+    ["target", "Prioritize"],
+    ["exclude", "Exclude"],
   ]) {
     const option = element("option", "", label);
     option.value = value;
@@ -348,7 +389,7 @@ function attributeRow(attribute: AttributeCatalogEntry): HTMLElement {
   const minimum = element("input");
   minimum.type = "number";
   minimum.min = "0";
-  minimum.placeholder = "0";
+  minimum.placeholder = "Any";
   minimum.setAttribute("aria-label", `Minimum ${attribute.name}`);
   row.append(identity, mode, minimum);
   return row;
@@ -362,12 +403,12 @@ function renderResult(result: OptimizeResponse, durationMs: number): void {
   const actualDelta =
     currentIsComparable && current && top ? top.score - current.score : undefined;
   const metrics: Array<[string, string]> = [
-    [current ? formatNumber(current.score) : "—", "current actual"],
-    [top ? formatNumber(top.score) : "—", "top recommendation"],
-    [actualDelta == null ? "—" : formatSigned(actualDelta), "actual change"],
-    [top ? formatNumber(top.ranking_score) : "—", "preference score"],
-    [formatNumber(result.search.candidate_module_count), "candidates"],
-    [`${durationMs.toFixed(0)} ms`, "browser time"],
+    [current ? formatNumber(current.score) : "—", "current power"],
+    [top ? formatNumber(top.score) : "—", "best power"],
+    [actualDelta == null ? "—" : formatSigned(actualDelta), "improvement"],
+    [top ? formatNumber(top.ranking_score) : "—", "priority fit"],
+    [formatNumber(result.search.candidate_module_count), "eligible modules"],
+    [`${durationMs.toFixed(0)} ms`, "search time"],
   ];
   requiredElement("optimizer-metrics").replaceChildren(
     ...metrics.map(([value, label]) => {
@@ -382,16 +423,16 @@ function renderResult(result: OptimizeResponse, durationMs: number): void {
     (solution) => solutionSignature(solution) !== currentSignature,
   );
   const rows = recommendations.map((solution, index) =>
-    solutionRow(solution, `#${index + 1}`),
+    solutionCard(solution, `Recommendation ${index + 1}`, false, current?.score),
   );
-  if (current) rows.unshift(solutionRow(current, "Current", true));
+  if (current) rows.unshift(solutionCard(current, "Currently equipped", true, current.score));
   requiredElement("optimizer-result-rows").replaceChildren(...rows);
 
   requiredElement("optimizer-footnote").textContent =
-    `Actual power is always unweighted. Preference score is used only to order recommendations. ` +
-    `${result.solutions.length} solutions; ${formatNumber(result.search.total_combinations)} possible sets; ` +
-    `${formatNumber(result.search.evaluated_states)} states evaluated with ` +
-    `${result.search.exact ? "exact" : "bounded"} search. ${result.scoring_revision}.`;
+    `Calculated locally from ${formatNumber(result.search.candidate_module_count)} eligible modules. ` +
+    `${formatNumber(result.search.total_combinations)} possible sets; ` +
+    `${formatNumber(result.search.evaluated_states)} candidate states checked with ` +
+    `${result.search.exact ? "an exact" : "a fast bounded"} search.`;
   requiredElement("optimizer-result").hidden = false;
 }
 
@@ -399,53 +440,136 @@ function solutionSignature(solution: ModuleSolution): string {
   return [...solution.instance_ids].sort().join("\u0000");
 }
 
-function solutionRow(
+function solutionCard(
   solution: ModuleSolution,
   label: string,
   current = false,
-): HTMLTableRowElement {
-  const row = element("tr");
-  if (current) row.classList.add("optimizer-current-row");
-  const modules = element("td", "optimizer-module-ids");
-  for (const module of solution.modules) {
-    const line = element("span");
-    line.append(
-      element("strong", "", module.instance_id),
-      element(
-        "small",
-        "",
-        `config ${module.config_id}${module.quality == null ? "" : ` / Q${module.quality}`}`,
-      ),
-    );
-    modules.append(line);
+  currentScore?: number,
+): HTMLElement {
+  const card = element("article", current ? "optimizer-solution-card is-current" : "optimizer-solution-card");
+  const heading = element("header", "optimizer-solution-heading");
+  const identity = element("div");
+  identity.append(
+    element("span", current ? "optimizer-solution-kicker is-current" : "optimizer-solution-kicker", current ? "Your loadout" : "Suggested loadout"),
+    element("h4", "", label),
+  );
+  const score = element("div", "optimizer-solution-score");
+  score.append(
+    element("strong", "", formatNumber(solution.score)),
+    element("span", "", "Actual module power"),
+  );
+  if (!current && currentScore != null) {
+    score.append(element("small", "", `${formatSigned(solution.score - currentScore)} vs current`));
   }
-  const attributes = solution.breakdown.attributes
-    .filter((attribute) => attribute.total > 0)
-    .map((attribute) => {
+  heading.append(identity, score);
+
+  const modules = element("div", "optimizer-solution-modules");
+  for (const module of solution.modules) {
+    modules.append(moduleCard(module, currentInstanceIds.indexOf(module.instance_id) + 1 || undefined, true));
+  }
+  const attributes = element("div", "optimizer-solution-attributes");
+  for (const attribute of solution.breakdown.attributes.filter((entry) => entry.total > 0)) {
       const entry = catalog?.attributes.find(
         (candidate) => candidate.id === attribute.attribute_id,
       );
+      const localized = presentation?.module_effects[String(attribute.attribute_id)];
       const suffix =
         attribute.multiplier === 2
-          ? " (priority)"
+          ? " · Priority"
           : attribute.multiplier === 0
-            ? " (ignored for ranking)"
+            ? " · Excluded from ranking"
             : "";
-      return `${entry?.name ?? attribute.attribute_id}: ${attribute.total}${suffix}`;
-    })
-    .join(" / ");
-  row.append(
-    element("td", current ? "optimizer-current-label" : "", label),
-    element("td", "optimizer-score", formatNumber(solution.score)),
-    element(
-      "td",
-      "optimizer-ranking-score",
-      formatNumber(solution.ranking_score),
-    ),
-    modules,
-    element("td", "optimizer-attribute-summary", attributes),
+      const chip = element("span", "optimizer-result-effect");
+      appendOptimizerIcon(chip, localized?.icon ?? entry?.icon, localized?.name ?? entry?.name ?? "Module effect", "optimizer-result-effect-icon");
+      chip.append(element("span", "", `${localized?.name ?? entry?.name ?? "Unknown effect"} · ${attribute.total} Link${suffix}`));
+      attributes.append(chip);
+  }
+  const footer = element("div", "optimizer-solution-footer");
+  footer.append(
+    element("span", "", `${solution.breakdown.total_link_points} total Link`),
+    element("span", "", `Priority fit ${formatNumber(solution.ranking_score)}`),
   );
-  return row;
+  card.append(heading, modules, attributes, footer);
+  return card;
+}
+
+function renderInventoryPreview(): void {
+  if (!presentation) return;
+  const root = requiredElement("optimizer-inventory-preview");
+  root.hidden = false;
+  requiredElement("optimizer-inventory-count").textContent = `${formatNumber(inventory.length)} owned`;
+  const equippedById = new Map(currentInstanceIds.map((instanceId, index) => [instanceId, index + 1]));
+  const equipped = currentInstanceIds
+    .map((instanceId) => inventory.find((module) => module.instance_id === instanceId))
+    .filter((module): module is ModuleCandidate => module != null);
+  requiredElement("optimizer-equipped-cards").replaceChildren(
+    ...equipped.map((module) => moduleCard(module, equippedById.get(module.instance_id))),
+  );
+  requiredElement("optimizer-equipped-empty").hidden = equipped.length > 0;
+  inventoryVisibleLimit = 80;
+  if (requiredElement<HTMLDetailsElement>("optimizer-inventory-browser").open) renderInventoryBrowser();
+}
+
+function renderInventoryBrowser(): void {
+  if (!presentation || !inventory.length) return;
+  const search = requiredElement<HTMLInputElement>("optimizer-inventory-search").value.trim().toLocaleLowerCase("en-US");
+  const family = requiredElement<HTMLSelectElement>("optimizer-inventory-family").value;
+  const equippedIds = new Set(currentInstanceIds);
+  const matching = sortModuleInventory(inventory, presentation, equippedIds).filter((module) => {
+    const model = moduleCardModel(module, presentation!);
+    const familyMatches = family === "all" || model.name.toLocaleLowerCase("en-US").includes(family);
+    return familyMatches && (!search || model.searchText.includes(search));
+  });
+  const visible = matching.slice(0, inventoryVisibleLimit);
+  const equippedById = new Map(currentInstanceIds.map((instanceId, index) => [instanceId, index + 1]));
+  requiredElement("optimizer-inventory-cards").replaceChildren(
+    ...visible.map((module) => moduleCard(module, equippedById.get(module.instance_id))),
+  );
+  requiredElement("optimizer-inventory-visible").textContent = matching.length
+    ? `Showing ${formatNumber(visible.length)} of ${formatNumber(matching.length)} matching modules`
+    : "No modules match those filters.";
+  requiredElement<HTMLButtonElement>("optimizer-inventory-more").hidden = visible.length >= matching.length;
+}
+
+function moduleCard(module: ModuleCandidate, equippedSlot?: number, compact = false): HTMLElement {
+  if (!presentation) return element("article", "optimizer-module-card", "Module presentation unavailable");
+  const model = moduleCardModel(module, presentation);
+  const card = element("article", compact ? "optimizer-module-card is-compact" : "optimizer-module-card");
+  if (equippedSlot != null) card.classList.add("is-equipped");
+  const top = element("div", "optimizer-module-card-top");
+  const icon = element("div", "optimizer-module-card-icon-wrap");
+  appendOptimizerIcon(icon, model.icon, model.name, "optimizer-module-card-icon");
+  const copy = element("div", "optimizer-module-card-copy");
+  copy.append(
+    element("strong", "", model.name),
+    element("small", "", `${model.quality} · ${model.totalLink} total Link`),
+  );
+  top.append(icon, copy);
+  if (equippedSlot != null) top.append(element("span", "optimizer-equipped-badge", `Equipped · Slot ${equippedSlot}`));
+  const effects = element("div", "optimizer-module-card-effects");
+  for (const effect of model.effects) {
+    const row = element("span", "optimizer-module-effect");
+    appendOptimizerIcon(row, effect.icon, effect.name, "optimizer-module-effect-icon");
+    row.append(
+      element("strong", "", effect.name),
+      element("small", "", `${effect.link} Link`),
+    );
+    effects.append(row);
+  }
+  const copyLabel = element("span", "optimizer-module-copy-label", model.copyLabel);
+  copyLabel.title = `Exact module instance ${module.instance_id}`;
+  card.append(top, effects, copyLabel);
+  return card;
+}
+
+function appendOptimizerIcon(target: HTMLElement, value: string | null | undefined, alt: string, className: string): void {
+  if (!value || !/^\/assets\/bpsr\/profile\/[a-z0-9_./-]+\.png$/iu.test(value)) return;
+  const image = document.createElement("img");
+  image.src = value;
+  image.alt = alt;
+  image.className = className;
+  image.loading = "lazy";
+  target.append(image);
 }
 
 function setCombinationSizeForCurrentSetup(): void {
@@ -467,19 +591,19 @@ function updateExactSearchAvailability(): void {
     estimate.combinations > DEFAULT_EXACT_COMBINATION_LIMIT;
   exactOption.disabled = tooLarge;
   exactOption.textContent = tooLarge
-    ? "Exact verification (too many sets)"
-    : "Exact verification";
+    ? "Exact check (too many sets)"
+    : "Exact check";
   if (tooLarge && searchMode.value === "exact") {
     searchMode.value = "auto";
   }
   const help = requiredElement("optimizer-search-help");
   help.textContent =
     inventory.length === 0
-      ? "Exact verification is available for small inventories."
+      ? "Exact check is available for small inventories."
       : tooLarge
-        ? `Exact disabled: ${formatNumber(estimate.candidateCount)} eligible modules can produce ` +
-          `up to ${formatBigInt(estimate.combinations)} sets. Auto uses bounded search.`
-        : `Exact available for ${formatBigInt(estimate.combinations)} possible sets.`;
+        ? `${formatNumber(estimate.candidateCount)} eligible modules can produce ` +
+          `up to ${formatBigInt(estimate.combinations)} sets, so Automatic uses the fast search.`
+        : `Exact check is available for ${formatBigInt(estimate.combinations)} possible sets.`;
 }
 
 function estimateExactSearch(): {

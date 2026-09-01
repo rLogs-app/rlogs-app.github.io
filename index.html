@@ -169,10 +169,8 @@
 
         <article class="panel optimizer-workbench">
           <div class="optimizer-notice">
-            <strong>Your signed-in character supplies the synced module inventory.</strong>
-            Profile Sync publishes the privacy-reviewed module JSON with that UID.
-            Optimization itself runs as WebAssembly in your browser and sends no
-            additional search inputs, results, captures, credentials, or account data.
+            <strong>Your modules, optimized privately.</strong>
+            The inventory comes from your latest signed-in Profile Sync. Every search runs locally in this browser.
           </div>
 
           <div class="optimizer-source-bar">
@@ -186,6 +184,40 @@
             </p>
           </div>
 
+          <section id="optimizer-inventory-preview" class="optimizer-inventory-preview" hidden>
+            <div class="optimizer-inventory-heading">
+              <div>
+                <p class="eyebrow">Current loadout</p>
+                <h3>Equipped modules</h3>
+              </div>
+              <span id="optimizer-inventory-count" class="optimizer-inventory-count"></span>
+            </div>
+            <div id="optimizer-equipped-cards" class="optimizer-module-card-grid"></div>
+            <p id="optimizer-equipped-empty" class="empty-state">No equipped modules were present in this snapshot.</p>
+
+            <details id="optimizer-inventory-browser" class="optimizer-inventory-browser">
+              <summary>Browse full module inventory</summary>
+              <div class="optimizer-inventory-tools">
+                <label>
+                  <span>Search modules or effects</span>
+                  <input id="optimizer-inventory-search" type="search" placeholder="Try Life Wave or Attack Module" />
+                </label>
+                <label>
+                  <span>Module family</span>
+                  <select id="optimizer-inventory-family">
+                    <option value="all">All families</option>
+                    <option value="attack">Attack</option>
+                    <option value="support">Support</option>
+                    <option value="guard">Guard</option>
+                  </select>
+                </label>
+              </div>
+              <p id="optimizer-inventory-visible" class="optimizer-inventory-visible"></p>
+              <div id="optimizer-inventory-cards" class="optimizer-module-card-grid optimizer-inventory-card-grid"></div>
+              <button id="optimizer-inventory-more" class="button secondary optimizer-inventory-more" type="button" hidden>Show more modules</button>
+            </details>
+          </section>
+
           <div class="optimizer-layout">
             <div class="optimizer-settings-column">
               <div class="optimizer-settings">
@@ -197,29 +229,29 @@
                   </select>
                 </label>
                 <label class="optimizer-field">
-                  <span>Results</span>
+                  <span>Recommendations</span>
                   <input id="optimizer-result-count" type="number" min="1" max="60" value="10" />
                 </label>
                 <label class="optimizer-field">
                   <span>Search</span>
                   <select id="optimizer-search-mode">
-                    <option value="auto">Auto</option>
-                    <option value="beam">Bounded beam</option>
-                    <option value="exact">Exact verification (small inventories)</option>
+                    <option value="auto">Automatic (recommended)</option>
+                    <option value="beam">Fast search</option>
+                    <option value="exact">Exact check (small inventories)</option>
                   </select>
                   <small id="optimizer-search-help" class="optimizer-search-help">
-                    Exact verification is available for small inventories.
+                    Exact check is available for small inventories.
                   </small>
                 </label>
                 <label class="optimizer-field">
-                  <span>Minimum module total</span>
-                  <input id="optimizer-min-total" type="number" min="0" placeholder="none" />
+                  <span>Minimum Link per module</span>
+                  <input id="optimizer-min-total" type="number" min="0" placeholder="No minimum" />
                 </label>
               </div>
 
               <label class="optimizer-check">
                 <input id="optimizer-require-target" type="checkbox" />
-                Only consider modules containing a priority attribute
+                Only use modules containing a prioritized effect
               </label>
 
               <div class="optimizer-run-bar">
@@ -232,28 +264,26 @@
               </div>
 
               <div class="optimizer-engine-note">
-                <span>Rust crate</span>
-                <span aria-hidden="true">&rarr;</span>
-                <span>WebAssembly worker</span>
-                <span aria-hidden="true">&rarr;</span>
-                <span>Browser results</span>
+                <span>Private local search</span>
+                <span aria-hidden="true">·</span>
+                <span>No inventory re-upload</span>
               </div>
             </div>
 
             <div class="optimizer-attribute-column">
               <div class="optimizer-attribute-heading">
                 <div>
-                  <strong>Attribute policy</strong>
-                  <small>Preferences affect ranking only; actual power remains unweighted.</small>
+                  <strong>Effects to prioritize</strong>
+                  <small>Priorities reorder recommendations without changing their real module power.</small>
                 </div>
                 <span id="optimizer-catalog-revision" class="optimizer-revision">
                   Loading catalog...
                 </span>
               </div>
               <div class="optimizer-attribute-labels" aria-hidden="true">
-                <span>Attribute</span>
-                <span>Scoring</span>
-                <span>Minimum</span>
+                <span>Module effect</span>
+                <span>Preference</span>
+                <span>Minimum Link</span>
               </div>
               <div id="optimizer-attributes" class="optimizer-attributes">
                 <p class="empty-state">Loading exact-build attributes.</p>
@@ -263,20 +293,14 @@
 
           <div id="optimizer-result" class="optimizer-result" hidden>
             <div id="optimizer-metrics" class="optimizer-result-metrics"></div>
-            <div class="optimizer-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Set</th>
-                    <th>Actual power</th>
-                    <th>Preference score</th>
-                    <th>Module instance IDs</th>
-                    <th>Attribute totals</th>
-                  </tr>
-                </thead>
-                <tbody id="optimizer-result-rows"></tbody>
-              </table>
+            <div class="optimizer-result-heading">
+              <div>
+                <p class="eyebrow">Loadout comparison</p>
+                <h3>Recommendations</h3>
+              </div>
+              <p>Actual module power stays exact. Preferences only decide which equally valid results appear first.</p>
             </div>
+            <div id="optimizer-result-rows" class="optimizer-solution-list"></div>
             <p id="optimizer-footnote" class="optimizer-footnote"></p>
           </div>
         </article>
