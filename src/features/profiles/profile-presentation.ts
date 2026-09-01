@@ -26,11 +26,13 @@ export interface ProfilePresentationCatalog {
   module_effects: Record<string, PresentationRecord>;
 }
 
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json`;
+// The query revision is part of the schema contract. Changing it prevents an
+// older immutable browser/CDN response from being paired with newer UI code.
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=2`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
-  request ??= fetch(catalogUrl, { cache: "force-cache" })
+  request ??= fetch(catalogUrl, { cache: "no-cache" })
     .then(async (response) => {
       if (!response.ok) {
         throw new Error(`BPSR localization catalog request failed with HTTP ${response.status}.`);
