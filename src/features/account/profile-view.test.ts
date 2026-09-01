@@ -14,6 +14,7 @@ import {
   resolveEquippedSkillSlots,
   resolveEquippedRoleSkillSlots,
   resolvePublishedPhotoUrl,
+  resolvedSocialCollectionEvidence,
   resolvedMasterDungeonCount,
   resolveTalentTreeLayout,
   talentPresentationFacts,
@@ -209,6 +210,22 @@ describe("equipment attribute values", () => {
       [{ minimum: 600, maximum: 600 }],
       100,
     )).toBe("Grants 6% PHY Boost bonus while Focus is active.");
+  });
+});
+
+describe("profile collection evidence labels", () => {
+  it("does not present missing guild or partial title observations as complete totals", () => {
+    expect(resolvedSocialCollectionEvidence(undefined)).toEqual({
+      guild: "Awaiting live observation",
+      observedTitleCount: 0,
+    });
+    expect(resolvedSocialCollectionEvidence({
+      guild_name: "Public Guild",
+      title_ids: [9_061_163],
+    })).toEqual({
+      guild: "Public Guild",
+      observedTitleCount: 1,
+    });
   });
 });
 

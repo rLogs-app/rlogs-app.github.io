@@ -704,10 +704,11 @@ function collectionsSection(body: JsonRecord): HTMLElement {
   const appearance = recordValue(body.appearance);
   const collection = recordValue(body.collection_summary);
   const social = recordValue(body.social_display);
+  const socialEvidence = resolvedSocialCollectionEvidence(social);
   const equippedTitleId = social?.equipped_title_id ?? arrayValue(social?.title_ids)[0];
   const equippedTitle = equippedTitleId == null ? undefined : presentation.titles[String(equippedTitleId)];
   const medals = orderedMedalEntries(social?.medal_ids, social?.medal_slots);
-  const section = profileSection("Collections & appearance", "Privacy-reviewed unlock data");
+  const section = profileSection("Collections & appearance", "Latest verified observations");
   const facts = element("dl", "profile-facts");
   appendFact(facts, "Meowlux score", resolvedMeowluxScore(body)?.toLocaleString() ?? "—");
   for (const [label, value] of [
@@ -719,15 +720,31 @@ function collectionsSection(body: JsonRecord): HTMLElement {
     ["Mounts owned", arrayValue(collection?.owned_mount_ids).length],
     ["Weapon skins owned", arrayValue(collection?.owned_weapon_skin_ids).length],
     ["Vanity pets", arrayValue(collection?.vanity_pet_ids).length],
-    ["Guild", social?.guild_name ?? social?.guild_id],
-    ["Titles", arrayValue(social?.title_ids).length],
+    ["Guild", socialEvidence.guild],
+    ["Titles observed", socialEvidence.observedTitleCount],
     ["Equipped title", equippedTitle?.name ?? equippedTitleId],
     ["Equipped title level", social?.equipped_title_level],
     ["Medals", medals.length],
   ] as Array<[string, JsonValue | number | undefined]>) appendFact(facts, label, displayValue(value));
-  section.append(facts);
+  section.append(
+    facts,
+    element(
+      "small",
+      "profile-observation-note",
+      "Missing collection values are not treated as zero. Counts include only ownership confirmed by live profile packets.",
+    ),
+  );
   if (medals.length) section.append(medalCollection(medals));
   return section;
+}
+
+export function resolvedSocialCollectionEvidence(
+  social: JsonRecord | undefined,
+): { guild: string; observedTitleCount: number } {
+  return {
+    guild: displayValue(social?.guild_name ?? social?.guild_id ?? "Awaiting live observation"),
+    observedTitleCount: arrayValue(social?.title_ids).length,
+  };
 }
 
 interface OwnedMedalEntry {
