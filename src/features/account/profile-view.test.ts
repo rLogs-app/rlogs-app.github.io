@@ -6,6 +6,7 @@ import {
   interpolateEquipmentAttributeValue,
   materializeEquipmentBuffDescription,
   orderedMedalEntries,
+  photoWallIdentityCount,
   resolvePublishedPhotoUrl,
 } from "./profile-view";
 
@@ -40,6 +41,12 @@ describe("equipment attribute values", () => {
 });
 
 describe("published Photo Wall URLs", () => {
+  it("counts displayed wall identities even when the album list is absent", () => {
+    expect(photoWallIdentityCount([], { "1": 1 })).toBe(1);
+    expect(photoWallIdentityCount([1, 2, 2], { "1": 1, "2": 3 })).toBe(3);
+    expect(photoWallIdentityCount([0, -1, "invalid"], { "1": 0 })).toBe(0);
+  });
+
   it("resolves only the server-owned public Photo Wall route", () => {
     expect(
       resolvePublishedPhotoUrl(

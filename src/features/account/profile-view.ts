@@ -409,7 +409,11 @@ function photoWallSection(body: JsonRecord): HTMLElement {
     return asset && photoId != null ? [[String(photoId), asset] as const] : [];
   }));
   const placements = wall ? Object.entries(wall) : [];
-  const section = profileSection("Photo Wall", `${photos.length} photos · ${placements.length} displayed`);
+  const photoCount = photoWallIdentityCount(photos, wall);
+  const section = profileSection(
+    "Photo Wall",
+    `${photoCount.toLocaleString()} ${photoCount === 1 ? "photo" : "photos"} · ${placements.length.toLocaleString()} displayed`,
+  );
   const grid = element("div", "profile-item-grid photo-wall-grid");
   for (const [slot, photoId] of placements) {
     const card = element("article", "profile-item-card photo-wall-card");
@@ -438,6 +442,22 @@ function photoWallSection(body: JsonRecord): HTMLElement {
       : empty("No Photo Wall placement was present in the latest synced snapshot."),
   );
   return section;
+}
+
+export function photoWallIdentityCount(
+  photoIds: JsonValue[],
+  wall: JsonRecord | undefined,
+): number {
+  const identities = new Set<number>();
+  for (const value of photoIds) {
+    const photoId = numericValue(value);
+    if (photoId != null && photoId > 0) identities.add(photoId);
+  }
+  for (const value of Object.values(wall ?? {})) {
+    const photoId = numericValue(value);
+    if (photoId != null && photoId > 0) identities.add(photoId);
+  }
+  return identities.size;
 }
 
 function achievementSection(body: JsonRecord): HTMLElement {
