@@ -12,11 +12,21 @@ export interface PresentationRecord {
   levels?: Array<{ level: number; enhancement_num: number }>;
 }
 
+export interface SigilLevelPresentation {
+  level: number;
+  item_id: number;
+  name: string;
+  icon?: string | null;
+  quality?: number | null;
+  effects: Array<{ attribute_id: number; name: string; value: number }>;
+}
+
 export interface ProfilePresentationCatalog {
   equipment_slots: Record<string, string>;
   quality_names: Record<string, string>;
   equipment_attributes: Record<string, PresentationRecord>;
   items: Record<string, PresentationRecord>;
+  sigils: Record<string, SigilLevelPresentation[]>;
   titles: Record<string, PresentationRecord>;
   skills: Record<string, PresentationRecord>;
   talents: Record<string, PresentationRecord>;
@@ -29,7 +39,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=3`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=4`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -52,6 +62,7 @@ function isCatalog(value: unknown): value is ProfilePresentationCatalog {
     "quality_names",
     "equipment_attributes",
     "items",
+    "sigils",
     "titles",
     "skills",
     "talents",

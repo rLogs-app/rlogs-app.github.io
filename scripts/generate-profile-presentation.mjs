@@ -22,6 +22,11 @@ const dungeonsTable = readJson(path.join(tableRoot, "DungeonsTable.json"));
 const moduleEffectsTable = readJson(path.join(tableRoot, "ModEffectTable.json"));
 const equipmentAttributesTable = readJson(path.join(tableRoot, "EquipAttrLibTable.json"));
 const equipmentSchoolAttributesTable = readJson(path.join(tableRoot, "EquipAttrSchoolLibTable.json"));
+const enchantmentItemsTable = readJson(
+  existsSync(path.join(tableRoot, "EquipEnchantItemTable.json"))
+    ? path.join(tableRoot, "EquipEnchantItemTable.json")
+    : path.join(rlogsRoot, "Excels/EquipEnchantItemTable.json"),
+);
 const fightAttributesTable = readJson(path.join(tableRoot, "FightAttrTable.json"));
 const attributeDescriptionsTable = readJson(path.join(tableRoot, "AttrDescription.json"));
 const imaginePresentation = readJson(path.join(gameDataRoot, "runtime/battle-imagine-presentation.v1.json"));
@@ -83,6 +88,43 @@ const equipmentAttributes = Object.fromEntries(
       }];
     }),
 );
+
+const sigils = {};
+for (const row of Object.values(enchantmentItemsTable)) {
+  if (!Number.isInteger(row.EnchantItemTypeId) || !Number.isInteger(row.EnchantItemLevel)) continue;
+  const baseItem = itemsTable[String(row.EnchantItemTypeId)];
+  const levelItem = itemsTable[String(row.Id)];
+  if (
+    baseItem?.Type !== 102 ||
+    levelItem?.Type !== 102 ||
+    typeof baseItem.Icon !== "string" ||
+    !baseItem.Icon.toLowerCase().startsWith("item_icons_enchantformula")
+  ) continue;
+  const effects = (row.EnchantItemEffect ?? []).map((effect, index) => {
+    const attributeId = Array.isArray(effect) ? effect[1] : undefined;
+    const attribute = fightAttributeByMemberId.get(attributeId);
+    const value = Array.isArray(row.EnchantItemPar?.[index]) ? row.EnchantItemPar[index][0] : undefined;
+    return {
+      attribute_id: attributeId,
+      name: attribute?.OfficialName ?? cleanAttributeDescription(attributeDescriptionsTable[String(attributeId)]?.Description) ?? `Attribute ${attributeId}`,
+      value,
+    };
+  }).filter((effect) => Number.isInteger(effect.attribute_id) && Number.isFinite(effect.value));
+  (sigils[String(row.EnchantItemTypeId)] ??= []).push({
+    level: row.EnchantItemLevel,
+    item_id: row.Id,
+    name: levelItem.Name,
+    quality: levelItem.Quality,
+    icon: copyNamedIcon(levelItem.Icon, "items"),
+    effects,
+  });
+}
+for (const levels of Object.values(sigils)) levels.sort((left, right) => left.level - right.level);
+const missingSigilLevelIcons = Object.entries(sigils)
+  .flatMap(([baseId, levels]) => levels.filter((level) => !level.icon).map((level) => `${baseId}:level-${level.level}`));
+if (missingSigilLevelIcons.length) {
+  throw new Error(`Missing ${missingSigilLevelIcons.length} leveled sigil icons: ${missingSigilLevelIcons.join(", ")}`);
+}
 
 const skills = Object.fromEntries(
   Object.values(skillsTable)
@@ -192,6 +234,7 @@ const catalog = {
   quality_names: { "1": "Common", "2": "Uncommon", "3": "Rare", "4": "Epic", "5": "Legendary" },
   equipment_attributes: equipmentAttributes,
   items,
+  sigils,
   titles,
   skills,
   talents,
@@ -206,7 +249,7 @@ const output = path.join(websiteRoot, "public/data/bpsr/profile-presentation.en-
 mkdirSync(path.dirname(output), { recursive: true });
 writeFileSync(output, `${JSON.stringify(catalog)}\n`);
 console.log(`wrote ${output}`);
-console.log(`${Object.keys(items).length} items, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes, ${Object.keys(dungeons).length} dungeons, ${Object.keys(imagines).length} imagines; all sigil icons present`);
+console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes, ${Object.keys(dungeons).length} dungeons, ${Object.keys(imagines).length} imagines; all sigil icons present`);
 
 function cleanAttributeDescription(value) {
   if (typeof value !== "string") return undefined;

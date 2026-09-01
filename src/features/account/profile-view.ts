@@ -141,14 +141,21 @@ function equipmentSection(items: JsonValue[]): HTMLElement {
         const enchantment = recordValue(value);
         if (!enchantment) continue;
         const enchantmentId = numericValue(enchantment.enchantment_id);
+        const level = numericValue(enchantment.level);
         const sigil = enchantmentId == null ? undefined : presentation.items[String(enchantmentId)];
+        const sigilLevel = enchantmentId == null || level == null
+          ? undefined
+          : presentation.sigils[String(enchantmentId)]?.find((entry) => entry.level === level);
         const row = element("div", "profile-sigil-row");
-        appendPresentationIcon(row, sigil?.icon, sigil?.name ?? "Sigil", "profile-sigil-icon");
+        appendPresentationIcon(row, sigilLevel?.icon ?? sigil?.icon, sigilLevel?.name ?? sigil?.name ?? "Sigil", "profile-sigil-icon");
         const copy = element("span");
         copy.append(
-          element("strong", "", sigil?.name ?? `Unknown sigil ${displayValue(enchantment.enchantment_id)}`),
-          element("small", "", joinFacts([qualityLabel(sigil?.quality), pair("Roll level", enchantment.level)])),
+          element("strong", "", sigilLevel?.name ?? sigil?.name ?? `Unknown sigil ${displayValue(enchantment.enchantment_id)}`),
+          element("small", "", joinFacts([qualityLabel(sigilLevel?.quality ?? sigil?.quality), pair("Sigil level", enchantment.level)])),
         );
+        for (const effect of sigilLevel?.effects ?? []) {
+          copy.append(element("small", "", `${effect.name} +${effect.value.toLocaleString()}`));
+        }
         row.append(copy);
         sigils.append(row);
       }
