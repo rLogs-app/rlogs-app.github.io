@@ -170,7 +170,7 @@ async function fetchTyped<T>(url: string, guard: (value: unknown) => value is T)
   return value;
 }
 
-function renderCatalogEntry(entry: PublicParseCatalogEntry): string {
+export function renderCatalogEntry(entry: PublicParseCatalogEntry): string {
   const difficulty = [title(entry.difficulty_family), entry.difficulty_tier ? ` ${entry.difficulty_tier}` : ""]
     .join("")
     .trim();
@@ -186,7 +186,7 @@ function renderCatalogEntry(entry: PublicParseCatalogEntry): string {
   </button>`;
 }
 
-function renderReport(
+export function renderReport(
   report: PublicParseReport,
   runIndex: number,
   reconciliation: PublicRunReconciliation | null,

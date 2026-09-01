@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isPublicParseCatalog,
+  isMyParseCatalog,
   isPublicParseReport,
   isPublicRunReconciliation,
   validateReportId,
@@ -43,11 +44,34 @@ describe("public parse contract", () => {
     ).toBe(true);
     expect(
       isPublicParseReport({
-        schema_version: 6,
+        schema_version: 7,
         report_id: `rpt_${"ab".repeat(16)}`,
         visibility: "unlisted",
         verification: { tier: "replayed" },
         runs: [],
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts authenticated My Parses membership without making it a public catalog", () => {
+    expect(
+      isMyParseCatalog({
+        schema_version: 1,
+        total_entries: 1,
+        offset: 0,
+        next_offset: null,
+        claimed_character_ids: ["3296036"],
+        entries: [
+          {
+            report_id: `rpt_${"ab".repeat(16)}`,
+            run_index: 0,
+            region_id: "global",
+            terminal_state: "completed",
+            visibility: "unlisted",
+            submitted_by_you: false,
+            matched_character_ids: ["3296036"],
+          },
+        ],
       }),
     ).toBe(true);
   });

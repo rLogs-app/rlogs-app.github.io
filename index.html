@@ -16,6 +16,7 @@
         const pages = {
           "/": "home",
           "/parses": "parses",
+          "/my-parses": "my-parses",
           "/profiles": "profiles",
           "/account": "account",
           "/optimizer": "optimizer",
@@ -38,6 +39,7 @@
       <nav aria-label="Primary navigation">
         <a href="/" data-nav-page="home">Home</a>
         <a href="/parses/" data-nav-page="parses">Parses</a>
+        <a href="/my-parses/" data-nav-page="my-parses" data-my-parses-nav hidden>My Parses</a>
         <a href="/profiles/" data-nav-page="profiles">Profiles</a>
         <a href="/account/" data-nav-page="account" data-account-nav>Account</a>
         <a href="/optimizer/" data-nav-page="optimizer">Module Optimizer</a>
@@ -153,6 +155,33 @@
           </div>
           <div id="parse-list" class="parse-list"><p class="empty-state">Loading submitted parses…</p></div>
           <div id="parse-detail" class="parse-detail" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section id="my-parses" class="content-section parse-section" data-page="my-parses">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Your verified combat history</p>
+            <h2>My Parses</h2>
+          </div>
+          <span id="my-parse-status" class="status-chip neutral" role="status">Checking account…</span>
+        </div>
+        <p class="section-intro">
+          Reports you submitted and reports containing one of your live-claimed character UIDs.
+          Unlisted reports stay out of public feeds; private reports remain visible only to their submitter.
+        </p>
+        <article id="my-parse-sign-in" class="panel account-panel" hidden>
+          <h3>Sign in to view your parses</h3>
+          <p>My Parses uses your claimed UIDs on the server. The browser cannot add or impersonate a UID.</p>
+          <a class="button primary" href="/account/">Sign in with Discord</a>
+        </article>
+        <div id="my-parse-browser" class="my-parse-browser" hidden>
+          <label class="parse-search my-parse-search">
+            <span>Search my parses</span>
+            <input id="my-parse-search" type="search" placeholder="Scene, character UID, visibility, or report ID" />
+          </label>
+          <div id="my-parse-list" class="parse-list"><p class="empty-state">Loading your parses…</p></div>
+          <div id="my-parse-detail" class="parse-detail" aria-live="polite"></div>
         </div>
       </section>
 

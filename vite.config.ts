@@ -2,7 +2,7 @@ import { copyFile, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
-const pageRoutes = ["parses", "profiles", "account", "optimizer"] as const;
+const pageRoutes = ["parses", "my-parses", "profiles", "account", "optimizer"] as const;
 
 function publishPageRoutes(): Plugin {
   return {

@@ -30,6 +30,21 @@ export interface PublicParseCatalogEntry {
   participant_count: number;
 }
 
+export interface MyParseCatalog {
+  schema_version: 1;
+  total_entries: number;
+  offset: number;
+  next_offset?: number | null;
+  claimed_character_ids: string[];
+  entries: MyParseCatalogEntry[];
+}
+
+export interface MyParseCatalogEntry extends PublicParseCatalogEntry {
+  visibility: "public" | "unlisted" | "private";
+  submitted_by_you: boolean;
+  matched_character_ids: string[];
+}
+
 export type RunAttributionReconciliationStatus =
   | "single_vantage"
   | "multiple_reports_no_additional_vantage"
@@ -57,9 +72,9 @@ export interface SceneFacetValue {
 }
 
 export interface PublicParseReport {
-  schema_version: 6;
+  schema_version: 6 | 7;
   report_id: string;
-  visibility: "public" | "unlisted";
+  visibility: "public" | "unlisted" | "private";
   created_unix_millis: number;
   game_plugin_id: string;
   deployment_id: string;
@@ -139,7 +154,7 @@ export interface PublicParticipant {
 }
 
 export interface PublicRunReconciliation {
-  schema_version: 5 | 6;
+  schema_version: 5 | 6 | 7;
   reconciliation_id: string;
   run_group_id: string;
   status: RunAttributionReconciliationStatus;
@@ -275,20 +290,55 @@ function isCatalogFacets(value: unknown): value is CatalogFacets {
 export function isPublicParseReport(value: unknown): value is PublicParseReport {
   return (
     isRecord(value) &&
-    value.schema_version === 6 &&
+    (value.schema_version === 6 || value.schema_version === 7) &&
     typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) &&
-    (value.visibility === "public" || value.visibility === "unlisted") &&
+    (value.visibility === "public" ||
+      value.visibility === "unlisted" ||
+      value.visibility === "private") &&
     isRecord(value.verification) &&
     ["replayed", "corroborated", "ranked"].includes(String(value.verification.tier)) &&
     Array.isArray(value.runs)
   );
 }
 
+export function isMyParseCatalog(value: unknown): value is MyParseCatalog {
+  return (
+    isRecord(value) &&
+    value.schema_version === 1 &&
+    nonnegativeSafeInteger(value.total_entries) &&
+    nonnegativeSafeInteger(value.offset) &&
+    (value.next_offset == null || nonnegativeSafeInteger(value.next_offset)) &&
+    Array.isArray(value.claimed_character_ids) &&
+    value.claimed_character_ids.every((characterId) => typeof characterId === "string" && characterId.length > 0) &&
+    Array.isArray(value.entries) &&
+    value.entries.every(isMyParseCatalogEntry)
+  );
+}
+
+function isMyParseCatalogEntry(value: unknown): value is MyParseCatalogEntry {
+  return (
+    isRecord(value) &&
+    typeof value.report_id === "string" &&
+    reportIdPattern.test(value.report_id) &&
+    Number.isSafeInteger(value.run_index) &&
+    typeof value.region_id === "string" &&
+    typeof value.terminal_state === "string" &&
+    (value.visibility === "public" ||
+      value.visibility === "unlisted" ||
+      value.visibility === "private") &&
+    typeof value.submitted_by_you === "boolean" &&
+    Array.isArray(value.matched_character_ids) &&
+    value.matched_character_ids.every(
+      (characterId) => typeof characterId === "string" && characterId.length > 0,
+    )
+  );
+}
+
 export function isPublicRunReconciliation(value: unknown): value is PublicRunReconciliation {
   if (
     !isRecord(value) ||
-    (value.schema_version !== 5 && value.schema_version !== 6) ||
+    (value.schema_version !== 5 && value.schema_version !== 6 && value.schema_version !== 7) ||
     typeof value.reconciliation_id !== "string" ||
     !reconciliationIdPattern.test(value.reconciliation_id) ||
     typeof value.run_group_id !== "string" ||

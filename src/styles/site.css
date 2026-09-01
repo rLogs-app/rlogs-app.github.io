@@ -35,6 +35,7 @@ html {
 
 html[data-rlogs-page="home"] [data-page~="home"],
 html[data-rlogs-page="parses"] [data-page~="parses"],
+html[data-rlogs-page="my-parses"] [data-page~="my-parses"],
 html[data-rlogs-page="profiles"] [data-page~="profiles"],
 html[data-rlogs-page="account"] [data-page~="account"],
 html[data-rlogs-page="optimizer"] [data-page~="optimizer"] {
@@ -1000,6 +1001,45 @@ h3 {
 
 .muted {
   color: var(--muted);
+}
+
+.my-parse-browser {
+  display: grid;
+  gap: 1rem;
+}
+
+.my-parse-search {
+  max-width: 34rem;
+}
+
+.my-parse-claims {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+}
+
+.my-parse-entry {
+  border-bottom: 1px solid var(--line);
+}
+
+.my-parse-entry:last-of-type {
+  border-bottom: 0;
+}
+
+.my-parse-entry .parse-row {
+  border-bottom: 0;
+}
+
+.my-parse-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 1rem 0;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 [hidden] {

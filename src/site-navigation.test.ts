@@ -5,6 +5,7 @@ describe("site navigation", () => {
   it.each([
     ["/", "home"],
     ["/parses/", "parses"],
+    ["/my-parses/", "my-parses"],
     ["/profiles/", "profiles"],
     ["/account", "account"],
     ["/optimizer/", "optimizer"],

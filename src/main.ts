@@ -25,3 +25,8 @@ if (page === "parses") {
     mountParseBrowser(),
   );
 }
+if (page === "my-parses") {
+  void import("./features/my-parses/my-parses").then(({ mountMyParses }) =>
+    mountMyParses(),
+  );
+}
