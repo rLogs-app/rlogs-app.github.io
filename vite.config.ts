@@ -10,6 +10,14 @@ function publishPageRoutes(): Plugin {
     apply: "build",
     async writeBundle(options) {
       const outputDirectory = resolve(process.cwd(), options.dir ?? "dist");
+      // Vite copies the legacy public profile fixtures before this hook. Clear
+      // those data directories first, then create the real /profiles/ page;
+      // doing this after route generation would delete that route as well.
+      await Promise.all(
+        ["fixtures", "profiles"].map((directory) =>
+          rm(resolve(outputDirectory, directory), { recursive: true, force: true }),
+        ),
+      );
       await Promise.all(
         pageRoutes.map(async (route) => {
           const routeDirectory = resolve(outputDirectory, route);
@@ -19,11 +27,6 @@ function publishPageRoutes(): Plugin {
             resolve(routeDirectory, "index.html"),
           );
         }),
-      );
-      await Promise.all(
-        ["fixtures", "profiles"].map((directory) =>
-          rm(resolve(outputDirectory, directory), { recursive: true, force: true }),
-        ),
       );
     },
   };
