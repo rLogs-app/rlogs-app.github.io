@@ -33,6 +33,7 @@ export interface ProfilePresentationCatalog {
   source?: string;
   source_item_table_sha256?: string;
   source_achievement_table_sha256?: string;
+  source_medal_table_sha256?: string;
   equipment_slots: Record<string, string>;
   quality_names: Record<string, string>;
   equipment_attributes: Record<string, PresentationRecord>;
@@ -44,6 +45,7 @@ export interface ProfilePresentationCatalog {
   talent_nodes: Record<string, PresentationRecord>;
   dungeons: Record<string, PresentationRecord>;
   achievements: Record<string, PresentationRecord>;
+  medals: Record<string, PresentationRecord>;
   imagines: Record<string, PresentationRecord>;
   modules: Record<string, PresentationRecord>;
   module_effects: Record<string, PresentationRecord>;
@@ -51,7 +53,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=8`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=9`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -101,6 +103,9 @@ export function normalizeProfilePresentationCatalog(
       : {},
     achievements: isRecord(value.achievements)
       ? (value.achievements as ProfilePresentationCatalog["achievements"])
+      : {},
+    medals: isRecord(value.medals)
+      ? (value.medals as ProfilePresentationCatalog["medals"])
       : {},
   };
 }

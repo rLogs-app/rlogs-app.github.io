@@ -303,6 +303,7 @@ function collectionsSection(body: JsonRecord): HTMLElement {
   const social = recordValue(body.social_display);
   const equippedTitleId = social?.equipped_title_id ?? arrayValue(social?.title_ids)[0];
   const equippedTitle = equippedTitleId == null ? undefined : presentation.titles[String(equippedTitleId)];
+  const medals = orderedMedalEntries(social?.medal_ids, social?.medal_slots);
   const section = profileSection("Collections & appearance", "Privacy-reviewed unlock data");
   const facts = element("dl", "profile-facts");
   appendFact(facts, "Meowlux score", resolvedMeowluxScore(body)?.toLocaleString() ?? "—");
@@ -319,10 +320,74 @@ function collectionsSection(body: JsonRecord): HTMLElement {
     ["Titles", arrayValue(social?.title_ids).length],
     ["Equipped title", equippedTitle?.name ?? equippedTitleId],
     ["Equipped title level", social?.equipped_title_level],
-    ["Medals", arrayValue(social?.medal_ids).length],
+    ["Medals", medals.length],
   ] as Array<[string, JsonValue | number | undefined]>) appendFact(facts, label, displayValue(value));
   section.append(facts);
+  if (medals.length) section.append(medalCollection(medals));
   return section;
+}
+
+interface OwnedMedalEntry {
+  id: number;
+  slot?: number;
+}
+
+export function orderedMedalEntries(
+  medalIds: JsonValue | undefined,
+  medalSlots: JsonValue | undefined,
+): OwnedMedalEntry[] {
+  const owned = arrayValue(medalIds)
+    .map(numericValue)
+    .filter((value): value is number => value != null);
+  const ownedSet = new Set(owned);
+  const seen = new Set<number>();
+  const entries: OwnedMedalEntry[] = [];
+  const slots = recordValue(medalSlots);
+  if (slots) {
+    for (const [rawSlot, rawMedalId] of Object.entries(slots)
+      .map(([slot, medalId]) => [Number(slot), numericValue(medalId)] as const)
+      .filter((entry): entry is readonly [number, number] => Number.isSafeInteger(entry[0]) && entry[1] != null)
+      .sort(([left], [right]) => left - right)) {
+      if (!ownedSet.has(rawMedalId) || seen.has(rawMedalId)) continue;
+      entries.push({ id: rawMedalId, slot: rawSlot });
+      seen.add(rawMedalId);
+    }
+  }
+  for (const id of owned) {
+    if (seen.has(id)) continue;
+    entries.push({ id });
+    seen.add(id);
+  }
+  return entries;
+}
+
+function medalCollection(medals: OwnedMedalEntry[]): HTMLDetailsElement {
+  const details = element("details", "profile-medal-collection") as HTMLDetailsElement;
+  details.append(element("summary", "", `Owned badges · ${medals.length.toLocaleString()}`));
+  let rendered = false;
+  details.addEventListener("toggle", () => {
+    if (!details.open || rendered) return;
+    rendered = true;
+    const list = element("div", "profile-medal-list");
+    for (const medal of medals) {
+      const localized = presentation.medals[String(medal.id)];
+      const card = element("article", "profile-medal-card");
+      card.append(
+        element("strong", "", localized?.name ?? `Unlocalized medal ${medal.id}`),
+        element("small", "", medal.slot == null ? `Medal ${medal.id}` : `Display slot ${medal.slot}`),
+      );
+      const description = cleanMedalDescription(localized?.description);
+      if (description) card.append(element("span", "", description));
+      list.append(card);
+    }
+    details.append(list);
+  });
+  return details;
+}
+
+function cleanMedalDescription(value: string | null | undefined): string | undefined {
+  if (!value || /^personalzone_medal_icon_/iu.test(value)) return undefined;
+  return value;
 }
 
 function photoWallSection(body: JsonRecord): HTMLElement {

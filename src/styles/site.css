@@ -1770,6 +1770,46 @@ footer {
   font-size: 11px;
 }
 
+.profile-medal-collection {
+  margin-top: 16px;
+  border: 1px solid rgb(32 49 73 / 72%);
+  border-radius: 8px;
+  background: rgb(17 27 42 / 58%);
+}
+
+.profile-medal-collection > summary {
+  padding: 10px 12px;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.profile-medal-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  max-height: 480px;
+  padding: 8px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+
+.profile-medal-card {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 1px solid rgb(32 49 73 / 55%);
+  border-radius: 7px;
+  background: linear-gradient(145deg, rgb(24 37 56 / 78%), rgb(8 16 27 / 64%));
+}
+
+.profile-medal-card small,
+.profile-medal-card span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .master-score-season {
   border: 1px solid rgb(32 49 73 / 72%);
   border-radius: 8px;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolvePublishedPhotoUrl } from "./profile-view";
+import { orderedMedalEntries, resolvePublishedPhotoUrl } from "./profile-view";
 
 describe("published Photo Wall URLs", () => {
   it("resolves only the server-owned public Photo Wall route", () => {
@@ -23,5 +23,25 @@ describe("published Photo Wall URLs", () => {
         "http://api.rlogs.example",
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("published medal ordering", () => {
+  it("uses the player's display-slot order before unplaced owned medals", () => {
+    expect(orderedMedalEntries(
+      [9040008, 9040011, 9040012],
+      { "2": 9040011, "1": 9040012 },
+    )).toEqual([
+      { id: 9040012, slot: 1 },
+      { id: 9040011, slot: 2 },
+      { id: 9040008 },
+    ]);
+  });
+
+  it("ignores duplicate and unowned slot references", () => {
+    expect(orderedMedalEntries(
+      [9040008, 9040008],
+      { "1": 9999999, "2": 9040008, "3": 9040008 },
+    )).toEqual([{ id: 9040008, slot: 2 }]);
   });
 });

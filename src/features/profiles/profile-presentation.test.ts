@@ -24,8 +24,19 @@ describe("BPSR profile presentation catalog", () => {
     expect(catalog.source_achievement_table_sha256).toBe(
       "b3d6a677984dadb5fc664579d42bf0e029206c7d4a0ce3a90ea1bf949d99ef4a",
     );
+    expect(catalog.source_medal_table_sha256).toBe(
+      "3e98debeb73439f37435827e7e4e09ae6583fde3ad404326e796960d1fe7a849",
+    );
     expect(Object.keys(catalog.titles)).toHaveLength(599);
     expect(catalog.titles["9062067"]?.name).toBe("Power from the Other Side");
+  });
+
+  it("localizes every exact-build medal used by public profiles", () => {
+    expect(Object.keys(catalog.medals)).toHaveLength(183);
+    expect(catalog.medals["9040100"]).toEqual(expect.objectContaining({
+      name: "Crimson Sky",
+      description: "Obtain through the limited-time event \"Master's Trial: Dream Resonance.\"",
+    }));
   });
 
   it("localizes every exact-build general and seasonal achievement", () => {
@@ -65,8 +76,10 @@ describe("BPSR profile presentation catalog", () => {
     const legacyCatalog = { ...catalog } as Partial<ProfilePresentationCatalog>;
     delete legacyCatalog.sigils;
     delete legacyCatalog.achievements;
+    delete legacyCatalog.medals;
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.sigils).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.achievements).toEqual({});
+    expect(normalizeProfilePresentationCatalog(legacyCatalog)?.medals).toEqual({});
     expect(normalizeProfilePresentationCatalog({ sigils: {} })).toBeUndefined();
   });
 });
