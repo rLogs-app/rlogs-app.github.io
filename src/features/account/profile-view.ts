@@ -412,7 +412,7 @@ function photoWallSection(body: JsonRecord): HTMLElement {
   const photoCount = photoWallIdentityCount(photos, wall);
   const section = profileSection(
     "Photo Wall",
-    `${photoCount.toLocaleString()} ${photoCount === 1 ? "photo" : "photos"} · ${placements.length.toLocaleString()} displayed`,
+    `${photoCount.toLocaleString()} ${photoCount === 1 ? "photo reference" : "photo references"} · ${placements.length.toLocaleString()} ${placements.length === 1 ? "wall slot" : "wall slots"} · ${assets.size.toLocaleString()} verified ${assets.size === 1 ? "image" : "images"}`,
   );
   const grid = element("div", "profile-item-grid photo-wall-grid");
   for (const [slot, photoId] of placements) {
@@ -432,7 +432,7 @@ function photoWallSection(body: JsonRecord): HTMLElement {
     }
     card.append(
       element("strong", "", `Wall slot ${slot}`),
-      imageUrl ? element("small", "", stringValue(asset?.caption) ?? "Published from the in-game Photo Wall") : element("span", "", `Photo ${displayValue(photoId)} · image not uploaded yet`),
+      imageUrl ? element("small", "", stringValue(asset?.caption) ?? "Published from the in-game Photo Wall") : element("span", "", `Photo ${displayValue(photoId)} · awaiting exact live image capture`),
     );
     grid.append(card);
   }
