@@ -40,16 +40,24 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   heading.append(identity, element("span", "profile-last-seen", `Last seen ${relativeTime(profile.entry.source_updated_unix_millis ?? profile.entry.source_created_unix_millis ?? Date.now())}`));
   root.append(heading);
 
+  const showcase = element("div", "profile-showcase");
   const halfBodyImageUrl = safeImageUrl(appearance?.half_body_image_url);
   if (halfBodyImageUrl) {
+    const portraitPanel = element("figure", "character-portrait-panel");
     const portrait = document.createElement("img");
     portrait.className = "character-half-body-picture";
     portrait.src = halfBodyImageUrl;
     portrait.alt = `${stringValue(body.display_name) ?? profile.entry.label} character portrait`;
     portrait.loading = "lazy";
     portrait.referrerPolicy = "no-referrer";
-    root.append(portrait);
+    portraitPanel.append(portrait);
+    showcase.append(portraitPanel);
   }
+  const photoWall = photoWallSection(body);
+  photoWall.classList.add("profile-showcase-photo-wall");
+  showcase.append(photoWall);
+  if (!halfBodyImageUrl) showcase.classList.add("is-photo-only");
+  root.append(showcase);
 
   const summary = element("div", "profile-stat-grid");
   const modules = recordValue(body.modules);
@@ -70,18 +78,23 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   }
   root.append(summary);
 
+  const content = element("div", "profile-content");
   const sections = element("div", "profile-section-grid");
-  sections.append(
+  const primaryColumn = element("div", "profile-section-column");
+  const secondaryColumn = element("div", "profile-section-column");
+  primaryColumn.append(
     equipmentSection(body),
-    imagineSection(arrayValue(body.owned_imagines), arrayValue(body.battle_imagine_skills)),
     moduleSection(inventory, equippedSlots),
-    skillsSection(body),
-    collectionsSection(body),
-    photoWallSection(body),
-    achievementSection(body),
     progressSection(body),
   );
-  root.append(sections);
+  secondaryColumn.append(
+    imagineSection(arrayValue(body.owned_imagines), arrayValue(body.battle_imagine_skills)),
+    collectionsSection(body),
+    achievementSection(body),
+  );
+  sections.append(primaryColumn, secondaryColumn);
+  content.append(sections, skillsSection(body));
+  root.append(content);
 
   const allDetails = element("details", "profile-all-details");
   const summaryLabel = element("summary", "", "All other synced character details");
@@ -494,7 +507,7 @@ export function resolveTalentTreeLayout(
     }))
     .sort((left, right) => right.selectedCount - left.selectedCount || left.branch - right.branch)[0];
   const indexedNodeIds = indexedTree && indexedSpecialization
-    ? new Set([...indexedTree.foundation_node_ids, ...indexedSpecialization.node_ids])
+    ? new Set(indexedSpecialization.node_ids)
     : undefined;
   const candidates = (indexedNodeIds
     ? [...indexedNodeIds].map((nodeId) => [String(nodeId), catalog.talent_nodes[String(nodeId)]] as const)
@@ -533,7 +546,7 @@ export function resolveTalentTreeLayout(
   const branch = indexedSpecialization?.branch ?? [...selectedBranches.entries()]
     .sort((left, right) => right[1] - left[1] || left[0] - right[0])[0]?.[0] ?? 0;
   const nodes = candidates
-    .filter((node) => indexedNodeIds != null || node.talentStage === 0 || (node.talentStage === 1 && node.branch === branch))
+    .filter((node) => indexedNodeIds != null || (node.talentStage === 1 && node.branch === branch))
     .sort((left, right) => left.y - right.y || left.x - right.x || left.nodeId - right.nodeId);
   if (!nodes.length) return undefined;
   const specializationNode = nodes.find((node) =>
@@ -665,7 +678,7 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
   const heading = element("div", "profile-talent-heading");
   const headingCopy = element("div", "profile-talent-heading-copy");
   headingCopy.append(
-    element("div", "", "Talent tree"),
+    element("div", "", "Specialization tree"),
     element("small", "", `${tree.specializationName} · ${tree.selectedCount} / ${tree.nodes.length} nodes selected`),
   );
   const legend = element("div", "profile-talent-legend");
@@ -681,7 +694,7 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
   const controls = element("div", "profile-talent-controls");
   const viewport = element("div", "profile-talent-viewport");
   viewport.tabIndex = 0;
-  viewport.setAttribute("aria-label", `${tree.specializationName} talent tree. Scroll in both directions to explore.`);
+  viewport.setAttribute("aria-label", `${tree.specializationName} specialization tree. Scroll in both directions to explore.`);
   const zoomSpace = element("div", "profile-talent-zoom-space");
   const canvas = element("div", "profile-talent-canvas");
   const geometry = calculateTalentTreeGeometry(tree.nodes);
@@ -713,23 +726,9 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
   }
   canvas.append(svg);
 
-  const baseLabel = element("span", "profile-talent-stage-label", "Foundation");
-  baseLabel.style.top = "26px";
-  canvas.append(baseLabel);
-  const specializationStartNode = tree.nodes
-    .filter((node) => node.talentStage === 1)
-    .sort((left, right) => left.y - right.y || left.x - right.x)[0];
-  const specializationStart = specializationStartNode == null
-    ? undefined
-    : coordinates.get(specializationStartNode.nodeId)?.y;
-  if (specializationStart != null) {
-    const divider = element("span", "profile-talent-stage-divider");
-    divider.style.top = `${Math.max(78, specializationStart - 48)}px`;
-    canvas.append(divider);
-    const specializationLabel = element("span", "profile-talent-stage-label", tree.specializationName);
-    specializationLabel.style.top = `${Math.max(66, specializationStart - 62)}px`;
-    canvas.append(specializationLabel);
-  }
+  const specializationLabel = element("span", "profile-talent-stage-label", tree.specializationName);
+  specializationLabel.style.top = "26px";
+  canvas.append(specializationLabel);
 
   const selectNode = (node: TalentTreeNodeView) => {
     const localized = presentationTalent(presentation, node.talentId);
@@ -762,7 +761,7 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
   const focusNode = tree.nodes.find((node) =>
     node.selected && presentationTalent(presentation, node.talentId)?.talent_type === 5
   ) ?? tree.nodes.find((node) => node.selected) ?? tree.nodes[0]!;
-  let zoom = window.matchMedia("(max-width: 620px)").matches ? 0.75 : 1;
+  let zoom = window.matchMedia("(max-width: 620px)").matches ? 0.5 : 0.625;
   const zoomOutput = element("output", "profile-talent-zoom-value", `${Math.round(zoom * 100)}%`);
   zoomOutput.setAttribute("aria-live", "polite");
   const zoomOut = talentTreeControl("−", "Zoom out");
@@ -781,20 +780,20 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
     const previousZoom = zoom;
     const centerX = (viewport.scrollLeft + viewport.clientWidth / 2) / previousZoom;
     const centerY = (viewport.scrollTop + viewport.clientHeight / 2) / previousZoom;
-    zoom = Math.max(0.75, Math.min(1.5, nextZoom));
+    zoom = Math.max(0.5, Math.min(1.25, nextZoom));
     canvas.style.transform = `scale(${zoom})`;
     zoomSpace.style.width = `${Math.round(width * zoom)}px`;
     zoomSpace.style.height = `${Math.round(height * zoom)}px`;
     zoomOutput.value = `${Math.round(zoom * 100)}%`;
-    zoomOut.disabled = zoom <= 0.75;
-    zoomIn.disabled = zoom >= 1.5;
+    zoomOut.disabled = zoom <= 0.5;
+    zoomIn.disabled = zoom >= 1.25;
     requestAnimationFrame(() => viewport.scrollTo({
       left: Math.max(0, centerX * zoom - viewport.clientWidth / 2),
       top: Math.max(0, centerY * zoom - viewport.clientHeight / 2),
     }));
   };
-  zoomOut.addEventListener("click", () => applyZoom(zoom - 0.25));
-  zoomIn.addEventListener("click", () => applyZoom(zoom + 0.25));
+  zoomOut.addEventListener("click", () => applyZoom(zoom - 0.125));
+  zoomIn.addEventListener("click", () => applyZoom(zoom + 0.125));
   center.addEventListener("click", () => centerNode());
   controls.append(zoomOut, zoomOutput, zoomIn, center);
   navigation.append(controls);

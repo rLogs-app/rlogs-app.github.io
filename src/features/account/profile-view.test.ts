@@ -109,10 +109,10 @@ describe("talent presentation", () => {
     }, catalog);
     expect(layout?.branch).toBe(1);
     expect(layout?.specializationName).toBe("Falconry Spec");
-    expect(layout?.nodes.map((node) => node.nodeId)).toEqual([1, 3, 4]);
-    expect(layout?.nodes[2]?.x).toBe(300);
-    expect(layout?.nodes[2]?.prerequisiteNodeIds).toEqual([3]);
-    expect(layout?.selectedCount).toBe(2);
+    expect(layout?.nodes.map((node) => node.nodeId)).toEqual([3, 4]);
+    expect(layout?.nodes[1]?.x).toBe(300);
+    expect(layout?.nodes[1]?.prerequisiteNodeIds).toEqual([3]);
+    expect(layout?.selectedCount).toBe(1);
   });
 
   it("resolves all website-owned specialization trees from submission node IDs", () => {
@@ -129,18 +129,9 @@ describe("talent presentation", () => {
         }, allTreesCatalog);
         expect(layout?.branch, specialization.name).toBe(specialization.branch);
         expect(layout?.specializationName, specialization.name).toBe(specialization.name);
-        expect(layout?.nodes, specialization.name).toHaveLength(90);
-        expect(layout?.nodes.filter((node) => node.talentStage === 0), specialization.name).toHaveLength(30);
+        expect(layout?.nodes, specialization.name).toHaveLength(60);
+        expect(layout?.nodes.filter((node) => node.talentStage === 0), specialization.name).toHaveLength(0);
         expect(layout?.nodes.filter((node) => node.talentStage === 1), specialization.name).toHaveLength(60);
-        if (!layout) throw new Error(`Missing layout for ${specialization.name}`);
-        const geometry = calculateTalentTreeGeometry(layout.nodes);
-        const stageCenter = (talentStage: number) => {
-          const positions = layout.nodes
-            .filter((node) => node.talentStage === talentStage)
-            .map((node) => geometry.coordinates.get(node.nodeId)!.x);
-          return (Math.min(...positions) + Math.max(...positions)) / 2;
-        };
-        expect(stageCenter(1), specialization.name).toBeCloseTo(stageCenter(0), 0);
       }
     }
   });
