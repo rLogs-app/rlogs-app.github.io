@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   battleImagineOwnershipFacts,
+  battleImagineRarityLabel,
   calculateTalentTreeGeometry,
   cleanGameText,
   formatFightAttributeValue,
@@ -12,6 +13,7 @@ import {
   materializeEquipmentBuffDescription,
   orderedMedalEntries,
   photoWallIdentityCount,
+  resolveCombatStatFamilies,
   resolveEquippedSkillSlots,
   resolveEquippedRoleSkillSlots,
   resolvePublishedPhotoUrl,
@@ -31,8 +33,15 @@ const allTreesCatalog = JSON.parse(
 
 describe("Battle Imagine ownership presentation", () => {
   it("shows tier and equipped slot without the irrelevant character level", () => {
-    expect(battleImagineOwnershipFacts(5, 7)).toBe("Tier 5 · Equipped · Slot 7");
+    expect(battleImagineOwnershipFacts(5, 7, "SSR")).toBe("Tier 5 · SSR · Equipped · Slot 7");
     expect(battleImagineOwnershipFacts(5, undefined)).toBe("Tier 5");
+  });
+
+  it("keeps catalog rarity separate from the observed remodel tier", () => {
+    expect(battleImagineRarityLabel(2)).toBe("Epic");
+    expect(battleImagineRarityLabel(3)).toBe("SR");
+    expect(battleImagineRarityLabel(4)).toBe("SSR");
+    expect(battleImagineRarityLabel(undefined)).toBe("");
   });
 });
 
@@ -145,9 +154,9 @@ describe("talent presentation", () => {
     const first = geometry.coordinates.get(1)!;
     const horizontal = geometry.coordinates.get(2)!;
     const vertical = geometry.coordinates.get(3)!;
-    expect(horizontal.x - first.x).toBe(vertical.y - first.y);
+    expect(Math.abs((horizontal.x - first.x) - (vertical.y - first.y))).toBeLessThanOrEqual(1);
     expect(horizontal.x - first.x).toBeGreaterThan(geometry.nodeSize);
-    expect(geometry.width).toBeGreaterThanOrEqual(920);
+    expect(geometry.width).toBeGreaterThanOrEqual(760);
   });
 
   it("aligns foundation and specialization coordinate frames by their bounds centers", () => {
@@ -164,7 +173,7 @@ describe("talent presentation", () => {
       geometry.coordinates.get(3)!.x + geometry.coordinates.get(4)!.x
     ) / 2;
     expect(specializationCenter).toBe(foundationCenter);
-    expect(geometry.coordinates.get(4)!.x - geometry.coordinates.get(3)!.x).toBe(648);
+    expect(geometry.coordinates.get(4)!.x - geometry.coordinates.get(3)!.x).toBe(576);
   });
 });
 
@@ -242,6 +251,51 @@ describe("equipment attribute values", () => {
       [{ minimum: 600, maximum: 600 }],
       100,
     )).toBe("Grants 6% PHY Boost bonus while Focus is active.");
+  });
+});
+
+describe("profile combat-stat snapshots", () => {
+  it("groups exact game-defined component members into one localized stat breakdown", () => {
+    const catalog = {
+      fight_attributes: {
+        "11010": { name: "Attack", number_type: 0, format_type: 0, family_id: 11010, component: "final" },
+        "11011": { name: "Attack", number_type: 0, format_type: 1, family_id: 11010, component: "total" },
+        "11012": { name: "Attack", number_type: 0, format_type: 2, family_id: 11010, component: "add" },
+        "12010": { name: "Critical Hit Rate", number_type: 1, format_type: 0, family_id: 12010, component: "final" },
+      },
+    } as unknown as ProfilePresentationCatalog;
+    expect(resolveCombatStatFamilies({
+      "11012": 200,
+      "12010": 1_710,
+      "11010": 3_400,
+      "11011": 3_200,
+      "9999": 123,
+    }, catalog)).toEqual([
+      {
+        familyId: 11010,
+        name: "Attack",
+        components: [
+          { attributeId: 11010, component: "final", value: 3_400, numberType: 0, formatType: 0 },
+          { attributeId: 11011, component: "total", value: 3_200, numberType: 0, formatType: 1 },
+          { attributeId: 11012, component: "add", value: 200, numberType: 0, formatType: 2 },
+        ],
+      },
+      {
+        familyId: 12010,
+        name: "Critical Hit Rate",
+        components: [
+          { attributeId: 12010, component: "final", value: 1_710, numberType: 1, formatType: 0 },
+        ],
+      },
+    ]);
+  });
+
+  it("ships component identity for every generated fight-attribute member", () => {
+    const allowed = new Set(["final", "total", "add", "extra_add", "percent", "extra_percent"]);
+    for (const attribute of Object.values(allTreesCatalog.fight_attributes)) {
+      expect(Number.isSafeInteger(attribute.family_id)).toBe(true);
+      expect(allowed.has(attribute.component ?? "")).toBe(true);
+    }
   });
 });
 

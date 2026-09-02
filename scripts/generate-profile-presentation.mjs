@@ -81,13 +81,22 @@ if (missingSigilIcons.length) {
 const fightAttributeByMemberId = new Map();
 const fightAttributes = {};
 for (const row of Object.values(fightAttributesTable)) {
-  for (const member of [row.AttrFinal, row.AttrTotal, row.AttrAdd, row.AttrExAdd, row.AttrPer, row.AttrExPer]) {
+  for (const [component, member] of [
+    ["final", row.AttrFinal],
+    ["total", row.AttrTotal],
+    ["add", row.AttrAdd],
+    ["extra_add", row.AttrExAdd],
+    ["percent", row.AttrPer],
+    ["extra_percent", row.AttrExPer],
+  ]) {
     if (!Number.isInteger(member)) continue;
     fightAttributeByMemberId.set(member, row);
     fightAttributes[String(member)] = {
       name: row.OfficialName,
       number_type: row.AttrNumType,
       format_type: member % 10,
+      family_id: row.AttrFinal,
+      component,
     };
   }
 }

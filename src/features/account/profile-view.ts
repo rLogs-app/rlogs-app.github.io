@@ -79,21 +79,44 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   root.append(summary);
 
   const content = element("div", "profile-content");
-  const sections = element("div", "profile-section-grid");
-  const primaryColumn = element("div", "profile-section-column");
-  const secondaryColumn = element("div", "profile-section-column");
-  primaryColumn.append(
+
+  const combatGroup = profileSectionGroup(
+    "Combat & current build",
+    "The newest complete character snapshot, followed by the loadout it describes.",
+  );
+  const combatSections = element("div", "profile-section-grid");
+  const combatPrimary = element("div", "profile-section-column");
+  const combatSecondary = element("div", "profile-section-column");
+  combatPrimary.append(
+    combatStatsSection(body),
     equipmentSection(body),
     moduleSection(inventory, equippedSlots),
-    progressSection(body),
   );
-  secondaryColumn.append(
+  combatSecondary.append(
     imagineSection(arrayValue(body.owned_imagines), arrayValue(body.battle_imagine_skills)),
-    collectionsSection(body),
-    achievementSection(body),
   );
-  sections.append(primaryColumn, secondaryColumn);
-  content.append(sections, skillsSection(body));
+  combatSections.append(combatPrimary, combatSecondary);
+  combatGroup.append(combatSections, skillsSection(body));
+
+  const progressionGroup = profileSectionGroup(
+    "Combat progression",
+    "Season, Master Score, and activity records derived from verified profile observations.",
+  );
+  progressionGroup.append(progressSection(body));
+
+  const collectionGroup = profileSectionGroup(
+    "Collections, achievements & social",
+    "Casual progression and display collections follow the combat-oriented profile.",
+  );
+  const collectionSections = element("div", "profile-section-grid");
+  const collectionPrimary = element("div", "profile-section-column");
+  const collectionSecondary = element("div", "profile-section-column");
+  collectionPrimary.append(collectionsSection(body));
+  collectionSecondary.append(achievementSection(body));
+  collectionSections.append(collectionPrimary, collectionSecondary);
+  collectionGroup.append(collectionSections);
+
+  content.append(combatGroup, progressionGroup, collectionGroup);
   root.append(content);
 
   const allDetails = element("details", "profile-all-details");
@@ -118,8 +141,181 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     if (!represented.has(key)) appendFact(facts, title(key), compactValue(value));
   }
   allDetails.append(summaryLabel, facts);
-  root.append(allDetails);
+  const extraGroup = profileSectionGroup(
+    "Extra character data",
+    "Additional synced fields that do not belong to the combat or collection summaries above.",
+  );
+  extraGroup.append(allDetails);
+  root.append(extraGroup);
   return root;
+}
+
+export type CombatStatComponent =
+  | "final"
+  | "total"
+  | "add"
+  | "extra_add"
+  | "percent"
+  | "extra_percent";
+
+export interface CombatStatComponentView {
+  attributeId: number;
+  component: CombatStatComponent;
+  value: number;
+  numberType: number;
+  formatType: number;
+}
+
+export interface CombatStatFamilyView {
+  familyId: number;
+  name: string;
+  components: CombatStatComponentView[];
+}
+
+const combatStatComponentOrder: CombatStatComponent[] = [
+  "final",
+  "total",
+  "add",
+  "extra_add",
+  "percent",
+  "extra_percent",
+];
+
+export function resolveCombatStatFamilies(
+  snapshotValues: Record<string, JsonValue>,
+  catalog: ProfilePresentationCatalog,
+): CombatStatFamilyView[] {
+  const families = new Map<number, CombatStatFamilyView>();
+  for (const [rawAttributeId, rawValue] of Object.entries(snapshotValues)) {
+    const attributeId = Number(rawAttributeId);
+    const value = numericValue(rawValue);
+    const localized = catalog.fight_attributes[rawAttributeId];
+    const component = localized?.component;
+    const familyId = localized?.family_id;
+    if (
+      !Number.isSafeInteger(attributeId) ||
+      value == null ||
+      familyId == null ||
+      component == null
+    ) continue;
+    const family = families.get(familyId) ?? {
+      familyId,
+      name: localized.name,
+      components: [],
+    };
+    family.components.push({
+      attributeId,
+      component,
+      value,
+      numberType: localized.number_type,
+      formatType: localized.format_type,
+    });
+    if (component === "final") family.name = localized.name;
+    families.set(familyId, family);
+  }
+  return [...families.values()]
+    .map((family) => ({
+      ...family,
+      components: family.components.sort(
+        (left, right) =>
+          combatStatComponentOrder.indexOf(left.component) -
+            combatStatComponentOrder.indexOf(right.component) ||
+          left.attributeId - right.attributeId,
+      ),
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name) || left.familyId - right.familyId);
+}
+
+function combatStatsSection(body: JsonRecord): HTMLElement {
+  const combatStats = recordValue(body.combat_stats);
+  const snapshotValues = recordValue(combatStats?.snapshot_values) ?? {};
+  const families = resolveCombatStatFamilies(snapshotValues, presentation);
+  const section = profileSection(
+    "Character stats",
+    `${families.length.toLocaleString()} localized stat families · newest complete snapshot`,
+  );
+  if (!families.length) {
+    section.append(empty("The latest synced profile did not include a complete character-stat snapshot yet."));
+    return section;
+  }
+
+  const nonzero = families.filter((family) =>
+    family.components.some((component) => component.value !== 0)
+  );
+  const zero = families.filter((family) =>
+    family.components.every((component) => component.value === 0)
+  );
+  section.append(element(
+    "small",
+    "profile-observation-note",
+    "Profile values come from the newest complete character snapshot. Temporary combat buffs and deltas are shown only in the live Stats overlay.",
+  ));
+  const disclosure = element("details", "profile-combat-stat-disclosure");
+  disclosure.append(element(
+    "summary",
+    "",
+    `Show ${nonzero.length.toLocaleString()} current stats and their exact component breakdowns`,
+  ));
+  let rendered = false;
+  disclosure.addEventListener("toggle", () => {
+    if (!disclosure.open || rendered) return;
+    rendered = true;
+    disclosure.append(combatStatGrid(nonzero));
+    if (zero.length) {
+      const observedZero = element("details", "profile-zero-stat-details");
+      observedZero.append(
+        element("summary", "", `${zero.length.toLocaleString()} additional observed zero-value stats`),
+        combatStatGrid(zero),
+      );
+      disclosure.append(observedZero);
+    }
+  });
+  section.append(disclosure);
+  return section;
+}
+
+function combatStatGrid(families: CombatStatFamilyView[]): HTMLElement {
+  const grid = element("div", "profile-combat-stat-grid");
+  for (const family of families) {
+    const final = family.components.find((component) => component.component === "final") ??
+      family.components[0];
+    if (!final) continue;
+    const card = element("article", "profile-combat-stat-card");
+    card.append(
+      element("strong", "profile-combat-stat-value", formatFightAttributeValue(
+        final.value,
+        final.numberType,
+        final.formatType,
+      )),
+      element("span", "profile-combat-stat-name", family.name),
+    );
+    if (family.components.length > 1) {
+      const breakdown = element("details", "profile-combat-stat-breakdown");
+      breakdown.append(element("summary", "", "Breakdown"));
+      const rows = element("div", "profile-compact-list");
+      for (const component of family.components) {
+        rows.append(compactRow(
+          combatStatComponentLabel(component.component),
+          formatSignedFightAttributeValue(component.value, component.numberType, component.formatType),
+        ));
+      }
+      breakdown.append(rows);
+      card.append(breakdown);
+    }
+    grid.append(card);
+  }
+  return grid;
+}
+
+function combatStatComponentLabel(component: CombatStatComponent): string {
+  return ({
+    final: "Final",
+    total: "Total",
+    add: "Additive",
+    extra_add: "Extra additive",
+    percent: "Percent",
+    extra_percent: "Extra percent",
+  } satisfies Record<CombatStatComponent, string>)[component];
 }
 
 function equipmentSection(body: JsonRecord): HTMLElement {
@@ -214,9 +410,33 @@ function imagineSection(owned: JsonValue[], skills: JsonValue[]): HTMLElement {
   const records = skills.length ? skills : owned;
   const equipped = records.filter((value) => recordValue(value)?.equipped_slot != null).length;
   const section = profileSection("Battle Imagines", `${records.length} observed · ${equipped} equipped`);
-  const grid = element("div", "profile-item-grid profile-imagine-grid");
   const sorted = [...records].sort((left, right) => Number(recordValue(right)?.equipped_slot != null) - Number(recordValue(left)?.equipped_slot != null));
-  for (const value of sorted) {
+  const equippedRecords = sorted.filter((value) => recordValue(value)?.equipped_slot != null);
+  const preview = equippedRecords.length ? equippedRecords : sorted.slice(0, 6);
+  section.append(
+    preview.length
+      ? battleImagineGrid(preview)
+      : empty("No Battle Imagine data was present in the latest snapshot."),
+  );
+  const previewSet = new Set(preview);
+  const remaining = sorted.filter((value) => !previewSet.has(value));
+  if (remaining.length) {
+    const collection = element("details", "profile-imagine-collection");
+    collection.append(element("summary", "", `Show ${remaining.length} more owned Battle Imagines`));
+    let rendered = false;
+    collection.addEventListener("toggle", () => {
+      if (!collection.open || rendered) return;
+      rendered = true;
+      collection.append(battleImagineGrid(remaining));
+    });
+    section.append(collection);
+  }
+  return section;
+}
+
+function battleImagineGrid(records: JsonValue[]): HTMLElement {
+  const grid = element("div", "profile-item-grid profile-imagine-grid");
+  for (const value of records) {
     const item = recordValue(value);
     if (!item) continue;
     const skillId = numericValue(item.skill_id ?? item.base_skill_id);
@@ -226,27 +446,36 @@ function imagineSection(owned: JsonValue[], skills: JsonValue[]): HTMLElement {
       : presentation.imagines[String(skillId)];
     const card = element("article", "profile-item-card profile-imagine-card");
     appendPresentationIcon(card, localized?.icon, localized?.name ?? "Battle Imagine", "profile-item-icon");
-    card.append(
+    const copy = element("span", "profile-imagine-copy");
+    copy.append(
       element("strong", "", localized?.name ?? `Unknown Battle Imagine ${displayValue(item.imagine_id ?? item.skill_id)}`),
       element("small", "", battleImagineOwnershipFacts(
         item.remodel_level ?? item.breakthrough_level,
         item.equipped_slot,
+        battleImagineRarityLabel(localized?.item_tier),
       )),
     );
+    card.append(copy);
     grid.append(card);
   }
-  section.append(records.length ? grid : empty("No Battle Imagine data was present in the latest snapshot."));
-  return section;
+  return grid;
 }
 
 export function battleImagineOwnershipFacts(
   tier: JsonValue | undefined,
   equippedSlot: JsonValue | undefined,
+  rarity = "",
 ): string {
   return joinFacts([
     pair("Tier", tier),
+    rarity,
     equippedSlot == null ? "" : `Equipped · Slot ${displayValue(equippedSlot)}`,
   ]);
+}
+
+export function battleImagineRarityLabel(itemTier: JsonValue | undefined): string {
+  const tier = numericValue(itemTier);
+  return ({ 2: "Epic", 3: "SR", 4: "SSR" } as Record<number, string>)[tier ?? -1] ?? "";
 }
 
 function moduleSection(inventory: JsonValue[], slots: JsonRecord | undefined): HTMLElement {
@@ -335,7 +564,15 @@ function skillsSection(body: JsonRecord): HTMLElement {
   if (learnedSkills.length) section.append(learnedSkillsPanel(learnedSkills));
 
   if (tree) {
-    section.append(talentTreePanel(tree));
+    const disclosure = element("details", "profile-talent-disclosure");
+    disclosure.append(element("summary", "", `Open ${tree.specializationName} talent tree`));
+    let rendered = false;
+    disclosure.addEventListener("toggle", () => {
+      if (!disclosure.open || rendered) return;
+      rendered = true;
+      disclosure.append(talentTreePanel(tree));
+    });
+    section.append(disclosure);
   } else if (talents.length) {
     section.append(empty("Talent points were observed, but this build's exact tree layout is unavailable."));
   }
@@ -373,10 +610,10 @@ export interface TalentTreeLayoutView {
   specializationName: string;
 }
 
-const talentTreeNodeSize = 64;
-const talentTreeCoordinateScale = 0.36;
-const talentTreeMargin = 104;
-const talentTreeMinimumWidth = 920;
+const talentTreeNodeSize = 52;
+const talentTreeCoordinateScale = 0.32;
+const talentTreeMargin = 80;
+const talentTreeMinimumWidth = 760;
 
 export function calculateTalentTreeGeometry(nodes: TalentTreeNodeView[]): TalentTreeGeometry {
   const stageCenters = new Map<number, number>();
@@ -761,7 +998,7 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
   const focusNode = tree.nodes.find((node) =>
     node.selected && presentationTalent(presentation, node.talentId)?.talent_type === 5
   ) ?? tree.nodes.find((node) => node.selected) ?? tree.nodes[0]!;
-  let zoom = window.matchMedia("(max-width: 620px)").matches ? 0.5 : 0.625;
+  let zoom = window.matchMedia("(max-width: 620px)").matches ? 0.3 : 0.4;
   const zoomOutput = element("output", "profile-talent-zoom-value", `${Math.round(zoom * 100)}%`);
   zoomOutput.setAttribute("aria-live", "polite");
   const zoomOut = talentTreeControl("−", "Zoom out");
@@ -780,20 +1017,20 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
     const previousZoom = zoom;
     const centerX = (viewport.scrollLeft + viewport.clientWidth / 2) / previousZoom;
     const centerY = (viewport.scrollTop + viewport.clientHeight / 2) / previousZoom;
-    zoom = Math.max(0.5, Math.min(1.25, nextZoom));
+    zoom = Math.round(Math.max(0.1, Math.min(1.25, nextZoom)) * 1_000) / 1_000;
     canvas.style.transform = `scale(${zoom})`;
     zoomSpace.style.width = `${Math.round(width * zoom)}px`;
     zoomSpace.style.height = `${Math.round(height * zoom)}px`;
     zoomOutput.value = `${Math.round(zoom * 100)}%`;
-    zoomOut.disabled = zoom <= 0.5;
+    zoomOut.disabled = zoom <= 0.1;
     zoomIn.disabled = zoom >= 1.25;
     requestAnimationFrame(() => viewport.scrollTo({
       left: Math.max(0, centerX * zoom - viewport.clientWidth / 2),
       top: Math.max(0, centerY * zoom - viewport.clientHeight / 2),
     }));
   };
-  zoomOut.addEventListener("click", () => applyZoom(zoom - 0.125));
-  zoomIn.addEventListener("click", () => applyZoom(zoom + 0.125));
+  zoomOut.addEventListener("click", () => applyZoom(zoom - 0.1));
+  zoomIn.addEventListener("click", () => applyZoom(zoom + 0.1));
   center.addEventListener("click", () => centerNode());
   controls.append(zoomOut, zoomOutput, zoomIn, center);
   navigation.append(controls);
@@ -941,7 +1178,7 @@ function medalCollection(medals: OwnedMedalEntry[]): HTMLElement {
     element("strong", "", "Badge collection"),
     element("small", "", `${medals.length.toLocaleString()} observed · in display order`),
   );
-  const previewCount = 12;
+  const previewCount = 6;
   collection.append(heading, medalList(medals.slice(0, previewCount)));
   if (medals.length > previewCount) {
     const more = element("details", "profile-medal-more") as HTMLDetailsElement;
@@ -1209,6 +1446,14 @@ function profileSection(titleText: string, subtitle: string): HTMLElement {
   heading.append(element("h3", "", titleText), element("small", "", subtitle));
   section.append(heading);
   return section;
+}
+
+function profileSectionGroup(titleText: string, subtitle: string): HTMLElement {
+  const group = element("section", "profile-section-group");
+  const heading = element("header", "profile-section-group-heading");
+  heading.append(element("p", "eyebrow", titleText), element("p", "", subtitle));
+  group.append(heading);
+  return group;
 }
 
 function stat(label: string, value: string): HTMLElement {

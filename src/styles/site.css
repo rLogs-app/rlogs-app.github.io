@@ -2490,8 +2490,36 @@ footer {
 
 .profile-content {
   display: grid;
-  gap: 16px;
+  gap: 26px;
   padding: 16px;
+}
+
+.synced-character-profile .empty-state {
+  min-height: 58px;
+  padding: 10px;
+}
+
+.profile-section-group {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.profile-section-group-heading {
+  display: grid;
+  gap: 3px;
+  padding: 0 4px;
+}
+
+.profile-section-group-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.profile-section-group-heading .eyebrow {
+  color: var(--accent);
+  font-size: 11px;
 }
 
 .profile-section-column {
@@ -2507,6 +2535,78 @@ footer {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgb(9 16 26 / 68%);
+}
+
+.profile-combat-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.profile-combat-stat-card {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgb(4 10 18 / 62%);
+}
+
+.profile-combat-stat-value {
+  color: var(--accent);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.profile-combat-stat-name {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.profile-combat-stat-breakdown,
+.profile-zero-stat-details,
+.profile-combat-stat-disclosure {
+  margin-top: 6px;
+}
+
+.profile-combat-stat-breakdown > summary,
+.profile-zero-stat-details > summary,
+.profile-combat-stat-disclosure > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.profile-combat-stat-disclosure > summary,
+.profile-talent-disclosure > summary,
+.profile-imagine-collection > summary {
+  padding: 9px 10px;
+  border: 1px solid rgb(43 67 94 / 78%);
+  border-radius: 8px;
+  color: var(--accent);
+  background: rgb(8 17 28 / 72%);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.profile-talent-disclosure,
+.profile-imagine-collection {
+  margin-top: 10px;
+}
+
+.profile-talent-disclosure > .profile-talent-panel,
+.profile-imagine-collection > .profile-imagine-grid {
+  margin-top: 10px;
+}
+
+.profile-combat-stat-breakdown .profile-compact-list {
+  margin-top: 8px;
 }
 
 .profile-data-heading {
@@ -2709,8 +2809,42 @@ footer {
 }
 
 .profile-imagine-grid {
-  max-height: 560px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  max-height: 440px;
   overflow: auto;
+}
+
+.profile-imagine-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  padding: 8px;
+}
+
+.profile-imagine-card > .profile-item-icon {
+  width: 44px;
+  height: 44px;
+  margin: 0;
+}
+
+.profile-imagine-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  color: inherit !important;
+  font-size: inherit !important;
+}
+
+.profile-imagine-copy strong {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.profile-imagine-copy small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
 }
 
 .profile-module-row {
@@ -3052,7 +3186,7 @@ footer {
 }
 
 .profile-talent-viewport {
-  max-height: min(680px, 68vh);
+  max-height: min(520px, 56vh);
   overflow: auto;
   border: 1px solid rgb(43 67 94 / 78%);
   border-radius: 11px;
@@ -3082,6 +3216,7 @@ footer {
 
 .profile-talent-zoom-space {
   position: relative;
+  margin-inline: auto;
 }
 
 .profile-talent-canvas {
@@ -3137,9 +3272,9 @@ footer {
   position: absolute;
   z-index: 2;
   display: grid;
-  width: 64px;
-  height: 64px;
-  padding: 5px;
+  width: 52px;
+  height: 52px;
+  padding: 4px;
   border: 2px solid rgb(71 95 123 / 78%);
   border-radius: 50%;
   cursor: pointer;
@@ -3262,8 +3397,8 @@ footer {
 
 .profile-medal-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  gap: 6px;
   padding: 8px;
   align-items: start;
   border-top: 1px solid var(--line);
@@ -3271,24 +3406,24 @@ footer {
 
 .profile-medal-card {
   display: grid;
-  grid-template-rows: 64px auto;
-  place-items: center;
-  gap: 7px;
-  min-height: 118px;
-  padding: 9px 7px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 6px 7px;
   border: 1px solid rgb(32 49 73 / 55%);
   border-radius: 9px;
   background: linear-gradient(145deg, rgb(24 37 56 / 78%), rgb(8 16 27 / 64%));
-  text-align: center;
+  text-align: left;
 }
 
 .profile-medal-card.has-no-icon {
-  grid-template-rows: auto;
+  grid-template-columns: 1fr;
 }
 
 .profile-medal-icon {
-  width: 64px;
-  height: 64px;
+  width: 34px;
+  height: 34px;
   object-fit: contain;
 }
 
@@ -3296,7 +3431,7 @@ footer {
   display: grid;
   min-width: 0;
   gap: 3px;
-  justify-items: center;
+  justify-items: start;
 }
 
 .profile-medal-copy strong,
