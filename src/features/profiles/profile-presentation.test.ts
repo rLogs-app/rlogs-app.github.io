@@ -117,7 +117,9 @@ describe("BPSR profile presentation catalog", () => {
     expect(catalog.items["2000631"]?.equipment_levels_by_breakthrough?.["3"]).toBe(280);
     expect(catalog.items["2011441"]?.equipment_levels_by_breakthrough?.["2"]).toBe(270);
     expect(catalog.items["2081462"]?.equipment_levels_by_breakthrough?.["2"]).toBe(270);
+    expect(catalog.items["2091462"]?.equipment_levels_by_breakthrough?.["2"]).toBe(270);
     expect(catalog.items["2081462"]?.set_id).toBe(103);
+    expect(catalog.items["2091462"]?.set_id).toBe(103);
     expect(catalog.items["2011341"]?.equipment_level).toBe(240);
     expect(catalog.equipment_sets["5"]).toEqual({
       suit_id: 102,
