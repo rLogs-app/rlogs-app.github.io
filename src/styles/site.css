@@ -2659,6 +2659,124 @@ footer {
   overscroll-behavior: contain;
 }
 
+.profile-detail-modal-panel--equipment {
+  width: min(660px, 100%);
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.profile-detail-modal-panel--equipment .profile-detail-modal-heading {
+  min-height: 54px;
+  padding-block: 8px;
+}
+
+.profile-detail-modal-panel--equipment .profile-detail-modal-heading h2 {
+  font-size: clamp(15px, 1.6vw, 19px);
+}
+
+.profile-detail-modal-panel--equipment .profile-detail-modal-content {
+  padding: 12px 14px 14px;
+}
+
+.profile-detail-modal-panel--equipment .profile-equipment-modal-detail {
+  gap: 7px;
+}
+
+.profile-detail-modal-panel--equipment .profile-detail-subheading {
+  margin: 2px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-detail-modal-panel--equipment .profile-equipment-attributes {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  max-height: none;
+  overflow: visible;
+}
+
+.profile-detail-modal-panel--equipment .profile-equipment-attributes .profile-compact-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.6fr);
+  gap: 4px 8px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 5px 7px;
+}
+
+.profile-detail-modal-panel--equipment .profile-equipment-attributes strong {
+  min-width: 0;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.profile-detail-modal-panel--equipment .profile-equipment-attributes small {
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.profile-detail-modal-panel--equipment .profile-active-set-effects {
+  gap: 4px;
+  margin-top: 1px;
+  padding: 6px 7px;
+}
+
+.profile-detail-modal-panel--equipment .profile-active-set-effects > strong {
+  font-size: 10px;
+}
+
+.profile-detail-modal-panel--equipment .profile-active-set-effects .profile-compact-row {
+  grid-template-columns: minmax(110px, 0.35fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 5px 7px;
+}
+
+.profile-detail-modal-panel--equipment .profile-active-set-effects .profile-compact-row strong,
+.profile-detail-modal-panel--equipment .profile-active-set-effects .profile-compact-row small {
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.profile-detail-modal-panel--equipment .profile-sigil-list {
+  gap: 5px;
+  margin-top: 0;
+}
+
+.profile-detail-modal-panel--equipment .profile-sigil-row {
+  gap: 10px;
+  min-height: 54px;
+  padding: 7px 9px;
+  border: 1px solid rgb(64 92 126 / 72%);
+  border-radius: 9px;
+  background: rgb(17 27 42 / 72%);
+}
+
+.profile-detail-modal-panel--equipment .profile-sigil-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+}
+
+.profile-detail-modal-panel--equipment .profile-sigil-row span {
+  gap: 2px;
+}
+
+.profile-detail-modal-panel--equipment .profile-sigil-row strong {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.profile-detail-modal-panel--equipment .profile-sigil-row small {
+  font-size: 10px;
+  line-height: 1.25;
+}
+
 .profile-detail-modal-heading {
   position: sticky;
   top: 0;
@@ -4028,6 +4146,57 @@ footer p {
 
   .profile-detail-modal-content {
     padding: 12px;
+  }
+
+  .profile-detail-modal-panel--equipment {
+    width: calc(100vw - 12px);
+    max-height: calc(100dvh - 12px);
+  }
+
+  .profile-detail-modal-panel--equipment .profile-detail-modal-heading {
+    min-height: 48px;
+    padding: 6px 8px 6px 11px;
+  }
+
+  .profile-detail-modal-panel--equipment .profile-detail-modal-content {
+    padding: 8px 9px 10px;
+  }
+
+  .profile-detail-modal-panel--equipment .profile-equipment-modal-detail {
+    gap: 5px;
+  }
+
+  .profile-detail-modal-panel--equipment .profile-equipment-attributes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .profile-detail-modal-panel--equipment .profile-equipment-attributes .profile-compact-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.6fr);
+    gap: 3px;
+    padding: 4px 5px;
+  }
+
+  .profile-detail-modal-panel--equipment .profile-equipment-attributes small {
+    max-width: 100%;
+    text-align: right;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .profile-detail-modal-panel--equipment .profile-active-set-effects .profile-compact-row {
+    grid-template-columns: minmax(80px, 0.35fr) minmax(0, 1fr);
+  }
+
+  .profile-detail-modal-panel--equipment .profile-sigil-row {
+    min-height: 50px;
+    padding: 5px 7px;
+  }
+
+  .profile-detail-modal-panel--equipment .profile-sigil-icon {
+    width: 40px;
+    height: 40px;
   }
 
   .profile-detail-modal-content .profile-item-grid,

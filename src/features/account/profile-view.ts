@@ -202,6 +202,10 @@ function createProfileDetailModal(characterName: string, characterId: string): P
       restoreFocus = trigger;
       title.textContent = label;
       panel.setAttribute("aria-label", label);
+      panel.classList.toggle(
+        "profile-detail-modal-panel--equipment",
+        detail.classList.contains("profile-equipment-modal-detail"),
+      );
       content.replaceChildren(detail);
       host.hidden = false;
       document.body.classList.add("profile-modal-open");
