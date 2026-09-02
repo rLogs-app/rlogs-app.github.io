@@ -9,6 +9,7 @@ import {
   battleImagineRarityLabel,
   calculateTalentTreeGeometry,
   cleanGameText,
+  combatActionKindLabel,
   combatActionDisplaySlots,
   equipmentQualityToken,
   formatFightAttributeValue,
@@ -211,7 +212,16 @@ describe("equipped combat skills", () => {
 
   it("presents the protobuf remodel level as the user-facing skill tier", () => {
     expect(skillProgressFacts(60, 6)).toBe("Level 60 · Tier 6");
+    expect(skillProgressFacts(30, 6, true, true)).toBe("Lv. 30 · Tier 6");
     expect(skillProgressFacts(1, 5, false, true)).toBe("Tier 5");
+  });
+
+  it("uses compact player-facing action labels inside the fixed card rows", () => {
+    expect(combatActionKindLabel("Basic attack")).toBe("Basic Attack");
+    expect(combatActionKindLabel("Special attack")).toBe("Special Attack");
+    expect(combatActionKindLabel("Class / expertise skill")).toBe("Class Skill");
+    expect(combatActionKindLabel("Ultimate")).toBe("Ultimate");
+    expect(combatActionKindLabel("Battle Imagine")).toBe("Battle Imagine");
   });
 
   it("uses the selected specialization's exact special-attack replacement", () => {

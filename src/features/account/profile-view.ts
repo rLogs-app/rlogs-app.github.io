@@ -900,15 +900,15 @@ function equippedSkillsPanel(
       if (rarity) tile.dataset.rarity = rarity.toLowerCase();
     }
     appendPresentationIcon(tile, localized?.icon, name || "Equipped skill", "profile-action-icon");
+    const progression = isBattleImagine
+      ? joinFacts([rarity, `Tier ${observedTier}`])
+      : skillProgressFacts(skill?.level, skill?.remodel_level, true, true);
     tile.append(
       element("strong", "profile-action-name", name || `Unknown skill ${slot.skillId}`),
-      element("small", "profile-action-meta", joinFacts([
-        action.kind,
-        isBattleImagine ? rarity : "",
-        isBattleImagine
-          ? `Tier ${observedTier}`
-          : skillProgressFacts(skill?.level, skill?.remodel_level, true, true),
-      ])),
+      profileActionMeta([
+        combatActionKindLabel(action.kind),
+        progression,
+      ]),
     );
     tile.title = name || `Skill ${action.skillId}`;
     bar.append(tile);
@@ -940,6 +940,16 @@ export type CombatActionKind = "Basic attack" | "Special attack" | "Class / expe
 export interface CombatActionPresentation {
   skillId: number;
   kind: CombatActionKind;
+}
+
+export function combatActionKindLabel(kind: CombatActionKind): string {
+  switch (kind) {
+    case "Basic attack": return "Basic Attack";
+    case "Special attack": return "Special Attack";
+    case "Class / expertise skill": return "Class Skill";
+    case "Ultimate": return "Ultimate";
+    case "Battle Imagine": return "Battle Imagine";
+  }
 }
 
 export function resolveCombatActionPresentation(
@@ -1005,19 +1015,30 @@ function equippedRoleSkillsPanel(
     appendPresentationIcon(tile, localized?.icon, localized?.name ?? "Equipped role skill", "profile-action-icon");
     tile.append(
       element("strong", "profile-action-name", localized?.name ?? `Unknown role skill ${slot.skillId}`),
-      element("small", "profile-action-meta", joinFacts([
-        isImagineRoleSkill ? "Imagine role skill" : "Role skill",
-        sourceImagine ?? "",
-        isImagineRoleSkill
-          ? imagineTier == null ? "Tier not observed" : `Tier ${imagineTier}`
-          : pair("Lv.", skill?.level),
-      ])),
+      profileActionMeta(isImagineRoleSkill
+        ? [
+            "Imagine Role Skill",
+            sourceImagine ?? "Source Imagine not observed",
+            imagineTier == null ? "Tier not observed" : `Tier ${imagineTier}`,
+          ]
+        : [
+            "Role Skill",
+            skillProgressFacts(skill?.level, skill?.remodel_level, true, true),
+          ]),
     );
     tile.title = localized?.name ?? `Role skill ${slot.skillId}`;
     bar.append(tile);
   }
   panel.append(bar);
   return panel;
+}
+
+function profileActionMeta(lines: string[]): HTMLElement {
+  const meta = element("small", "profile-action-meta");
+  for (const line of lines.filter(Boolean)) {
+    meta.append(element("span", "profile-action-meta-line", line));
+  }
+  return meta;
 }
 
 export function resolveRoleImagineTier(
