@@ -60,15 +60,29 @@ describe("parse search", () => {
       death_seconds: [8],
       abilities: [
         {
-          ability_id: "2900840",
+          ability_id: "2220329107",
           presentation_name: "Falcon Strike",
           presentation_kind: "skill",
           icon_asset_path: "/assets/skills/falcon-strike.webp",
-          casts: 3,
-          hits: 6,
-          critical_hits: 2,
-          damage: 900,
-          effective_damage: 900,
+          casts: 2,
+          hits: 4,
+          critical_hits: 1,
+          damage: 600,
+          effective_damage: 600,
+          healing: 0,
+          effective_healing: 0,
+          shielding: 0,
+        },
+        {
+          ability_id: "2220329109",
+          presentation_name: "Falcon Lightning Strike",
+          presentation_kind: "skill",
+          icon_asset_path: "/assets/skills/falcon-lightning-strike.webp",
+          casts: 1,
+          hits: 2,
+          critical_hits: 1,
+          damage: 300,
+          effective_damage: 300,
           healing: 0,
           effective_healing: 0,
           shielding: 0,
@@ -258,6 +272,7 @@ describe("parse search", () => {
     expect(html).toContain("Run timeline");
     expect(html).toContain("Skill contribution");
     expect(html).toContain("Falcon Strike");
+    expect(html).toContain("Falcon Lightning Strike");
     expect(html).toContain("rDPS calculations");
     expect(html).toContain("Harmony Grace");
     expect(html).toContain("Evidence coverage");
