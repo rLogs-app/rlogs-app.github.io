@@ -18,10 +18,15 @@
           "/parses": "parses",
           "/my-parses": "my-parses",
           "/profiles": "profiles",
+          "/users": "users",
           "/account": "account",
+          "/my-account": "my-account",
           "/optimizer": "optimizer",
         };
-        document.documentElement.dataset.rlogsPage = pages[route] || "home";
+        document.documentElement.dataset.rlogsPage =
+          pages[route] ||
+          (route.startsWith("/profiles/") ? "profiles" :
+            route.startsWith("/users/") ? "users" : "home");
       })();
     </script>
   </head>
@@ -39,15 +44,19 @@
       <nav aria-label="Primary navigation">
         <a href="/" data-nav-page="home">Home</a>
         <a href="/parses/" data-nav-page="parses">Parses</a>
-        <a href="/my-parses/" data-nav-page="my-parses" data-my-parses-nav hidden>My Parses</a>
         <a href="/profiles/" data-nav-page="profiles">Profiles</a>
-        <a href="/account/" data-nav-page="account" data-account-nav>Account</a>
+        <a href="/account/" data-nav-page="account" data-authenticated-nav hidden>My Profile</a>
+        <a href="/my-parses/" data-nav-page="my-parses" data-authenticated-nav hidden>My Parses</a>
+        <a href="/my-account/" data-nav-page="my-account" data-authenticated-nav hidden>My Account</a>
         <a href="/optimizer/" data-nav-page="optimizer">Module Optimizer</a>
       </nav>
-      <a
-        class="header-download"
-        href="https://github.com/donneeee/RLogs/releases/download/v0.1.39/rLogs_0.1.39_x64-setup.exe"
-      >Get the rLogs app</a>
+      <div class="header-actions">
+        <a class="header-auth" href="/account/" data-auth-action>Log in with Discord</a>
+        <a
+          class="header-download"
+          href="https://github.com/donneeee/RLogs/releases/download/v0.1.40/rLogs_0.1.40_x64-setup.exe"
+        >Get the rLogs app</a>
+      </div>
     </header>
 
     <main id="main-content">
@@ -101,6 +110,32 @@
         </div>
         <article id="account-content" class="panel account-panel">
           <p class="empty-state">Checking account authentication…</p>
+        </article>
+      </section>
+
+      <section id="my-account" class="content-section" data-page="my-account">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Private account controls</p>
+            <h2 id="my-account-title">My Account</h2>
+          </div>
+          <span id="my-account-status" class="status-chip neutral" role="status">Loading account…</span>
+        </div>
+        <article id="my-account-content" class="panel account-panel">
+          <p class="empty-state">Checking account authentication…</p>
+        </article>
+      </section>
+
+      <section id="user-profile" class="content-section" data-page="users">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">rLogs player account</p>
+            <h2 id="public-account-title">Player</h2>
+          </div>
+          <span id="public-account-status" class="status-chip neutral" role="status">Loading player…</span>
+        </div>
+        <article id="public-account-content" class="panel account-panel">
+          <p class="empty-state">Loading claimed characters…</p>
         </article>
       </section>
 

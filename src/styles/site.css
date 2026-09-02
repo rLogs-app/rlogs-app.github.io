@@ -38,7 +38,9 @@ html[data-rlogs-page="home"] [data-page~="home"],
 html[data-rlogs-page="parses"] [data-page~="parses"],
 html[data-rlogs-page="my-parses"] [data-page~="my-parses"],
 html[data-rlogs-page="profiles"] [data-page~="profiles"],
+html[data-rlogs-page="users"] [data-page~="users"],
 html[data-rlogs-page="account"] [data-page~="account"],
+html[data-rlogs-page="my-account"] [data-page~="my-account"],
 html[data-rlogs-page="optimizer"] [data-page~="optimizer"] {
   display: block;
 }
@@ -146,7 +148,7 @@ a {
 
 nav {
   display: flex;
-  gap: 28px;
+  gap: clamp(14px, 1.7vw, 28px);
   justify-content: center;
 }
 
@@ -179,7 +181,8 @@ nav a[aria-current="page"]::after {
 }
 
 .build-chip,
-.header-download {
+.header-download,
+.header-auth {
   justify-self: end;
   padding: 6px 9px;
   color: var(--accent);
@@ -194,8 +197,22 @@ nav a[aria-current="page"]::after {
   text-decoration: none;
 }
 
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-self: end;
+}
+
+.header-auth {
+  color: var(--text);
+  text-decoration: none;
+}
+
 .header-download:hover,
-.header-download:focus-visible {
+.header-download:focus-visible,
+.header-auth:hover,
+.header-auth:focus-visible {
   color: #071117;
   background: var(--accent);
 }
@@ -3736,6 +3753,68 @@ footer {
 
 .account-connection {
   padding: 0 1rem 1rem;
+}
+
+.account-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.account-settings-card,
+.public-account-heading {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgb(9 16 26 / 68%);
+}
+
+.account-settings-card > :first-child,
+.public-account-heading > :first-child {
+  margin-top: 0;
+}
+
+.account-settings-card > :last-child,
+.public-account-heading > :last-child {
+  margin-bottom: 0;
+}
+
+.account-username-form,
+.account-username-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.account-username-form input {
+  width: min(420px, 100%);
+  padding: 10px 12px;
+  color: var(--text);
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.account-username-form .button {
+  width: fit-content;
+}
+
+.account-inline-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.account-manage-link {
+  width: fit-content;
+  margin: 0 16px 16px;
+}
+
+.public-account-heading h3 {
+  margin: 4px 0;
+  font-size: clamp(24px, 4vw, 42px);
+}
+
+.public-account-characters {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  padding: 0 20px 20px;
 }
 
 .account-connection .profile-identity {

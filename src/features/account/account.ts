@@ -7,6 +7,8 @@ const sessionKey = "rlogs.web-session.v1";
 interface AccountView {
   schema_version: 1;
   submitter_id: string;
+  account_id?: number;
+  username?: string;
   discord_username: string;
   discord_global_name: string | null;
   discord_avatar_url: string | null;
@@ -50,9 +52,10 @@ interface LinkedProfileCatalog {
   profiles: LinkedProfileEntry[];
 }
 
-export async function mountAccount(): Promise<void> {
-  const status = requiredElement("account-status");
-  const content = requiredElement("account-content");
+export async function mountAccount(mode: "profile" | "settings" = "profile"): Promise<void> {
+  const prefix = mode === "settings" ? "my-account" : "account";
+  const status = requiredElement(`${prefix}-status`);
+  const content = requiredElement(`${prefix}-content`);
   if (!apiBase) {
     status.textContent = "API unavailable";
     content.replaceChildren(message("Account authentication is not configured for this deployment."));
@@ -123,7 +126,7 @@ export async function mountAccount(): Promise<void> {
     await renderSignedOut(status, content);
     return;
   }
-  await renderSignedIn(status, content, session);
+  await renderSignedIn(status, content, session, mode);
 }
 
 async function renderSignedOut(status: HTMLElement, content: HTMLElement): Promise<void> {
@@ -160,6 +163,7 @@ async function renderSignedIn(
   status: HTMLElement,
   content: HTMLElement,
   session: WebSession,
+  mode: "profile" | "settings",
 ): Promise<void> {
   let account = session.account;
   try {
@@ -175,7 +179,19 @@ async function renderSignedIn(
     return;
   }
   status.textContent = "Signed in";
-  document.querySelector<HTMLElement>("#account-title")?.replaceChildren("My Profile");
+  session.account = account;
+  localStorage.setItem(sessionKey, JSON.stringify(session));
+  if (mode === "profile") {
+    document.querySelector<HTMLElement>("#account-title")?.replaceChildren("My Profile");
+    const linkedProfiles = await renderLinkedProfiles(session);
+    const manage = document.createElement("a");
+    manage.className = "button secondary account-manage-link";
+    manage.href = "/my-account/";
+    manage.textContent = "Manage My Account";
+    content.replaceChildren(linkedProfiles, manage);
+    return;
+  }
+
   const identity = document.createElement("div");
   identity.className = "profile-identity";
   if (account.discord_avatar_url) {
@@ -187,11 +203,84 @@ async function renderSignedIn(
   }
   const copy = document.createElement("div");
   copy.append(
-    element("p", "eyebrow", "Authenticated rLogs account"),
+    element("p", "eyebrow", "Discord login identity"),
     element("h3", "", account.discord_global_name ?? account.discord_username),
     element("p", "identity-id", `@${account.discord_username}`),
   );
   identity.append(copy);
+
+  const publicIdentity = document.createElement("section");
+  publicIdentity.className = "account-settings-card";
+  publicIdentity.append(
+    element("p", "eyebrow", "Public rLogs identity"),
+    element("h3", "", account.username ?? account.discord_username),
+    element(
+      "p",
+      "identity-id",
+      account.account_id ? `rLogs ID ${account.account_id}` : "rLogs ID will be assigned by the account service",
+    ),
+  );
+  if (account.account_id) {
+    const publicLink = document.createElement("a");
+    publicLink.className = "profile-public-link";
+    publicLink.href = `/users/${account.account_id}/`;
+    publicLink.textContent = "View public account";
+    publicIdentity.append(publicLink);
+  }
+
+  const usernameForm = document.createElement("form");
+  usernameForm.className = "account-username-form account-settings-card";
+  const usernameLabel = document.createElement("label");
+  usernameLabel.append(element("span", "", "Public username"));
+  const username = document.createElement("input");
+  username.type = "text";
+  username.name = "username";
+  username.required = true;
+  username.minLength = 3;
+  username.maxLength = 24;
+  username.pattern = "[A-Za-z0-9][A-Za-z0-9_-]{1,22}[A-Za-z0-9]";
+  username.autocomplete = "username";
+  username.value = account.username ?? account.discord_username;
+  usernameLabel.append(username);
+  const usernameHelp = element(
+    "small",
+    "",
+    "3-24 letters, numbers, hyphens, or underscores. Changing it does not change your stable rLogs account URL.",
+  );
+  const saveUsername = element("button", "button primary", "Save username");
+  saveUsername.type = "submit";
+  const usernameStatus = element("span", "account-inline-status");
+  usernameStatus.setAttribute("role", "status");
+  usernameForm.append(usernameLabel, usernameHelp, saveUsername, usernameStatus);
+  usernameForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    saveUsername.disabled = true;
+    usernameStatus.textContent = "Saving…";
+    try {
+      const response = await fetch(`${apiBase}/v1/auth/me`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username: username.value }),
+      });
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || `Username update failed with HTTP ${response.status}.`);
+      }
+      const updated = parseAccount(await response.json());
+      session.account = updated;
+      localStorage.setItem(sessionKey, JSON.stringify(session));
+      username.value = updated.username ?? username.value;
+      usernameStatus.textContent = "Saved";
+      publicIdentity.querySelector("h3")?.replaceChildren(updated.username ?? updated.discord_username);
+    } catch (error) {
+      usernameStatus.textContent = errorText(error);
+    } finally {
+      saveUsername.disabled = false;
+    }
+  });
 
   const explanation = message(
     "Generate a token for one PC, then paste it into rLogs Settings → Website account connection. Log Uploader and Profile Sync share it. The desktop stores the token in Windows Credential Manager; the website will never show it again.",
@@ -244,28 +333,60 @@ async function renderSignedIn(
     location.reload();
   });
   actions.append(generate, signOut);
-  const linkedProfiles = await renderLinkedProfiles(session);
-  const connection = document.createElement("details");
-  connection.className = "account-connection";
+  const linkedProfiles = await renderClaimedProfileLinks(session);
+  const connection = document.createElement("section");
+  connection.className = "account-connection account-settings-card";
   connection.append(
-    element("summary", "", "Account & desktop connection"),
-    identity,
+    element("h3", "", "Desktop connection"),
     explanation,
     actions,
     output,
   );
-  content.replaceChildren(linkedProfiles, connection);
+  content.replaceChildren(identity, publicIdentity, usernameForm, linkedProfiles, connection);
+}
+
+async function renderClaimedProfileLinks(session: WebSession): Promise<HTMLElement> {
+  const section = document.createElement("section");
+  section.className = "account-settings-card";
+  section.append(element("h3", "", "Claimed characters"));
+  try {
+    const catalog = await loadLinkedProfileCatalog(session);
+    if (!catalog.profiles.length) {
+      section.append(message("No UID has been claimed by this account yet."));
+      return section;
+    }
+    const list = document.createElement("div");
+    list.className = "linked-profile-list";
+    for (const profile of catalog.profiles) {
+      const link = document.createElement("a");
+      link.className = "linked-profile-card";
+      link.href = `/profiles/${encodeURIComponent(profile.character_id)}/`;
+      link.append(
+        element("strong", "", profile.display_name ?? `UID ${profile.character_id}`),
+        element("small", "identity-id", `UID ${profile.character_id}`),
+      );
+      list.append(link);
+    }
+    section.append(list);
+  } catch (error) {
+    section.append(message(errorText(error)));
+  }
+  return section;
+}
+
+async function loadLinkedProfileCatalog(session: WebSession): Promise<LinkedProfileCatalog> {
+  const response = await fetch(`${apiBase}/v1/auth/profiles`, {
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) throw new Error(`Linked-profile request failed with HTTP ${response.status}.`);
+  return parseLinkedProfileCatalog(await response.json());
 }
 
 async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
   const section = document.createElement("section");
   section.className = "linked-profile-section";
   try {
-    const response = await fetch(`${apiBase}/v1/auth/profiles`, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
-    if (!response.ok) throw new Error(`Linked-profile request failed with HTTP ${response.status}.`);
-    const catalog = parseLinkedProfileCatalog(await response.json());
+    const catalog = await loadLinkedProfileCatalog(session);
     if (catalog.profiles.length === 0) {
       section.append(
         element("h3", "", "My Profile"),
@@ -289,7 +410,7 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
       link.textContent = profile.display_name ?? `UID ${profile.character_id}`;
       const publicLink = document.createElement("a");
       publicLink.className = "profile-public-link";
-      publicLink.href = `/profiles/?profile=${encodeURIComponent(profile.profile_id)}`;
+      publicLink.href = `/profiles/${encodeURIComponent(profile.character_id)}/`;
       publicLink.textContent = "View public profile";
       card.append(
         link,
@@ -335,6 +456,10 @@ export function parseAccount(value: unknown): AccountView {
     !/^usr_[0-9a-f]{32}$/u.test(value.submitter_id) ||
     typeof value.discord_username !== "string" ||
     value.discord_username.length === 0 ||
+    !(value.account_id === undefined ||
+      (positiveSafeInteger(value.account_id) && value.account_id >= 100_000_000_000 && value.account_id <= 999_999_999_999)) ||
+    !(value.username === undefined ||
+      (typeof value.username === "string" && /^[a-z0-9][a-z0-9_-]{1,22}[a-z0-9]$/u.test(value.username))) ||
     !isNullableString(value.discord_global_name) ||
     !isNullableString(value.discord_avatar_url)
   ) {

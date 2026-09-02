@@ -104,7 +104,7 @@ function renderLatestProfiles(catalog: PublicProfileCatalog, target: HTMLElement
     ? profiles
         .map((profile) => {
           const location = [profile.region, profile.realm ?? profile.world].filter(Boolean).map(String).join(" · ");
-          return `<a class="home-feed-row profile-feed-row" href="/profiles/?profile=${encodeURIComponent(profile.profile_id)}"><span><strong>${escapeHtml(profile.display_name ?? `UID ${profile.character_id}`)}</strong><small>${escapeHtml(location || profile.deployment)}</small></span><span><small>Last seen</small><strong>${escapeHtml(relativeTime(profile.updated_unix_millis))}</strong></span></a>`;
+          return `<a class="home-feed-row profile-feed-row" href="/profiles/${encodeURIComponent(profile.character_id)}/"><span><strong>${escapeHtml(profile.display_name ?? `UID ${profile.character_id}`)}</strong><small>${escapeHtml(location || profile.deployment)}</small></span><span><small>Last seen</small><strong>${escapeHtml(relativeTime(profile.updated_unix_millis))}</strong></span></a>`;
         })
         .join("")
     : '<p class="empty-state">No players have synced a public profile yet.</p>';

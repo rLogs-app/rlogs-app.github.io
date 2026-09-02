@@ -58,9 +58,10 @@ export async function mountProfileBrowser(): Promise<void> {
   }
 
   status.textContent = `${catalog.profiles.length.toLocaleString()} public profiles`;
-  const requested = new URLSearchParams(location.search).get("profile");
+  const requested = requestedProfileReference(location.pathname, location.search);
   let selected = requested
-    ? catalog.profiles.find((entry) => entry.profile_id === requested)
+    ? catalog.profiles.find((entry) =>
+        entry.character_id === requested || entry.profile_id === requested)
     : undefined;
 
   const renderList = (): void => {
@@ -75,7 +76,7 @@ export async function mountProfileBrowser(): Promise<void> {
       const card = document.createElement("a");
       card.className = "linked-profile-card profile-browser-card";
       if (entry.profile_id === selected?.profile_id) card.setAttribute("aria-current", "true");
-      card.href = `/profiles/?profile=${encodeURIComponent(entry.profile_id)}`;
+      card.href = profileUrl(entry.character_id);
       const locationLabel = [entry.region, entry.realm ?? entry.world].filter(Boolean).join(" · ");
       card.append(
         element("strong", "", entry.display_name ?? `UID ${entry.character_id}`),
@@ -99,6 +100,10 @@ export async function mountProfileBrowser(): Promise<void> {
   }
   selected ??= catalog.profiles[0];
   if (!selected) return;
+  const canonicalUrl = profileUrl(selected.character_id);
+  if (location.pathname !== canonicalUrl || location.search) {
+    history.replaceState(null, "", canonicalUrl);
+  }
   detail.replaceChildren(message("Loading the latest verified character snapshot…"));
   try {
     const profile = await loadPublishedProfile(selected.profile_id);
@@ -106,6 +111,23 @@ export async function mountProfileBrowser(): Promise<void> {
   } catch (error) {
     detail.replaceChildren(message(errorText(error)));
   }
+}
+
+export function requestedProfileReference(pathname: string, search: string): string | undefined {
+  const path = pathname.replace(/\/+$/u, "");
+  const match = /^\/profiles\/([^/]+)$/u.exec(path);
+  if (match) {
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }
+  return new URLSearchParams(search).get("profile") ?? undefined;
+}
+
+export function profileUrl(characterId: string): string {
+  return `/profiles/${encodeURIComponent(characterId)}/`;
 }
 
 function searchable(entry: PublicProfileCatalogEntry): string {

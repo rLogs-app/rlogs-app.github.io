@@ -11,6 +11,8 @@ import {
 const account = {
   schema_version: 1,
   submitter_id: `usr_${"a".repeat(32)}`,
+  account_id: 583104927614,
+  username: "test-player",
   discord_username: "tester",
   discord_global_name: "Tester",
   discord_avatar_url: null,
@@ -18,7 +20,10 @@ const account = {
 
 describe("account contracts", () => {
   it("validates the Discord-backed account identity", () => {
-    expect(parseAccount(account).discord_username).toBe("tester");
+    const parsed = parseAccount(account);
+    expect(parsed.discord_username).toBe("tester");
+    expect(parsed.account_id).toBe(583104927614);
+    expect(parsed.username).toBe("test-player");
   });
 
   it("validates a bounded browser session", () => {

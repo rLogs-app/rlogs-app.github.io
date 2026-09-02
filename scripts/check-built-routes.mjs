@@ -1,9 +1,11 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const routes = ["parses", "my-parses", "profiles", "account", "optimizer"];
+const routes = ["parses", "my-parses", "profiles", "users", "account", "my-account", "optimizer"];
 const root = resolve(process.cwd(), "dist");
 const rootHtml = await readFile(resolve(root, "index.html"), "utf8");
+const fallbackHtml = await readFile(resolve(root, "404.html"), "utf8");
+if (fallbackHtml !== rootHtml) throw new Error("Built 404 fallback does not mirror the app shell.");
 
 for (const route of routes) {
   const routeIndex = resolve(root, route, "index.html");

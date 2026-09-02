@@ -8,11 +8,19 @@ if (page === "home") {
 }
 
 if (page === "account") {
-  void import("./features/account/account").then(({ mountAccount }) => mountAccount());
+  void import("./features/account/account").then(({ mountAccount }) => mountAccount("profile"));
+}
+if (page === "my-account") {
+  void import("./features/account/account").then(({ mountAccount }) => mountAccount("settings"));
 }
 if (page === "profiles") {
   void import("./features/profiles/profile-browser").then(({ mountProfileBrowser }) =>
     mountProfileBrowser(),
+  );
+}
+if (page === "users") {
+  void import("./features/profiles/public-account").then(({ mountPublicAccount }) =>
+    mountPublicAccount(),
   );
 }
 if (page === "optimizer") {

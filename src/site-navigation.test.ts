@@ -7,7 +7,10 @@ describe("site navigation", () => {
     ["/parses/", "parses"],
     ["/my-parses/", "my-parses"],
     ["/profiles/", "profiles"],
+    ["/profiles/3296036/", "profiles"],
+    ["/users/583104927614/", "users"],
     ["/account", "account"],
+    ["/my-account", "my-account"],
     ["/optimizer/", "optimizer"],
     ["/unknown/", "home"],
   ] as const)("maps %s to %s", (path, expected) => {
