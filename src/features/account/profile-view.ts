@@ -335,7 +335,24 @@ function combatStatsSection(body: JsonRecord): HTMLElement {
     "profile-observation-note",
     "Profile values come from the newest complete character snapshot. Temporary combat buffs and deltas are shown only in the live Stats overlay.",
   ));
-  if (nonzero.length) section.append(combatStatGrid(nonzero.slice(0, 6), false));
+  const mainFamilyIds = [
+    11_320, // Max HP
+    11_330, // ATK
+    11_030, // Agility
+    11_040, // Endurance
+    11_440, // Illusion-Breaking Strength
+    11_710, // Crit %
+    11_930, // Haste %
+    11_780, // Luck %
+    11_940, // Mastery %
+    11_950, // Versatility %
+    11_970, // Block %
+  ];
+  const byFamilyId = new Map(families.map((family) => [family.familyId, family]));
+  const main = mainFamilyIds
+    .map((familyId) => byFamilyId.get(familyId))
+    .filter((family): family is CombatStatFamilyView => family != null);
+  if (main.length) section.append(combatStatGrid(main, false));
   section.append(profileDetailButton(
     `View all ${families.length.toLocaleString()} observed stats`,
     "Character stats",
