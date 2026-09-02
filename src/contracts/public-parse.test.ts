@@ -18,7 +18,7 @@ describe("public parse contract", () => {
   it("rejects catalog entries without a safe report identifier", () => {
     expect(
       isPublicParseCatalog({
-        schema_version: 5,
+        schema_version: 6,
         entries: [{ report_id: "bad", run_index: 0, region_id: "global", terminal_state: "completed" }],
         facets: {},
       }),
@@ -28,7 +28,7 @@ describe("public parse contract", () => {
   it("accepts the current server catalog and report schema versions", () => {
     expect(
       isPublicParseCatalog({
-        schema_version: 5,
+        schema_version: 6,
         total_entries: 0,
         offset: 0,
         next_offset: null,
@@ -123,7 +123,7 @@ describe("public parse contract", () => {
     expect(validateRunGroupId("../../private-run")).toBe(false);
     expect(
       isPublicRunReconciliation({
-        schema_version: 5,
+        schema_version: 10,
         reconciliation_id: `rec_${"ef".repeat(16)}`,
         run_group_id: runGroupId,
         status: "reconciled",

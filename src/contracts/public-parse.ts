@@ -1,5 +1,5 @@
 export interface PublicParseCatalog {
-  schema_version: 5;
+  schema_version: 5 | 6;
   total_entries: number;
   offset: number;
   next_offset?: number | null;
@@ -212,7 +212,7 @@ export interface PublicRdpsInfluence {
 }
 
 export interface PublicRunReconciliation {
-  schema_version: 5 | 6 | 7 | 8;
+  schema_version: 5 | 6 | 7 | 8 | 9 | 10;
   reconciliation_id: string;
   run_group_id: string;
   status: RunAttributionReconciliationStatus;
@@ -322,7 +322,7 @@ const reconciliationIdPattern = /^rec_[a-f0-9]{32}$/;
 export function isPublicParseCatalog(value: unknown): value is PublicParseCatalog {
   if (
     !isRecord(value) ||
-    value.schema_version !== 5 ||
+    (value.schema_version !== 5 && value.schema_version !== 6) ||
     !Number.isSafeInteger(value.total_entries) ||
     !Number.isSafeInteger(value.offset) ||
     !(value.next_offset == null || Number.isSafeInteger(value.next_offset)) ||
@@ -425,7 +425,9 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
     (value.schema_version !== 5 &&
       value.schema_version !== 6 &&
       value.schema_version !== 7 &&
-      value.schema_version !== 8) ||
+      value.schema_version !== 8 &&
+      value.schema_version !== 9 &&
+      value.schema_version !== 10) ||
     typeof value.reconciliation_id !== "string" ||
     !reconciliationIdPattern.test(value.reconciliation_id) ||
     typeof value.run_group_id !== "string" ||
