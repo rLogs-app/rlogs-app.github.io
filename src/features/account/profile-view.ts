@@ -935,7 +935,7 @@ export function combatActionDisplaySlots(): CombatActionDisplaySlot[] {
   }));
 }
 
-export type CombatActionKind = "Basic attack" | "Special attack" | "Class skill" | "Ultimate" | "Battle Imagine";
+export type CombatActionKind = "Basic attack" | "Special attack" | "Class / expertise skill" | "Ultimate" | "Battle Imagine";
 
 export interface CombatActionPresentation {
   skillId: number;
@@ -953,7 +953,7 @@ export function resolveCombatActionPresentation(
   }
   if (sourceSlotId === 1) return { skillId: sourceSkillId, kind: "Basic attack" };
   if (sourceSlotId === 6) return { skillId: sourceSkillId, kind: "Ultimate" };
-  if (sourceSlotId !== 2) return { skillId: sourceSkillId, kind: "Class skill" };
+  if (sourceSlotId !== 2) return { skillId: sourceSkillId, kind: "Class / expertise skill" };
 
   const selectedTalentIds = new Set(
     arrayValue(body.talents)

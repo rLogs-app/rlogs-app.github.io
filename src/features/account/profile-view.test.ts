@@ -223,7 +223,7 @@ describe("equipped combat skills", () => {
     expect(allTreesCatalog.skills["2222"]?.name).toBe("Double Arrow");
     expect(resolveCombatActionPresentation({}, 1, 2_201, allTreesCatalog).kind).toBe("Basic attack");
     expect(resolveCombatActionPresentation({}, 6, 2_209, allTreesCatalog).kind).toBe("Ultimate");
-    expect(resolveCombatActionPresentation({}, 9, 2_231, allTreesCatalog).kind).toBe("Class skill");
+    expect(resolveCombatActionPresentation({}, 9, 2_231, allTreesCatalog).kind).toBe("Class / expertise skill");
   });
 
   it("uses exact action-slot evidence and excludes non-combat bindings", () => {
