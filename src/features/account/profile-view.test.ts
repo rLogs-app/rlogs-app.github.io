@@ -16,6 +16,7 @@ import {
   materializeEquipmentBuffDescription,
   masterDungeonRows,
   orderedMedalEntries,
+  photoWallDisplayEntries,
   photoWallIdentityCount,
   resolveCombatStatFamilies,
   resolveCombatActionPresentation,
@@ -501,6 +502,19 @@ describe("profile collection evidence labels", () => {
 });
 
 describe("published Photo Wall URLs", () => {
+  it("shows exact album or asset identities even before a wall-slot snapshot arrives", () => {
+    expect(photoWallDisplayEntries([42, 41, 42], undefined, [43, 41])).toEqual([
+      { slot: null, photoId: 41 },
+      { slot: null, photoId: 42 },
+      { slot: null, photoId: 43 },
+    ]);
+    expect(photoWallDisplayEntries([41, 42], { "2": 42 }, [43])).toEqual([
+      { slot: "2", photoId: 42 },
+      { slot: null, photoId: 41 },
+      { slot: null, photoId: 43 },
+    ]);
+  });
+
   it("counts displayed wall identities even when the album list is absent", () => {
     expect(photoWallIdentityCount([], { "1": 1 })).toBe(1);
     expect(photoWallIdentityCount([1, 2, 2], { "1": 1, "2": 3 })).toBe(3);

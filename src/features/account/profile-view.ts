@@ -1487,13 +1487,18 @@ function photoWallSection(body: JsonRecord): HTMLElement {
     return asset && photoId != null ? [[String(photoId), asset] as const] : [];
   }));
   const placements = wall ? Object.entries(wall) : [];
+  const displayEntries = photoWallDisplayEntries(
+    photos,
+    wall,
+    [...assets.keys()].map(Number),
+  );
   const photoCount = photoWallIdentityCount(photos, wall);
   const section = profileSection(
     "Photo Wall",
     `${photoCount.toLocaleString()} ${photoCount === 1 ? "photo reference" : "photo references"} · ${placements.length.toLocaleString()} ${placements.length === 1 ? "wall slot" : "wall slots"} · ${assets.size.toLocaleString()} verified ${assets.size === 1 ? "image" : "images"}`,
   );
   const grid = element("div", "profile-item-grid photo-wall-grid");
-  for (const [slot, photoId] of placements) {
+  for (const { slot, photoId } of displayEntries) {
     const card = element("article", "profile-item-card photo-wall-card");
     const asset = assets.get(String(photoId));
     const imageUrl =
@@ -1503,23 +1508,53 @@ function photoWallSection(body: JsonRecord): HTMLElement {
       const image = document.createElement("img");
       image.className = "photo-wall-image";
       image.src = imageUrl;
-      image.alt = stringValue(asset?.alt_text) ?? `Photo Wall image ${slot}`;
+      image.alt = stringValue(asset?.alt_text) ?? (slot == null
+        ? `Photo Wall image ${photoId}`
+        : `Photo Wall image ${slot}`);
       image.loading = "lazy";
       image.referrerPolicy = "no-referrer";
       card.append(image);
     }
     card.append(
-      element("strong", "", `Wall slot ${slot}`),
+      element("strong", "", slot == null ? `Photo ${photoId}` : `Wall slot ${slot}`),
       imageUrl ? element("small", "", stringValue(asset?.caption) ?? "Published from the in-game Photo Wall") : element("span", "", `Photo ${displayValue(photoId)} · awaiting exact live image capture`),
     );
     grid.append(card);
   }
   section.append(
-    placements.length
+    displayEntries.length
       ? grid
-      : empty("No Photo Wall placement was present in the latest synced snapshot."),
+      : empty("No Photo Wall identity was present in the latest synced snapshot."),
   );
   return section;
+}
+
+export interface PhotoWallDisplayEntry {
+  slot: string | null;
+  photoId: number;
+}
+
+export function photoWallDisplayEntries(
+  photoIds: JsonValue[],
+  wall: JsonRecord | undefined,
+  assetIds: number[] = [],
+): PhotoWallDisplayEntry[] {
+  const entries: PhotoWallDisplayEntry[] = [];
+  const seen = new Set<number>();
+  for (const [slot, value] of Object.entries(wall ?? {})) {
+    const photoId = numericValue(value);
+    if (photoId == null || photoId <= 0 || seen.has(photoId)) continue;
+    entries.push({ slot, photoId });
+    seen.add(photoId);
+  }
+  const unplaced = [...photoIds, ...assetIds]
+    .map(numericValue)
+    .filter((photoId): photoId is number => photoId != null && photoId > 0 && !seen.has(photoId));
+  for (const photoId of [...new Set(unplaced)].sort((left, right) => left - right)) {
+    entries.push({ slot: null, photoId });
+    seen.add(photoId);
+  }
+  return entries;
 }
 
 export function photoWallIdentityCount(
