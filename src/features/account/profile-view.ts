@@ -474,7 +474,7 @@ function battleImagineGrid(records: JsonValue[]): HTMLElement {
       ? Object.values(presentation.imagines).find((entry) => entry.item_id === imagineId)
       : presentation.imagines[String(skillId)];
     const observedTier = numericValue(item.remodel_level ?? item.breakthrough_level) ?? 0;
-    const rarity = battleImagineRarityLabel(localized?.item_tier);
+    const rarity = battleImagineRarityLabel(localized?.rarity, localized?.item_tier);
     const card = element("article", "profile-item-card profile-imagine-card");
     if (rarity) card.dataset.rarity = rarity.toLowerCase();
     card.dataset.tier = String(observedTier);
@@ -507,8 +507,14 @@ export function battleImagineOwnershipFacts(
   ]);
 }
 
-export function battleImagineRarityLabel(itemTier: JsonValue | undefined): string {
-  const tier = numericValue(itemTier);
+export function battleImagineRarityLabel(
+  rarity: JsonValue | undefined,
+  legacyItemTier?: JsonValue | undefined,
+): string {
+  if (typeof rarity === "string" && ["Epic", "SR", "SSR", "Collab"].includes(rarity)) {
+    return rarity;
+  }
+  const tier = numericValue(legacyItemTier ?? rarity);
   return ({ 3: "Epic", 4: "SR", 5: "SSR" } as Record<number, string>)[tier ?? -1] ?? "";
 }
 

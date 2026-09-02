@@ -459,6 +459,7 @@ const imagines = Object.fromEntries(imaginePresentation.imagines.map((imagine) =
     item_id: imagine.item_id,
     name: imagineNames.get(imagine.item_id) ?? `Battle Imagine ${imagine.item_id}`,
     item_tier: imagine.item_tier,
+    rarity: imagine.rarity,
     maximum_tier: imagine.maximum_tier,
     icon: `/assets/bpsr/profile/imagines/${fileName}`,
   }];

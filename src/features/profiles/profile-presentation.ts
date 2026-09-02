@@ -7,6 +7,7 @@ export interface PresentationRecord {
   equipment_levels_by_breakthrough?: Record<string, number>;
   set_id?: number | null;
   item_tier?: number;
+  rarity?: string | null;
   maximum_tier?: number;
   talent_id?: number;
   profession_id?: number | null;
@@ -118,7 +119,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=16`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=17`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {

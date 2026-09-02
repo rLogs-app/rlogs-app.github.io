@@ -42,6 +42,9 @@ describe("Battle Imagine ownership presentation", () => {
   });
 
   it("keeps catalog rarity separate from the observed remodel tier", () => {
+    expect(battleImagineRarityLabel("SSR", 4)).toBe("SSR");
+    expect(battleImagineRarityLabel("SR", 4)).toBe("SR");
+    expect(battleImagineRarityLabel("Collab", 4)).toBe("Collab");
     expect(battleImagineRarityLabel(3)).toBe("Epic");
     expect(battleImagineRarityLabel(4)).toBe("SR");
     expect(battleImagineRarityLabel(5)).toBe("SSR");

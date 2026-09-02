@@ -63,9 +63,21 @@ describe("BPSR profile presentation catalog", () => {
   });
 
   it("keeps Battle Imagine rarity values separate from observed ownership tiers", () => {
-    expect(catalog.imagines["3901"]).toEqual(expect.objectContaining({ name: "Battle Imagine - Inferno Ogre", item_tier: 4 }));
-    expect(catalog.imagines["3902"]).toEqual(expect.objectContaining({ name: "Battle Imagine - Tempest Ogre", item_tier: 4 }));
-    expect(catalog.imagines["3913"]).toEqual(expect.objectContaining({ name: "Battle Imagine - Shadow Captain", item_tier: 3 }));
+    expect(catalog.imagines["3901"]).toEqual(expect.objectContaining({ name: "Battle Imagine - Inferno Ogre", item_tier: 4, rarity: "SR" }));
+    expect(catalog.imagines["3902"]).toEqual(expect.objectContaining({ name: "Battle Imagine - Tempest Ogre", item_tier: 4, rarity: "SR" }));
+    expect(catalog.imagines["3913"]).toEqual(expect.objectContaining({ name: "Battle Imagine - Shadow Captain", item_tier: 3, rarity: "Epic" }));
+  });
+
+  it("uses the exact current Will Wish SSR pools instead of treating every orange Imagine as SSR", () => {
+    const ssrSkillIds = Object.entries(catalog.imagines)
+      .filter(([, imagine]) => imagine.rarity === "SSR")
+      .map(([skillId]) => Number(skillId))
+      .sort((left, right) => left - right);
+    expect(ssrSkillIds).toEqual([
+      3911, 3920, 3921, 3922,
+      3948, 3949, 3950, 3951,
+      3968, 3969, 3970, 3971,
+    ]);
   });
 
   it("publishes every profession and specialization tree independently of profile submissions", () => {
