@@ -334,6 +334,9 @@ function equipmentSection(body: JsonRecord): HTMLElement {
     const setEffects = resolveActiveEquipmentSetEffects(suitEntries, setId, presentation);
     const slotName = slotId == null ? "Equipment" : presentation.equipment_slots[String(slotId)] ?? `Equipment slot ${slotId}`;
     const card = element("article", "profile-item-card profile-equipment-card");
+    const equipmentQuality = item.quality ?? localized?.quality;
+    const qualityToken = equipmentQualityToken(equipmentQuality);
+    if (qualityToken) card.dataset.quality = qualityToken;
     appendPresentationIcon(card, localized?.icon, localized?.name ?? slotName, "profile-item-icon");
     const copy = element("div", "profile-equipment-copy");
     copy.append(
@@ -341,7 +344,7 @@ function equipmentSection(body: JsonRecord): HTMLElement {
       element("strong", "", localized?.name ?? `Unknown equipment ${displayValue(item.item_id)}`),
       element("small", "", joinFacts([
         pair("Item level", resolveEquipmentItemLevel(item, localized)),
-        qualityLabel(item.quality),
+        qualityLabel(equipmentQuality),
         pair("Refinement +", item.refinement_level),
       ])),
     );
@@ -1663,6 +1666,18 @@ function qualityLabel(value: JsonValue | undefined): string {
   const quality = numericValue(value);
   if (quality == null) return "";
   return presentation.quality_names[String(quality)] ?? `Quality ${quality}`;
+}
+
+export function equipmentQualityToken(value: JsonValue | undefined): string {
+  const quality = numericValue(value);
+  return ({
+    0: "raw",
+    1: "common",
+    2: "rare",
+    3: "epic",
+    4: "legendary",
+    5: "mythic",
+  } as Record<number, string>)[quality ?? -1] ?? "";
 }
 
 function resolvedModuleEffectLevel(

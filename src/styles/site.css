@@ -2715,6 +2715,30 @@ footer {
   align-self: start;
 }
 
+.profile-equipment-card[data-quality="raw"] {
+  border-color: rgb(122 132 146 / 74%);
+}
+
+.profile-equipment-card[data-quality="common"] {
+  border-color: rgb(213 220 229 / 80%);
+}
+
+.profile-equipment-card[data-quality="rare"] {
+  border-color: rgb(75 163 255 / 84%);
+}
+
+.profile-equipment-card[data-quality="epic"] {
+  border-color: rgb(176 108 255 / 84%);
+}
+
+.profile-equipment-card[data-quality="legendary"] {
+  border-color: rgb(247 200 74 / 88%);
+}
+
+.profile-equipment-card[data-quality="mythic"] {
+  border-color: rgb(255 91 109 / 90%);
+}
+
 .profile-equipment-card > .profile-item-icon {
   width: 48px;
   height: 48px;

@@ -8,6 +8,7 @@ import {
   battleImagineRarityLabel,
   calculateTalentTreeGeometry,
   cleanGameText,
+  equipmentQualityToken,
   formatFightAttributeValue,
   interpolateEquipmentAttributeValue,
   materializeEquipmentBuffDescription,
@@ -366,6 +367,19 @@ describe("equipment quality presentation", () => {
     });
     expect(allTreesCatalog.items["2000631"]?.name).toBe("Ember - Gaze of the Far Sea");
     expect(allTreesCatalog.items["2000631"]?.quality).toBe(5);
+  });
+
+  it("maps every equipment quality to its card-outline token", () => {
+    expect([0, 1, 2, 3, 4, 5].map(equipmentQualityToken)).toEqual([
+      "raw",
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic",
+    ]);
+    expect(equipmentQualityToken(6)).toBe("");
+    expect(equipmentQualityToken(undefined)).toBe("");
   });
 });
 
