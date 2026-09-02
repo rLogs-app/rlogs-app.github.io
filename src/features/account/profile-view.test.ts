@@ -11,6 +11,7 @@ import {
   formatFightAttributeValue,
   interpolateEquipmentAttributeValue,
   materializeEquipmentBuffDescription,
+  masterDungeonRows,
   orderedMedalEntries,
   photoWallIdentityCount,
   resolveCombatStatFamilies,
@@ -413,6 +414,33 @@ describe("published medal ordering", () => {
 });
 
 describe("master-mode dungeon summary", () => {
+  it("keeps the completion time attached to every selected mobile score card", () => {
+    const observation = (dungeonConfigId: number, score: number, passTime: number) => ({
+      season_id: 3,
+      difficulty_id: dungeonConfigId,
+      dungeon: {
+        dungeon_id: 16,
+        score,
+        pass_time: passTime,
+      },
+    });
+    const rows = masterDungeonRows(
+      [
+        observation(6501, 630, 431),
+        observation(6501, 630, 352),
+        observation(6502, 631, 396),
+        observation(6503, 632, 579),
+      ],
+      allTreesCatalog,
+    ).get(3);
+
+    expect(rows?.map((row) => [row.dungeonId, row.score, row.passTime])).toEqual([
+      [6501, 630, 352],
+      [6502, 631, 396],
+      [6503, 632, 579],
+    ]);
+  });
+
   it("counts the six current-season dungeons instead of every observed difficulty row", () => {
     const observation = (seasonId: number, dungeonConfigId: number, masterDifficulty: number) => ({
       season_id: seasonId,

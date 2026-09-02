@@ -1685,7 +1685,10 @@ interface MasterDungeonRow {
   passTime?: number;
 }
 
-function masterDungeonRows(values: JsonValue[]): Map<number, MasterDungeonRow[]> {
+export function masterDungeonRows(
+  values: JsonValue[],
+  catalog: ProfilePresentationCatalog = presentation,
+): Map<number, MasterDungeonRow[]> {
   const seasons = new Map<number, Map<number, MasterDungeonRow>>();
   for (const value of values) {
     const entry = recordValue(value);
@@ -1698,7 +1701,7 @@ function masterDungeonRows(values: JsonValue[]): Map<number, MasterDungeonRow[]>
     const passTime = numericValue(dungeon?.pass_time);
     const season = seasons.get(seasonId) ?? new Map<number, MasterDungeonRow>();
     const current = season.get(difficultyId);
-    const localizedDungeon = presentation.dungeons[String(difficultyId)];
+    const localizedDungeon = catalog.dungeons[String(difficultyId)];
     if (!current || score > current.score || (score === current.score && passTime != null && (current.passTime == null || passTime < current.passTime))) {
       season.set(difficultyId, {
         dungeonId: difficultyId,
