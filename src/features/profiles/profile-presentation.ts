@@ -55,10 +55,13 @@ export interface EquipmentSetPresentation {
 
 export interface FightAttributePresentation {
   name: string;
+  description?: string | null;
   number_type: number;
   format_type: number;
   family_id?: number;
   component?: "final" | "total" | "add" | "extra_add" | "percent" | "extra_percent";
+  icon?: string | null;
+  displayable?: boolean;
 }
 
 export interface TalentTreeSpecializationPresentation {
@@ -119,7 +122,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=17`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=18`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {

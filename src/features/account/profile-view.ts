@@ -196,7 +196,8 @@ export function resolveCombatStatFamilies(
       !Number.isSafeInteger(attributeId) ||
       value == null ||
       familyId == null ||
-      component == null
+      component == null ||
+      localized.displayable === false
     ) continue;
     const family = families.get(familyId) ?? {
       familyId,

@@ -313,6 +313,7 @@ describe("profile combat-stat snapshots", () => {
         "11011": { name: "Attack", number_type: 0, format_type: 1, family_id: 11010, component: "total" },
         "11012": { name: "Attack", number_type: 0, format_type: 2, family_id: 11010, component: "add" },
         "12010": { name: "Critical Hit Rate", number_type: 1, format_type: 0, family_id: 12010, component: "final" },
+        "20050": { name: "AttrLevel", number_type: 0, format_type: 0, family_id: 20050, component: "final", displayable: false },
       },
     } as unknown as ProfilePresentationCatalog;
     expect(resolveCombatStatFamilies({
@@ -320,6 +321,7 @@ describe("profile combat-stat snapshots", () => {
       "12010": 1_710,
       "11010": 3_400,
       "11011": 3_200,
+      "20050": 99,
       "9999": 123,
     }, catalog)).toEqual([
       {
@@ -343,10 +345,27 @@ describe("profile combat-stat snapshots", () => {
 
   it("ships component identity for every generated fight-attribute member", () => {
     const allowed = new Set(["final", "total", "add", "extra_add", "percent", "extra_percent"]);
+    expect(Object.keys(allTreesCatalog.fight_attributes)).toHaveLength(906);
+    expect(allTreesCatalog.fight_attributes["0"]).toBeUndefined();
     for (const attribute of Object.values(allTreesCatalog.fight_attributes)) {
       expect(Number.isSafeInteger(attribute.family_id)).toBe(true);
       expect(allowed.has(attribute.component ?? "")).toBe(true);
     }
+  });
+});
+
+describe("equipment quality presentation", () => {
+  it("uses the six in-game quality tiers instead of the generic rarity ladder", () => {
+    expect(allTreesCatalog.quality_names).toEqual({
+      "0": "Raw",
+      "1": "Common",
+      "2": "Rare",
+      "3": "Epic",
+      "4": "Legendary",
+      "5": "Mythic",
+    });
+    expect(allTreesCatalog.items["2000631"]?.name).toBe("Ember - Gaze of the Far Sea");
+    expect(allTreesCatalog.items["2000631"]?.quality).toBe(5);
   });
 });
 

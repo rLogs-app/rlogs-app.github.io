@@ -48,6 +48,11 @@ const enchantmentItemsTable = readJson(
     : path.join(rlogsRoot, "Excels/EquipEnchantItemTable.json"),
 );
 const fightAttributesTable = readJson(path.join(tableRoot, "FightAttrTable.json"));
+const fightAttributePresentationPath = path.join(
+  gameDataRoot,
+  "runtime/fight-attribute-presentation.v1.json",
+);
+const fightAttributePresentation = readJson(fightAttributePresentationPath);
 const attributeDescriptionsTable = readJson(path.join(tableRoot, "AttrDescription.json"));
 const imaginePresentation = readJson(path.join(gameDataRoot, "runtime/battle-imagine-presentation.v1.json"));
 const imagineNames = new Map(readJson(path.join(gameDataRoot, "runtime/localization/en-US/battle-imagine-names.v1.json")).imagines);
@@ -101,28 +106,45 @@ if (missingSigilIcons.length) {
   throw new Error(`Missing ${missingSigilIcons.length} sigil icons: ${missingSigilIcons.join(", ")}`);
 }
 
+const fightAttributeSourceSha256 = createHash("sha256")
+  .update(readFileSync(path.join(tableRoot, "FightAttrTable.json")))
+  .digest("hex");
+if (
+  fightAttributePresentation.schema_version !== 1
+  || fightAttributePresentation.game_build !== sourceBuildId
+  || fightAttributePresentation.locale !== "en-US"
+  || fightAttributePresentation.source_sha256 !== fightAttributeSourceSha256
+  || !Array.isArray(fightAttributePresentation.attributes)
+  || fightAttributePresentation.attributes.length !== 906
+) {
+  throw new Error("The canonical BPSR Fight Attribute presentation catalog is invalid or stale.");
+}
 const fightAttributeByMemberId = new Map();
-const fightAttributes = {};
 for (const row of Object.values(fightAttributesTable)) {
-  for (const [component, member] of [
-    ["final", row.AttrFinal],
-    ["total", row.AttrTotal],
-    ["add", row.AttrAdd],
-    ["extra_add", row.AttrExAdd],
-    ["percent", row.AttrPer],
-    ["extra_percent", row.AttrExPer],
+  for (const member of [
+    row.AttrFinal,
+    row.AttrTotal,
+    row.AttrAdd,
+    row.AttrExAdd,
+    row.AttrPer,
+    row.AttrExPer,
   ]) {
-    if (!Number.isInteger(member)) continue;
+    if (!Number.isInteger(member) || member <= 0) continue;
     fightAttributeByMemberId.set(member, row);
-    fightAttributes[String(member)] = {
-      name: row.OfficialName,
-      number_type: row.AttrNumType,
-      format_type: member % 10,
-      family_id: row.AttrFinal,
-      component,
-    };
   }
 }
+const fightAttributes = Object.fromEntries(
+  fightAttributePresentation.attributes.map((attribute) => [String(attribute.attribute_id), {
+    name: attribute.name,
+    description: attribute.description,
+    number_type: attribute.number_type,
+    format_type: attribute.format_type,
+    family_id: attribute.family_id,
+    component: attribute.component,
+    icon: attribute.icon,
+    displayable: attribute.displayable,
+  }]),
+);
 const equipmentAttributeRows = [
   ...Object.values(equipmentAttributesTable),
   ...Object.values(equipmentSchoolAttributesTable),
@@ -513,7 +535,14 @@ const catalog = {
     "204": "Shoes", "205": "Earrings", "206": "Necklace", "207": "Ring",
     "208": "Left Bracelet", "209": "Right Bracelet", "210": "Charm",
   },
-  quality_names: { "1": "Common", "2": "Uncommon", "3": "Rare", "4": "Epic", "5": "Legendary" },
+  quality_names: {
+    "0": "Raw",
+    "1": "Common",
+    "2": "Rare",
+    "3": "Epic",
+    "4": "Legendary",
+    "5": "Mythic",
+  },
   equipment_attributes: equipmentAttributes,
   equipment_sets: equipmentSets,
   fight_attributes: fightAttributes,
