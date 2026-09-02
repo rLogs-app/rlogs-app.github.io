@@ -22,10 +22,12 @@ import {
   resolveEquippedRoleSkillSlots,
   resolveEquipmentItemLevel,
   resolvePublishedPhotoUrl,
+  resolveRoleImagineName,
   resolveRoleImagineTier,
   resolvedSocialCollectionEvidence,
   resolvedMasterDungeonCount,
   resolveTalentTreeLayout,
+  skillProgressFacts,
   talentPresentationFacts,
 } from "./profile-view";
 import type { ProfilePresentationCatalog } from "../profiles/profile-presentation";
@@ -189,6 +191,11 @@ describe("talent presentation", () => {
 });
 
 describe("equipped combat skills", () => {
+  it("presents the protobuf remodel level as the user-facing skill tier", () => {
+    expect(skillProgressFacts(60, 6)).toBe("Level 60 · Tier 6");
+    expect(skillProgressFacts(1, 5, false, true)).toBe("Tier 5");
+  });
+
   it("uses exact action-slot evidence and excludes non-combat bindings", () => {
     expect(resolveEquippedSkillSlots({
       class_id: 11,
@@ -255,6 +262,8 @@ describe("equipped role skills", () => {
     expect(resolveRoleImagineTier(body, 3021, allTreesCatalog)).toBe(4);
     expect(resolveRoleImagineTier(body, 3022, allTreesCatalog)).toBeUndefined();
     expect(resolveRoleImagineTier(body, 3011, allTreesCatalog)).toBeUndefined();
+    expect(resolveRoleImagineName(3021, allTreesCatalog)).toBe("Tempest Ogre");
+    expect(resolveRoleImagineName(3011, allTreesCatalog)).toBeUndefined();
   });
 
   it("finds an Imagine role-skill tier through replacement and profession evidence", () => {

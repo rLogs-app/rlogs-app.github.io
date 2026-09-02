@@ -882,8 +882,7 @@ function equippedSkillsPanel(
       element("strong", "profile-action-name", localized?.name ?? `Unknown skill ${slot.skillId}`),
       element("small", "profile-action-meta", joinFacts([
         slotId === 7 || slotId === 8 ? "Battle Imagine" : "Class skill",
-        pair("Lv.", skill?.level),
-        pair("Remodel", skill?.remodel_level),
+        skillProgressFacts(skill?.level, skill?.remodel_level, slotId !== 7 && slotId !== 8, true),
       ])),
     );
     tile.title = localized?.name ?? `Skill ${slot.skillId}`;
@@ -919,11 +918,15 @@ function equippedRoleSkillsPanel(
     const imagineTier = isImagineRoleSkill
       ? resolveRoleImagineTier(body, slot.skillId, presentation)
       : undefined;
+    const sourceImagine = isImagineRoleSkill
+      ? resolveRoleImagineName(slot.skillId, presentation)
+      : undefined;
     appendPresentationIcon(tile, localized?.icon, localized?.name ?? "Equipped role skill", "profile-action-icon");
     tile.append(
       element("strong", "profile-action-name", localized?.name ?? `Unknown role skill ${slot.skillId}`),
       element("small", "profile-action-meta", joinFacts([
         isImagineRoleSkill ? "Imagine role skill" : "Role skill",
+        sourceImagine ?? "",
         isImagineRoleSkill
           ? imagineTier == null ? "Tier not observed" : `Tier ${imagineTier}`
           : pair("Lv.", skill?.level),
@@ -944,6 +947,28 @@ export function resolveRoleImagineTier(
   if (catalog.skills[String(skillId)]?.replacement_imagine_skill_id == null) return undefined;
   const tier = numericValue(findObservedSkill(body, skillId)?.remodel_level);
   return tier != null && tier >= 1 && tier <= 4 ? tier : undefined;
+}
+
+export function resolveRoleImagineName(
+  skillId: number,
+  catalog: ProfilePresentationCatalog,
+): string | undefined {
+  const imagineSkillId = catalog.skills[String(skillId)]?.replacement_imagine_skill_id;
+  if (imagineSkillId == null) return undefined;
+  const name = catalog.imagines[String(imagineSkillId)]?.name;
+  return name == null ? undefined : battleImagineDisplayName(name);
+}
+
+export function skillProgressFacts(
+  level: JsonValue | undefined,
+  tier: JsonValue | undefined,
+  includeLevel = true,
+  compactLevel = false,
+): string {
+  return joinFacts([
+    includeLevel ? pair(compactLevel ? "Lv." : "Level", level) : "",
+    pair("Tier", tier),
+  ]);
 }
 
 function findObservedSkill(body: JsonRecord, skillId: number): JsonRecord | undefined {
@@ -979,7 +1004,7 @@ function learnedSkillsPanel(skills: JsonValue[]): HTMLElement {
     const copy = element("span");
     copy.append(
       element("strong", "", localized?.name ?? `Unknown skill ${displayValue(skill.skill_id)}`),
-      element("small", "", joinFacts([pair("Level", skill.level), pair("Remodel", skill.remodel_level)])),
+      element("small", "", skillProgressFacts(skill.level, skill.remodel_level)),
     );
     row.append(copy);
     list.append(row);
