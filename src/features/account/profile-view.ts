@@ -505,10 +505,12 @@ export function battleImagineOwnershipFacts(
   rarity = "",
 ): string {
   const observedTier = numericValue(tier) ?? 0;
+  const sourceSlot = numericValue(equippedSlot);
+  const displaySlot = sourceSlot === 7 ? 8 : sourceSlot === 8 ? 9 : sourceSlot;
   return joinFacts([
     `Tier ${observedTier}`,
     rarity,
-    equippedSlot == null ? "" : `Equipped · Slot ${displayValue(equippedSlot)}`,
+    displaySlot == null ? "" : `Equipped · Position ${displaySlot}`,
   ]);
 }
 

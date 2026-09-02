@@ -42,7 +42,8 @@ const allTreesCatalog = JSON.parse(
 
 describe("Battle Imagine ownership presentation", () => {
   it("shows tier and equipped slot without the irrelevant character level", () => {
-    expect(battleImagineOwnershipFacts(5, 7, "SSR")).toBe("Tier 5 · SSR · Equipped · Slot 7");
+    expect(battleImagineOwnershipFacts(5, 7, "SSR")).toBe("Tier 5 · SSR · Equipped · Position 8");
+    expect(battleImagineOwnershipFacts(5, 8, "SSR")).toBe("Tier 5 · SSR · Equipped · Position 9");
     expect(battleImagineOwnershipFacts(5, undefined)).toBe("Tier 5");
     expect(battleImagineOwnershipFacts(undefined, undefined, "SR")).toBe("Tier 0 · SR");
   });
