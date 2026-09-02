@@ -62,6 +62,12 @@ describe("BPSR profile presentation catalog", () => {
     expect(Object.values(catalog.sigils).flat().every((level) => level.icon?.startsWith("/assets/"))).toBe(true);
   });
 
+  it("keeps Battle Imagine rarity values separate from observed ownership tiers", () => {
+    expect(catalog.imagines["3901"]).toEqual(expect.objectContaining({ name: "Battle Imagine - Inferno Ogre", item_tier: 4 }));
+    expect(catalog.imagines["3902"]).toEqual(expect.objectContaining({ name: "Battle Imagine - Tempest Ogre", item_tier: 4 }));
+    expect(catalog.imagines["3913"]).toEqual(expect.objectContaining({ name: "Battle Imagine - Shadow Captain", item_tier: 3 }));
+  });
+
   it("publishes every profession and specialization tree independently of profile submissions", () => {
     expect(Object.keys(catalog.talent_tree_index)).toHaveLength(9);
     const specializations = Object.values(catalog.talent_tree_index)
@@ -106,9 +112,18 @@ describe("BPSR profile presentation catalog", () => {
     })).toBe(true);
   });
 
-  it("publishes exact static item levels for equipment cards", () => {
+  it("publishes exact base and breakthrough item levels for equipment cards", () => {
     expect(catalog.items["2000631"]?.equipment_level).toBe(220);
+    expect(catalog.items["2000631"]?.equipment_levels_by_breakthrough?.["3"]).toBe(280);
+    expect(catalog.items["2011441"]?.equipment_levels_by_breakthrough?.["2"]).toBe(270);
+    expect(catalog.items["2081462"]?.equipment_levels_by_breakthrough?.["2"]).toBe(270);
+    expect(catalog.items["2081462"]?.set_id).toBe(103);
     expect(catalog.items["2011341"]?.equipment_level).toBe(240);
+    expect(catalog.equipment_sets["5"]).toEqual({
+      suit_id: 102,
+      name: "2-Piece Set",
+      required_pieces: 2,
+    });
   });
 
   it("resolves all exact Final Sigil levels and rolled attribute values", () => {
@@ -129,10 +144,12 @@ describe("BPSR profile presentation catalog", () => {
     delete legacyCatalog.achievements;
     delete legacyCatalog.medals;
     delete legacyCatalog.talent_tree_index;
+    delete legacyCatalog.equipment_sets;
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.sigils).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.achievements).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.medals).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.talent_tree_index).toEqual({});
+    expect(normalizeProfilePresentationCatalog(legacyCatalog)?.equipment_sets).toEqual({});
     expect(normalizeProfilePresentationCatalog({ sigils: {} })).toBeUndefined();
   });
 });

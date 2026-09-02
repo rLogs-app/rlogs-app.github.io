@@ -72,7 +72,7 @@ export interface SceneFacetValue {
 }
 
 export interface PublicParseReport {
-  schema_version: 6 | 7 | 8 | 9;
+  schema_version: 6 | 7 | 8 | 9 | 10;
   report_id: string;
   visibility: "public" | "unlisted" | "private";
   created_unix_millis: number;
@@ -122,6 +122,7 @@ export interface PublicRun {
   authoritative_start: boolean;
   authoritative_completion: boolean;
   submission_disposition: string;
+  combat_loadout_phases?: PublicCombatLoadoutPhase[];
   segments: PublicRunSegment[];
   participants: PublicParticipant[];
   rdps_influences?: PublicRdpsInfluence[];
@@ -156,6 +157,31 @@ export interface PublicParticipant {
   death_seconds?: number[];
   abilities?: PublicAbilitySummary[];
   series?: PublicSeriesPoint[];
+}
+
+export interface PublicCombatLoadoutPhase {
+  character_id: string;
+  display_name: string | null;
+  observed_micros: number;
+  run_elapsed_micros: number;
+  game_time_millis: number | null;
+  segment_index: number | null;
+  encounter_index: number | null;
+  attempt_number: number | null;
+  in_active_combat: boolean;
+  class_id: number | null;
+  class_name: string | null;
+  specialization_id: number | null;
+  specialization_name: string | null;
+  equipped_skill_ids: string[];
+  equipped_imagines: Array<{
+    skill_id: string;
+    tier: number | null;
+    equipped_slot: number;
+  }>;
+  equipment_count: number | null;
+  equipped_module_count: number | null;
+  talent_count: number | null;
 }
 
 export interface PublicAbilitySummary {
@@ -360,7 +386,8 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
     (value.schema_version === 6 ||
       value.schema_version === 7 ||
       value.schema_version === 8 ||
-      value.schema_version === 9) &&
+      value.schema_version === 9 ||
+      value.schema_version === 10) &&
     typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) &&
     (value.visibility === "public" ||

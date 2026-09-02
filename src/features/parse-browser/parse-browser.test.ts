@@ -80,7 +80,7 @@ describe("parse search", () => {
       ],
     };
     const report: PublicParseReport = {
-      schema_version: 8,
+      schema_version: 10,
       report_id: reportId,
       visibility: "public",
       created_unix_millis: 1,
@@ -120,6 +120,48 @@ describe("parse search", () => {
           authoritative_start: true,
           authoritative_completion: true,
           submission_disposition: "ranked",
+          combat_loadout_phases: [
+            {
+              character_id: "3296036",
+              display_name: "MarieRose",
+              observed_micros: 2_000_000,
+              run_elapsed_micros: 1_500_000,
+              game_time_millis: 2_000,
+              segment_index: 0,
+              encounter_index: 0,
+              attempt_number: 1,
+              in_active_combat: true,
+              class_id: 4,
+              class_name: "Marksman",
+              specialization_id: 2,
+              specialization_name: "Falconry",
+              equipped_skill_ids: ["2900840"],
+              equipped_imagines: [],
+              equipment_count: 11,
+              equipped_module_count: 8,
+              talent_count: 12,
+            },
+            {
+              character_id: "3296036",
+              display_name: "MarieRose",
+              observed_micros: 7_000_000,
+              run_elapsed_micros: 6_500_000,
+              game_time_millis: 7_000,
+              segment_index: 0,
+              encounter_index: null,
+              attempt_number: null,
+              in_active_combat: false,
+              class_id: 2,
+              class_name: "Stormblade",
+              specialization_id: 1,
+              specialization_name: "Moonstrike",
+              equipped_skill_ids: [],
+              equipped_imagines: [],
+              equipment_count: 11,
+              equipped_module_count: 8,
+              talent_count: 12,
+            },
+          ],
           segments: [
             {
               index: 0,
@@ -220,5 +262,9 @@ describe("parse search", () => {
     expect(html).toContain("Harmony Grace");
     expect(html).toContain("Evidence coverage");
     expect(html).toContain("Cross-vantage reconciled");
+    expect(html).toContain("Time-gated profile evidence");
+    expect(html).toContain("Marksman / Falconry");
+    expect(html).toContain("Stormblade / Moonstrike");
+    expect(html).toContain("Between encounters");
   });
 });

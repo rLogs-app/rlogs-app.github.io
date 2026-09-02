@@ -4,6 +4,8 @@ export interface PresentationRecord {
   quality?: number | null;
   item_id?: number;
   equipment_level?: number | null;
+  equipment_levels_by_breakthrough?: Record<string, number>;
+  set_id?: number | null;
   item_tier?: number;
   maximum_tier?: number;
   talent_id?: number;
@@ -42,6 +44,12 @@ export interface EquipmentAttributeEffectPresentation {
   maximum: number;
   number_type: number;
   format_type: number;
+}
+
+export interface EquipmentSetPresentation {
+  suit_id: number;
+  name: string;
+  required_pieces: number;
 }
 
 export interface FightAttributePresentation {
@@ -85,10 +93,13 @@ export interface ProfilePresentationCatalog {
   source_talent_table_sha256?: string;
   source_talent_tree_table_sha256?: string;
   source_equipment_attribute_table_sha256?: string;
+  source_equipment_breakthrough_table_sha256?: string;
+  source_equipment_suit_table_sha256?: string;
   source_buff_table_sha256?: string;
   equipment_slots: Record<string, string>;
   quality_names: Record<string, string>;
   equipment_attributes: Record<string, PresentationRecord>;
+  equipment_sets: Record<string, EquipmentSetPresentation>;
   fight_attributes: Record<string, FightAttributePresentation>;
   items: Record<string, PresentationRecord>;
   sigils: Record<string, SigilLevelPresentation[]>;
@@ -107,7 +118,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=15`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=16`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -163,6 +174,9 @@ export function normalizeProfilePresentationCatalog(
       : {},
     fight_attributes: isRecord(value.fight_attributes)
       ? (value.fight_attributes as ProfilePresentationCatalog["fight_attributes"])
+      : {},
+    equipment_sets: isRecord(value.equipment_sets)
+      ? (value.equipment_sets as ProfilePresentationCatalog["equipment_sets"])
       : {},
     talent_tree_index: isRecord(value.talent_tree_index)
       ? (value.talent_tree_index as unknown as ProfilePresentationCatalog["talent_tree_index"])

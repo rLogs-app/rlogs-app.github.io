@@ -14,8 +14,10 @@ import {
   orderedMedalEntries,
   photoWallIdentityCount,
   resolveCombatStatFamilies,
+  resolveActiveEquipmentSetEffects,
   resolveEquippedSkillSlots,
   resolveEquippedRoleSkillSlots,
+  resolveEquipmentItemLevel,
   resolvePublishedPhotoUrl,
   resolvedSocialCollectionEvidence,
   resolvedMasterDungeonCount,
@@ -35,12 +37,14 @@ describe("Battle Imagine ownership presentation", () => {
   it("shows tier and equipped slot without the irrelevant character level", () => {
     expect(battleImagineOwnershipFacts(5, 7, "SSR")).toBe("Tier 5 · SSR · Equipped · Slot 7");
     expect(battleImagineOwnershipFacts(5, undefined)).toBe("Tier 5");
+    expect(battleImagineOwnershipFacts(undefined, undefined, "SR")).toBe("Tier 0 · SR");
   });
 
   it("keeps catalog rarity separate from the observed remodel tier", () => {
-    expect(battleImagineRarityLabel(2)).toBe("Epic");
-    expect(battleImagineRarityLabel(3)).toBe("SR");
-    expect(battleImagineRarityLabel(4)).toBe("SSR");
+    expect(battleImagineRarityLabel(3)).toBe("Epic");
+    expect(battleImagineRarityLabel(4)).toBe("SR");
+    expect(battleImagineRarityLabel(5)).toBe("SSR");
+    expect(battleImagineRarityLabel(2)).toBe("");
     expect(battleImagineRarityLabel(undefined)).toBe("");
   });
 });
@@ -232,6 +236,49 @@ describe("equipped role skills", () => {
 });
 
 describe("equipment attribute values", () => {
+  it("derives the current item level from the exact breakthrough table", () => {
+    expect(resolveEquipmentItemLevel(
+      { attributes: { breakthrough_count: 3 } },
+      { name: "Weapon", equipment_level: 220, equipment_levels_by_breakthrough: { "1": 240, "2": 260, "3": 280 } },
+    )).toBe(280);
+    expect(resolveEquipmentItemLevel(
+      { attributes: { breakthrough_count: 2 } },
+      { name: "Bracelet", equipment_level: 260, equipment_levels_by_breakthrough: { "1": 265, "2": 270 } },
+    )).toBe(270);
+    expect(resolveEquipmentItemLevel(
+      { level: 275, attributes: { breakthrough_count: 2 } },
+      { name: "Armor", equipment_level: 260, equipment_levels_by_breakthrough: { "2": 270 } },
+    )).toBe(275);
+  });
+
+  it("joins observed active effects only to equipment from the matching set", () => {
+    const catalog = {
+      equipment_sets: {
+        "5": { suit_id: 102, name: "2-Piece Set", required_pieces: 2 },
+        "7": { suit_id: 103, name: "2-Piece Set", required_pieces: 2 },
+      },
+      equipment_attributes: {
+        "1782": {
+          name: "Focus set bonus",
+          equipment_buff_effects: [{
+            buff_id: 1,
+            description: "While Focus is active, Crit DMG +50%.",
+            parameters: [],
+          }],
+        },
+        "2268": { name: "Bracelet set bonus" },
+      },
+    } as unknown as ProfilePresentationCatalog;
+    expect(resolveActiveEquipmentSetEffects([
+      { map_key: 5, attributes: { "1782": 100 } },
+      { map_key: 7, attributes: { "2268": 100 } },
+    ], 102, catalog)).toEqual([{
+      name: "2-Piece Set",
+      requiredPieces: 2,
+      effects: ["While Focus is active, Crit DMG +50%."],
+    }]);
+  });
+
   it("uses the exact client interpolation formula for the observed roll scalar", () => {
     expect(interpolateEquipmentAttributeValue(1_935, 3_195, 100)).toBe(3_195);
     expect(interpolateEquipmentAttributeValue(1_935, 3_195, 50)).toBe(2_565);

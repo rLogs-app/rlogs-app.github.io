@@ -22,6 +22,10 @@ const publicIconRoot = path.join(websiteRoot, "public/assets/bpsr/profile");
 const itemsTablePath = path.join(tableRoot, "ItemTable.json");
 const itemsTable = readJson(itemsTablePath);
 const equipmentTable = readJson(path.join(tableRoot, "EquipTable.json"));
+const equipmentBreakthroughTablePath = path.join(tableRoot, "EquipBreakThroughTable.json");
+const equipmentBreakthroughTable = readJson(equipmentBreakthroughTablePath);
+const equipmentSuitTablePath = path.join(tableRoot, "EquipSuitTable.json");
+const equipmentSuitTable = readJson(equipmentSuitTablePath);
 const skillsTable = readJson(path.join(tableRoot, "SkillTable.json"));
 const talentTablePath = path.join(tableRoot, "TalentTable.json");
 const talentTable = readJson(talentTablePath);
@@ -59,6 +63,14 @@ const sourceIcons = new Map();
 indexIcons(sourceIconRoot);
 mkdirSync(publicIconRoot, { recursive: true });
 
+const equipmentLevelsByItem = new Map();
+for (const row of Object.values(equipmentBreakthroughTable)) {
+  if (!Number.isInteger(row.EquipId) || !Number.isInteger(row.BreakThroughTime) || !Number.isInteger(row.EquipGs)) continue;
+  const levels = equipmentLevelsByItem.get(String(row.EquipId)) ?? {};
+  levels[String(row.BreakThroughTime)] = row.EquipGs;
+  equipmentLevelsByItem.set(String(row.EquipId), levels);
+}
+
 const items = Object.fromEntries(
   Object.values(itemsTable)
     .filter((item) => item.Type === 102 || (item.Type >= 200 && item.Type <= 210))
@@ -67,7 +79,18 @@ const items = Object.fromEntries(
       quality: item.Quality,
       type: item.Type,
       equipment_level: equipmentTable[String(item.Id)]?.EquipGs ?? null,
+      equipment_levels_by_breakthrough: equipmentLevelsByItem.get(String(item.Id)) ?? {},
+      set_id: equipmentTable[String(item.Id)]?.SuitId || null,
       icon: copyNamedIcon(item.Icon, "items"),
+    }]),
+);
+const equipmentSets = Object.fromEntries(
+  Object.values(equipmentSuitTable)
+    .filter((row) => Number.isInteger(row.Id) && Number.isInteger(row.SuitId) && Number.isInteger(row.LimitNum))
+    .map((row) => [String(row.Id), {
+      suit_id: row.SuitId,
+      name: row.SuitName || `${row.LimitNum}-Piece Set`,
+      required_pieces: row.LimitNum,
     }]),
 );
 const missingSigilIcons = Object.values(itemsTable)
@@ -471,7 +494,7 @@ const localizedModuleEffects = Object.fromEntries(Object.entries(moduleEffects).
 }]));
 
 const catalog = {
-  schema_version: 1,
+  schema_version: 2,
   locale: "en-US",
   game_build: sourceBuildId,
   source: "Exact-build BPSR Global Steam client tables and reviewed rLogs game-data catalogs",
@@ -481,6 +504,8 @@ const catalog = {
   source_talent_table_sha256: createHash("sha256").update(readFileSync(talentTablePath)).digest("hex"),
   source_talent_tree_table_sha256: createHash("sha256").update(readFileSync(talentTreeTablePath)).digest("hex"),
   source_equipment_attribute_table_sha256: createHash("sha256").update(readFileSync(equipmentAttributesTablePath)).digest("hex"),
+  source_equipment_breakthrough_table_sha256: createHash("sha256").update(readFileSync(equipmentBreakthroughTablePath)).digest("hex"),
+  source_equipment_suit_table_sha256: createHash("sha256").update(readFileSync(equipmentSuitTablePath)).digest("hex"),
   source_buff_table_sha256: createHash("sha256").update(readFileSync(buffTablePath)).digest("hex"),
   equipment_slots: {
     "200": "Weapon", "201": "Headwear", "202": "Armor", "203": "Gloves",
@@ -489,6 +514,7 @@ const catalog = {
   },
   quality_names: { "1": "Common", "2": "Uncommon", "3": "Rare", "4": "Epic", "5": "Legendary" },
   equipment_attributes: equipmentAttributes,
+  equipment_sets: equipmentSets,
   fight_attributes: fightAttributes,
   items,
   sigils,

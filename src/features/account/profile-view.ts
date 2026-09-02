@@ -320,6 +320,7 @@ function combatStatComponentLabel(component: CombatStatComponent): string {
 
 function equipmentSection(body: JsonRecord): HTMLElement {
   const items = arrayValue(body.equipment);
+  const suitEntries = arrayValue(body.equipment_suit_entries);
   const section = profileSection("Current equipment", `${items.length} equipped pieces`);
   const grid = element("div", "profile-item-grid profile-equipment-grid");
   for (const value of items) {
@@ -328,6 +329,8 @@ function equipmentSection(body: JsonRecord): HTMLElement {
     const itemId = numericValue(item.item_id);
     const slotId = numericValue(item.slot_id);
     const localized = itemId == null ? undefined : presentation.items[String(itemId)];
+    const setId = numericValue(item.set_id) ?? localized?.set_id ?? undefined;
+    const setEffects = resolveActiveEquipmentSetEffects(suitEntries, setId, presentation);
     const slotName = slotId == null ? "Equipment" : presentation.equipment_slots[String(slotId)] ?? `Equipment slot ${slotId}`;
     const card = element("article", "profile-item-card profile-equipment-card");
     appendPresentationIcon(card, localized?.icon, localized?.name ?? slotName, "profile-item-icon");
@@ -336,7 +339,7 @@ function equipmentSection(body: JsonRecord): HTMLElement {
       element("small", "profile-item-kicker", slotName),
       element("strong", "", localized?.name ?? `Unknown equipment ${displayValue(item.item_id)}`),
       element("small", "", joinFacts([
-        pair("Item level", item.level ?? localized?.equipment_level),
+        pair("Item level", resolveEquipmentItemLevel(item, localized)),
         qualityLabel(item.quality),
         pair("Refinement +", item.refinement_level),
       ])),
@@ -344,10 +347,11 @@ function equipmentSection(body: JsonRecord): HTMLElement {
     card.append(copy);
     const attributeList = equipmentAttributeList(item);
     const enchantments = arrayValue(item.enchantments);
-    if (attributeList || enchantments.length) {
+    if (attributeList || enchantments.length || setEffects.length) {
       const details = element("details", "profile-equipment-details");
-      details.append(element("summary", "", equipmentAttributeSummary(item)));
+      details.append(element("summary", "", equipmentAttributeSummary(item, setEffects.length)));
       if (attributeList) details.append(attributeList);
+      if (setEffects.length) details.append(equipmentSetEffectList(setEffects));
       card.append(details);
     }
     if (enchantments.length) {
@@ -380,30 +384,55 @@ function equipmentSection(body: JsonRecord): HTMLElement {
     grid.append(card);
   }
   section.append(items.length ? grid : empty("No equipment was present in the latest synced snapshot."));
-  const setEffects = activeEquipmentSetEffects(arrayValue(body.equipment_suit_entries));
-  if (setEffects) section.append(setEffects);
   return section;
 }
 
-function activeEquipmentSetEffects(entries: JsonValue[]): HTMLElement | undefined {
-  const active = entries
-    .map(recordValue)
-    .filter((entry): entry is JsonRecord => entry != null && Object.keys(recordValue(entry.attributes) ?? {}).length > 0);
-  if (!active.length) return undefined;
+export interface ResolvedEquipmentSetEffect {
+  name: string;
+  requiredPieces: number;
+  effects: string[];
+}
+
+export function resolveActiveEquipmentSetEffects(
+  entries: JsonValue[],
+  setId: number | undefined,
+  catalog: ProfilePresentationCatalog,
+): ResolvedEquipmentSetEffect[] {
+  if (setId == null) return [];
+  const resolved: ResolvedEquipmentSetEffect[] = [];
+  for (const rawEntry of entries) {
+    const entry = recordValue(rawEntry);
+    const mapKey = numericValue(entry?.map_key);
+    const set = mapKey == null ? undefined : catalog.equipment_sets[String(mapKey)];
+    if (!entry || !set || set.suit_id !== setId) continue;
+    const effects: string[] = [];
+    for (const [attributeId, rawValue] of Object.entries(recordValue(entry.attributes) ?? {})) {
+      const rollValue = numericValue(rawValue);
+      const attribute = catalog.equipment_attributes[attributeId];
+      if (rollValue == null || !attribute) continue;
+      for (const effect of attribute.equipment_effects ?? []) {
+        const value = interpolateEquipmentAttributeValue(effect.minimum, effect.maximum, rollValue);
+        effects.push(`${effect.name} ${formatSignedFightAttributeValue(value, effect.number_type, effect.format_type)}`);
+      }
+      for (const effect of attribute.equipment_buff_effects ?? []) {
+        effects.push(materializeEquipmentBuffDescription(effect.description, effect.parameters, rollValue));
+      }
+      if (!(attribute.equipment_effects?.length || attribute.equipment_buff_effects?.length)) {
+        effects.push(attribute.name);
+      }
+    }
+    if (effects.length) resolved.push({ name: set.name, requiredPieces: set.required_pieces, effects });
+  }
+  return resolved.sort((left, right) => left.requiredPieces - right.requiredPieces);
+}
+
+function equipmentSetEffectList(effects: ResolvedEquipmentSetEffect[]): HTMLElement {
   const panel = element("div", "profile-active-set-effects");
   panel.append(element("strong", "", "Active set effects"));
-  for (const entry of active) {
-    for (const [attributeId, rawValue] of Object.entries(recordValue(entry.attributes) ?? {})) {
-      const value = numericValue(rawValue);
-      const attribute = presentation.fight_attributes[attributeId];
-      if (value == null || !attribute) continue;
-      panel.append(compactRow(
-        attribute.name,
-        formatSignedFightAttributeValue(value, attribute.number_type, attribute.format_type),
-      ));
-    }
+  for (const effect of effects) {
+    panel.append(compactRow(effect.name, effect.effects.join(" · ")));
   }
-  return panel.childElementCount > 1 ? panel : undefined;
+  return panel;
 }
 
 function imagineSection(owned: JsonValue[], skills: JsonValue[]): HTMLElement {
@@ -444,15 +473,19 @@ function battleImagineGrid(records: JsonValue[]): HTMLElement {
     const localized = skillId == null
       ? Object.values(presentation.imagines).find((entry) => entry.item_id === imagineId)
       : presentation.imagines[String(skillId)];
+    const observedTier = numericValue(item.remodel_level ?? item.breakthrough_level) ?? 0;
+    const rarity = battleImagineRarityLabel(localized?.item_tier);
     const card = element("article", "profile-item-card profile-imagine-card");
+    if (rarity) card.dataset.rarity = rarity.toLowerCase();
+    card.dataset.tier = String(observedTier);
     appendPresentationIcon(card, localized?.icon, localized?.name ?? "Battle Imagine", "profile-item-icon");
     const copy = element("span", "profile-imagine-copy");
     copy.append(
       element("strong", "", localized?.name ?? `Unknown Battle Imagine ${displayValue(item.imagine_id ?? item.skill_id)}`),
       element("small", "", battleImagineOwnershipFacts(
-        item.remodel_level ?? item.breakthrough_level,
+        observedTier,
         item.equipped_slot,
-        battleImagineRarityLabel(localized?.item_tier),
+        rarity,
       )),
     );
     card.append(copy);
@@ -466,8 +499,9 @@ export function battleImagineOwnershipFacts(
   equippedSlot: JsonValue | undefined,
   rarity = "",
 ): string {
+  const observedTier = numericValue(tier) ?? 0;
   return joinFacts([
-    pair("Tier", tier),
+    `Tier ${observedTier}`,
     rarity,
     equippedSlot == null ? "" : `Equipped · Slot ${displayValue(equippedSlot)}`,
   ]);
@@ -475,7 +509,7 @@ export function battleImagineOwnershipFacts(
 
 export function battleImagineRarityLabel(itemTier: JsonValue | undefined): string {
   const tier = numericValue(itemTier);
-  return ({ 2: "Epic", 3: "SR", 4: "SSR" } as Record<number, string>)[tier ?? -1] ?? "";
+  return ({ 3: "Epic", 4: "SR", 5: "SSR" } as Record<number, string>)[tier ?? -1] ?? "";
 }
 
 function moduleSection(inventory: JsonValue[], slots: JsonRecord | undefined): HTMLElement {
@@ -1433,10 +1467,17 @@ function masterDungeonBreakdown(values: JsonValue[]): HTMLElement {
 
 function masterScoreRow(dungeon: string, difficulty: string, score: string, time: string, heading: boolean): HTMLElement {
   const row = element("div", heading ? "master-score-row master-score-heading" : "master-score-row");
-  row.append(element(heading ? "strong" : "span", "", dungeon));
-  row.append(element("span", "", difficulty));
-  row.append(element("span", "", score));
-  row.append(element("span", "", time));
+  const values = [
+    ["Dungeon", dungeon],
+    ["Best difficulty", difficulty],
+    ["Score", score],
+    ["Best time", time],
+  ] as const;
+  for (const [label, value] of values) {
+    const cell = element(heading && label === "Dungeon" ? "strong" : "span", "", value);
+    cell.dataset.label = label;
+    row.append(cell);
+  }
   return row;
 }
 
@@ -1468,7 +1509,21 @@ function compactRow(label: string, value: string): HTMLElement {
   return row;
 }
 
-function equipmentAttributeSummary(item: JsonRecord): string {
+export function resolveEquipmentItemLevel(
+  item: Record<string, JsonValue>,
+  localized: ProfilePresentationCatalog["items"][string] | undefined,
+): number | undefined {
+  const observedLevel = numericValue(item.level);
+  if (observedLevel != null) return observedLevel;
+  const breakthroughCount = numericValue(recordValue(item.attributes)?.breakthrough_count);
+  if (breakthroughCount != null) {
+    const breakthroughLevel = localized?.equipment_levels_by_breakthrough?.[String(breakthroughCount)];
+    if (breakthroughLevel != null) return breakthroughLevel;
+  }
+  return localized?.equipment_level ?? undefined;
+}
+
+function equipmentAttributeSummary(item: JsonRecord, setEffectCount = 0): string {
   const attributes = recordValue(item.attributes);
   const count = attributes == null ? 0 : ["base", "basic", "advanced", "recast", "rare_quality"]
     .reduce((sum, key) => sum + Object.keys(recordValue(attributes[key]) ?? {}).length, 0);
@@ -1476,6 +1531,7 @@ function equipmentAttributeSummary(item: JsonRecord): string {
   return joinFacts([
     count ? `${count} stat ${count === 1 ? "roll" : "rolls"}` : "Stats awaiting sync",
     `${sigilCount} ${sigilCount === 1 ? "sigil" : "sigils"}`,
+    setEffectCount ? `${setEffectCount} active set ${setEffectCount === 1 ? "effect" : "effects"}` : "",
   ]);
 }
 

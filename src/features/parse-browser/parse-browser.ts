@@ -246,6 +246,7 @@ export function renderReport(
     <div class="parse-party"><div class="parse-party-head"><strong>Party</strong><small>${run.participants.length} combatants / rDPS ${escapeHtml(run.rdps_status)}</small></div>
       ${participants.map((actor) => renderParticipant(actor, run.active_combat_micros, reconciled)).join("")}
     </div>
+    ${renderCombatLoadoutPhases(run, participants, presentation)}
     ${renderRunTimeline(run, participants)}
     ${renderSkillContributions(participants, presentation)}
     ${renderRdpsCalculations(run, reconciliation, participants, reconciled, presentation)}
@@ -328,6 +329,41 @@ function renderSwiftVortexCandidateAudit(reconciliation: PublicRunReconciliation
   const blockers = blockerSummary ? ` Blockers: ${blockerSummary}.` : "";
 
   return `<div class="reconciliation-proof pending"><strong>Swift Vortex candidate evidence</strong><span>${audit.candidate_status_event_count} status events / ${audit.exact_paired_receipt_count} exact paired receipts / ${audit.distinct_provider_entity_count} providers / ${audit.distinct_recipient_entity_count} recipients. ${escapeHtml(magnitude)} ${escapeHtml(gate)} Production attribution remains disabled.${escapeHtml(blockers)}</span></div>`;
+}
+
+function renderCombatLoadoutPhases(
+  run: PublicRun,
+  participants: AnalysisParticipant[],
+  presentation?: ParsePresentationCatalog,
+): string {
+  const phases = run.combat_loadout_phases ?? [];
+  if (!phases.length) {
+    return analysisPanel(
+      "Combat loadouts",
+      "No post-combat-start profile snapshot was observed, so rLogs will not substitute a lobby or newer profile into this parse.",
+    );
+  }
+  const namesByCharacter = new Map(participants.flatMap((actor) =>
+    actor.character_id ? [[actor.character_id, participantName(actor)] as const] : []));
+  const cards = phases.map((phase, index) => {
+    const identity = [phase.class_name, phase.specialization_name].filter(Boolean).join(" / ") || "Class/spec not present in this snapshot";
+    const location = phase.in_active_combat
+      ? `During combat${phase.encounter_index == null ? "" : ` · Encounter ${phase.encounter_index + 1}`}${phase.attempt_number == null ? "" : ` · Pull ${phase.attempt_number}`}`
+      : `Between encounters${phase.segment_index == null ? "" : ` · Segment ${phase.segment_index + 1}`}`;
+    const skills = phase.equipped_skill_ids
+      .map((skillId) => `<li>${escapeHtml(localizedActionName(presentation, skillId, null))}</li>`)
+      .join("");
+    const imagines = phase.equipped_imagines
+      .map((imagine) => `<li>${escapeHtml(localizedActionName(presentation, imagine.skill_id, null))} · Tier ${imagine.tier ?? 0}</li>`)
+      .join("");
+    const facts = [
+      phase.equipment_count == null ? "" : `${phase.equipment_count} equipment`,
+      phase.equipped_module_count == null ? "" : `${phase.equipped_module_count} modules`,
+      phase.talent_count == null ? "" : `${phase.talent_count} talents`,
+    ].filter(Boolean).join(" · ");
+    return `<article class="parse-loadout-phase"><header><span class="parse-loadout-index">${index + 1}</span><span><strong>${escapeHtml(phase.display_name ?? namesByCharacter.get(phase.character_id) ?? `UID ${phase.character_id}`)}</strong><small>${escapeHtml(identity)}</small></span><time>+${escapeHtml(formatDuration(phase.run_elapsed_micros))}</time></header><p>${escapeHtml(location)}${facts ? ` · ${escapeHtml(facts)}` : ""}</p>${skills ? `<div><strong>Equipped skills</strong><ul>${skills}</ul></div>` : ""}${imagines ? `<div><strong>Main Imagines</strong><ul>${imagines}</ul></div>` : ""}</article>`;
+  }).join("");
+  return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">Time-gated profile evidence</p><h4>Combat loadouts</h4></div><small>Only snapshots after combat starts; later swaps create a new phase</small></div><div class="parse-loadout-phases">${cards}</div></section>`;
 }
 
 type AnalysisParticipant = PublicParticipant | PublicReconciledParticipant;
