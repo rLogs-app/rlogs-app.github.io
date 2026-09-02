@@ -564,7 +564,9 @@ function groupInfluences(
       incomplete: false,
     };
     group.recipients.add(actorNames.get(influence.recipient_actor_id) ?? influence.recipient_actor_id);
-    if (influence.attribution_component) group.components.add(influence.attribution_component);
+    if (influence.attribution_component) {
+      group.components.add(humanizeAttributionComponent(influence.attribution_component));
+    }
     group.events += influence.damage_event_count;
     group.observedDamage += parseInteger(influence.observed_damage) ?? 0n;
     const attributed = influence.attributed_rdps == null ? null : parseInteger(influence.attributed_rdps);
@@ -574,6 +576,16 @@ function groupInfluences(
     groups.set(key, group);
   }
   return [...groups.values()].sort((left, right) => compareBigInt(right.attributed, left.attributed));
+}
+
+export function humanizeAttributionComponent(component: string): string {
+  const cleaned = component
+    .replace(/\s*\((?:actions?\s*)?\d+(?:[\s/,]+\d+)*\)/giu, "")
+    .replace(/\b(?:effect|action)\s+\d+(?:[\s/,]+\d+)*\b/giu, "")
+    .replace(/[-_]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return cleaned || "complete effect";
 }
 
 function renderEvidenceCoverage(

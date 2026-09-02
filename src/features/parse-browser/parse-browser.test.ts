@@ -5,7 +5,7 @@ import type {
   PublicParseReport,
   PublicRunReconciliation,
 } from "../../contracts/public-parse";
-import { filterSearch, renderReport } from "./parse-browser";
+import { filterSearch, humanizeAttributionComponent, renderReport } from "./parse-browser";
 
 const parse: PublicParseCatalogEntry = {
   report_id: `rpt_${"a".repeat(32)}`,
@@ -23,6 +23,12 @@ const parse: PublicParseCatalogEntry = {
 };
 
 describe("parse search", () => {
+  it("removes internal effect and action identifiers from attribution labels", () => {
+    expect(humanizeAttributionComponent(
+      "Encore (55333) standalone-generated-damage (Actions 230401/230501)",
+    )).toBe("Encore standalone generated damage");
+  });
+
   it("matches every word across scene and region fields", () => {
     expect(filterSearch([parse], "stimen america")).toEqual([parse]);
     expect(filterSearch([parse], "stimen europe")).toEqual([]);
