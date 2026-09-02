@@ -8,7 +8,7 @@ export interface PresentationRecord {
   set_id?: number | null;
   item_tier?: number;
   rarity?: string | null;
-  maximum_tier?: number;
+  maximum_tier?: number | null;
   talent_id?: number;
   profession_id?: number | null;
   specialization_id?: number | null;
@@ -33,6 +33,20 @@ export interface PresentationRecord {
   skill_type?: number | null;
   action_kind?: "role_skill" | "role_imagine" | null;
   replacement_imagine_skill_id?: number | null;
+  archive_guide_id?: number | null;
+  archive_member_imagine_skill_ids?: number[];
+}
+
+export interface RoleImagineTierRequirement {
+  tier: number;
+  minimum_total_imagine_tier: number;
+  minimum_core_imagine_tier: number;
+}
+
+export interface RoleImagineTierPolicy {
+  unobserved_battle_imagine_tier: number;
+  empty_archive_member_list_uses_all_observed_imagines: boolean;
+  requirements: RoleImagineTierRequirement[];
 }
 
 export interface EquipmentBuffEffectPresentation {
@@ -107,6 +121,7 @@ export interface ProfilePresentationCatalog {
   source_auxiliary_action_identity_proof_sha256?: string;
   equipment_slots: Record<string, string>;
   quality_names: Record<string, string>;
+  role_imagine_tier_policy?: RoleImagineTierPolicy;
   equipment_attributes: Record<string, PresentationRecord>;
   equipment_sets: Record<string, EquipmentSetPresentation>;
   fight_attributes: Record<string, FightAttributePresentation>;
@@ -127,7 +142,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=20`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=21`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {

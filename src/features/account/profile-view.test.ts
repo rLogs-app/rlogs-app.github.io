@@ -9,6 +9,7 @@ import {
   battleImagineRarityLabel,
   calculateTalentTreeGeometry,
   cleanGameText,
+  combatActionDisplaySlots,
   equipmentQualityToken,
   formatFightAttributeValue,
   interpolateEquipmentAttributeValue,
@@ -191,6 +192,20 @@ describe("talent presentation", () => {
 });
 
 describe("equipped combat skills", () => {
+  it("shows seven class actions before the two Imagines without rewriting source slots", () => {
+    expect(combatActionDisplaySlots()).toEqual([
+      { displaySlotId: 1, sourceSlotId: 1 },
+      { displaySlotId: 2, sourceSlotId: 2 },
+      { displaySlotId: 3, sourceSlotId: 3 },
+      { displaySlotId: 4, sourceSlotId: 4 },
+      { displaySlotId: 5, sourceSlotId: 5 },
+      { displaySlotId: 6, sourceSlotId: 6 },
+      { displaySlotId: 7, sourceSlotId: 9 },
+      { displaySlotId: 8, sourceSlotId: 7 },
+      { displaySlotId: 9, sourceSlotId: 8 },
+    ]);
+  });
+
   it("presents the protobuf remodel level as the user-facing skill tier", () => {
     expect(skillProgressFacts(60, 6)).toBe("Level 60 · Tier 6");
     expect(skillProgressFacts(1, 5, false, true)).toBe("Tier 5");
@@ -279,6 +294,25 @@ describe("equipped role skills", () => {
         }],
       }],
     }, 3027, allTreesCatalog)).toBe(3);
+  });
+
+  it("derives Imagine role-skill tiers from the exact archive thresholds", () => {
+    const body = {
+      active_skills: [],
+      battle_imagine_skills: [
+        { skill_id: 3901, base_skill_id: 3901, remodel_level: 5 },
+        { skill_id: 3923, base_skill_id: 3923, remodel_level: null },
+        { skill_id: 3955, base_skill_id: 3955, remodel_level: 5 },
+        { skill_id: 3930, base_skill_id: 3930, remodel_level: 5 },
+        { skill_id: 3934, base_skill_id: 3934, remodel_level: 5 },
+        { skill_id: 3966, base_skill_id: 3966, remodel_level: 5 },
+        { skill_id: 3902, base_skill_id: 3902, remodel_level: 5 },
+      ],
+    };
+    // Chapter of Flames has 25 total tiers, a T5 core, and treats null as T0.
+    expect(resolveRoleImagineTier(body, 3022, allTreesCatalog)).toBe(4);
+    // Chapter of Gluttony's empty member list uses the full observed archive.
+    expect(resolveRoleImagineTier(body, 3021, allTreesCatalog)).toBe(4);
   });
 });
 

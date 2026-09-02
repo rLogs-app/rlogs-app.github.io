@@ -279,6 +279,15 @@ if (
   || auxiliaryActionIdentityProof.deployment_id !== "global"
   || auxiliaryActionIdentityProof.policy?.role_action_and_normal_imagine_action_ids_are_distinct !== true
   || auxiliaryActionIdentityProof.policy?.role_imagine_maximum_tier !== 4
+  || auxiliaryActionIdentityProof.policy?.battle_imagine_maximum_tier !== 5
+  || auxiliaryActionIdentityProof.policy?.unobserved_battle_imagine_tier !== 0
+  || auxiliaryActionIdentityProof.policy?.empty_archive_member_list_uses_all_observed_imagines !== true
+  || JSON.stringify(auxiliaryActionIdentityProof.role_tier_requirements) !== JSON.stringify([
+    { tier: 1, minimum_total_imagine_tier: 5, minimum_core_imagine_tier: 0 },
+    { tier: 2, minimum_total_imagine_tier: 15, minimum_core_imagine_tier: 1 },
+    { tier: 3, minimum_total_imagine_tier: 20, minimum_core_imagine_tier: 3 },
+    { tier: 4, minimum_total_imagine_tier: 25, minimum_core_imagine_tier: 5 },
+  ])
   || !Array.isArray(auxiliaryActionIdentityProof.pairs)
   || auxiliaryActionIdentityProof.pairs.length !== 8
 ) {
@@ -307,6 +316,9 @@ for (const action of auxiliaryActionPresentation.skills) {
     || action.replacement_imagine_skill_id !== pair.normal_imagine_action_id
     || imagine?.item_id !== pair.battle_imagine_item_id
     || imagine?.maximum_tier !== auxiliaryActionIdentityProof.policy.battle_imagine_maximum_tier
+    || pair.archive_guide_id !== pair.role_action_id - 2020
+    || !Array.isArray(pair.archive_member_normal_imagine_action_ids)
+    || pair.archive_member_normal_imagine_action_ids.some((skillId) => !Number.isInteger(skillId))
   ) {
     throw new Error(`Imagine role action ${action.skill_id} failed its current-build identity proof.`);
   }
@@ -322,6 +334,9 @@ const skills = Object.fromEntries(
       maximum_tier: auxiliaryActionsBySkillId.get(skill.Id)?.maximum_tier ?? null,
       replacement_imagine_skill_id:
         auxiliaryActionsBySkillId.get(skill.Id)?.replacement_imagine_skill_id ?? null,
+      archive_guide_id: auxiliaryIdentityByRoleActionId.get(skill.Id)?.archive_guide_id ?? null,
+      archive_member_imagine_skill_ids:
+        auxiliaryIdentityByRoleActionId.get(skill.Id)?.archive_member_normal_imagine_action_ids ?? [],
     }]),
 );
 
@@ -583,7 +598,7 @@ const localizedModuleEffects = Object.fromEntries(Object.entries(moduleEffects).
 }]));
 
 const catalog = {
-  schema_version: 2,
+  schema_version: 3,
   locale: "en-US",
   game_build: sourceBuildId,
   source: "Exact-build BPSR Global Steam client tables and reviewed rLogs game-data catalogs",
@@ -614,6 +629,13 @@ const catalog = {
     "3": "Epic",
     "4": "Legendary",
     "5": "Mythic",
+  },
+  role_imagine_tier_policy: {
+    unobserved_battle_imagine_tier:
+      auxiliaryActionIdentityProof.policy.unobserved_battle_imagine_tier,
+    empty_archive_member_list_uses_all_observed_imagines:
+      auxiliaryActionIdentityProof.policy.empty_archive_member_list_uses_all_observed_imagines,
+    requirements: auxiliaryActionIdentityProof.role_tier_requirements,
   },
   equipment_attributes: equipmentAttributes,
   equipment_sets: equipmentSets,

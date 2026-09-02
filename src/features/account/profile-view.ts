@@ -597,7 +597,7 @@ function skillsSection(body: JsonRecord): HTMLElement {
   section.classList.add("profile-combat-talents-section");
 
   if (equippedSlots.length) {
-    section.append(equippedSkillsPanel(skills, equippedSlots));
+    section.append(equippedSkillsPanel(body, skills, equippedSlots));
   } else {
     section.append(empty("The latest snapshot did not include an equipped combat loadout."));
   }
@@ -850,13 +850,14 @@ export function resolveTalentTreeLayout(
 }
 
 function equippedSkillsPanel(
+  body: JsonRecord,
   skills: JsonValue[],
   equippedSlots: EquippedSkillSlotView[],
 ): HTMLElement {
   const panel = element("div", "profile-loadout-panel");
   panel.append(
     element("h4", "profile-subsection-title", "Equipped combat actions"),
-    element("p", "profile-subsection-copy", "Displayed in the exact action-slot order observed from the game."),
+    element("p", "profile-subsection-copy", "Displayed in in-game action-bar order: seven class skills, then two Battle Imagines."),
   );
   const skillsById = new Map<number, JsonRecord>();
   for (const value of skills) {
@@ -866,30 +867,68 @@ function equippedSkillsPanel(
   }
   const slotsById = new Map(equippedSlots.map((slot) => [slot.slotId, slot]));
   const bar = element("div", "profile-action-bar");
-  for (let slotId = 1; slotId <= 9; slotId += 1) {
-    const slot = slotsById.get(slotId);
+  for (const { displaySlotId, sourceSlotId } of combatActionDisplaySlots()) {
+    const slot = slotsById.get(sourceSlotId);
     const tile = element("article", slot == null ? "profile-action-slot is-empty" : "profile-action-slot");
-    tile.append(element("span", "profile-action-key", String(slotId)));
+    tile.append(element("span", "profile-action-key", String(displaySlotId)));
+    tile.dataset.sourceSlot = String(sourceSlotId);
     if (slot == null) {
       tile.append(element("span", "profile-action-empty", "Empty"));
       bar.append(tile);
       continue;
     }
-    const localized = presentation.skills[String(slot.skillId)];
-    const skill = skillsById.get(slot.skillId);
-    appendPresentationIcon(tile, localized?.icon, localized?.name ?? "Equipped skill", "profile-action-icon");
+    const isBattleImagine = sourceSlotId === 7 || sourceSlotId === 8;
+    const localizedImagine = isBattleImagine ? presentation.imagines[String(slot.skillId)] : undefined;
+    const localizedSkill = presentation.skills[String(slot.skillId)];
+    const localized = localizedImagine ?? localizedSkill;
+    const skill = isBattleImagine
+      ? findObservedBattleImagine(body, slot.skillId)
+      : skillsById.get(slot.skillId);
+    const observedTier = isBattleImagine ? numericValue(skill?.remodel_level) ?? 0 : undefined;
+    const rarity = isBattleImagine
+      ? battleImagineRarityLabel(localizedImagine?.rarity, localizedImagine?.item_tier)
+      : "";
+    const name = isBattleImagine
+      ? battleImagineDisplayName(localized?.name)
+      : localized?.name ?? "";
+    if (isBattleImagine) {
+      tile.classList.add("profile-imagine-action-slot");
+      tile.dataset.tier = String(observedTier);
+      if (rarity) tile.dataset.rarity = rarity.toLowerCase();
+    }
+    appendPresentationIcon(tile, localized?.icon, name || "Equipped skill", "profile-action-icon");
     tile.append(
-      element("strong", "profile-action-name", localized?.name ?? `Unknown skill ${slot.skillId}`),
+      element("strong", "profile-action-name", name || `Unknown skill ${slot.skillId}`),
       element("small", "profile-action-meta", joinFacts([
-        slotId === 7 || slotId === 8 ? "Battle Imagine" : "Class skill",
-        skillProgressFacts(skill?.level, skill?.remodel_level, slotId !== 7 && slotId !== 8, true),
+        isBattleImagine ? "Battle Imagine" : "Class skill",
+        isBattleImagine ? rarity : "",
+        isBattleImagine
+          ? `Tier ${observedTier}`
+          : skillProgressFacts(skill?.level, skill?.remodel_level, true, true),
       ])),
     );
-    tile.title = localized?.name ?? `Skill ${slot.skillId}`;
+    tile.title = name || `Skill ${slot.skillId}`;
     bar.append(tile);
   }
   panel.append(bar);
   return panel;
+}
+
+export interface CombatActionDisplaySlot {
+  displaySlotId: number;
+  sourceSlotId: number;
+}
+
+/**
+ * BPSR stores the two primary Battle Imagines in slots 7 and 8 and the final
+ * class action in slot 9. The in-game bar displays seven class actions first,
+ * so presentation order is 1-6, 9, 7, 8 without altering the source evidence.
+ */
+export function combatActionDisplaySlots(): CombatActionDisplaySlot[] {
+  return [1, 2, 3, 4, 5, 6, 9, 7, 8].map((sourceSlotId, index) => ({
+    displaySlotId: index + 1,
+    sourceSlotId,
+  }));
 }
 
 function equippedRoleSkillsPanel(
@@ -951,9 +990,57 @@ export function resolveRoleImagineTier(
     || typeof maximumTier !== "number"
     || !Number.isInteger(maximumTier)) return undefined;
   const tier = numericValue(findObservedSkill(body, skillId)?.remodel_level);
-  return tier != null && tier >= 1 && tier <= maximumTier
-    ? tier
-    : undefined;
+  if (tier != null && tier >= 1 && tier <= maximumTier) return tier;
+
+  const policy = catalog.role_imagine_tier_policy;
+  const coreImagineSkillId = presentation.replacement_imagine_skill_id;
+  const members = presentation.archive_member_imagine_skill_ids;
+  if (policy == null
+    || policy.unobserved_battle_imagine_tier !== 0
+    || policy.empty_archive_member_list_uses_all_observed_imagines !== true
+    || !Array.isArray(members)) return undefined;
+
+  const battleSkills = arrayValue(body.battle_imagine_skills)
+    .map(recordValue)
+    .filter((skill): skill is JsonRecord => skill != null);
+  const coreTier = observedBattleImagineTier(battleSkills, coreImagineSkillId);
+  const totalTier = members.length > 0
+    ? members.reduce(
+      (sum, imagineSkillId) => sum + observedBattleImagineTier(battleSkills, imagineSkillId),
+      0,
+    )
+    : totalUniqueObservedBattleImagineTiers(battleSkills);
+  return policy.requirements
+    .filter((requirement) =>
+      Number.isInteger(requirement.tier)
+      && requirement.tier >= 1
+      && requirement.tier <= maximumTier
+      && totalTier >= requirement.minimum_total_imagine_tier
+      && coreTier >= requirement.minimum_core_imagine_tier)
+    .reduce<number | undefined>(
+      (highest, requirement) => Math.max(highest ?? 0, requirement.tier),
+      undefined,
+    );
+}
+
+function observedBattleImagineTier(battleSkills: JsonRecord[], skillId: number): number {
+  return battleSkills
+    .filter((skill) => observedSkillMatches(skill, skillId))
+    .map((skill) => numericValue(skill.remodel_level))
+    .filter((tier): tier is number => tier != null && Number.isInteger(tier) && tier >= 0 && tier <= 5)
+    .reduce((highest, tier) => Math.max(highest, tier), 0);
+}
+
+function totalUniqueObservedBattleImagineTiers(battleSkills: JsonRecord[]): number {
+  const tiersByImagine = new Map<number, number>();
+  for (const skill of battleSkills) {
+    const skillId = numericValue(skill.skill_id);
+    const canonicalId = numericValue(skill.base_skill_id) ?? skillId;
+    if (canonicalId == null) continue;
+    const tier = skillId == null ? 0 : observedBattleImagineTier([skill], skillId);
+    tiersByImagine.set(canonicalId, Math.max(tiersByImagine.get(canonicalId) ?? 0, tier));
+  }
+  return [...tiersByImagine.values()].reduce((sum, tier) => sum + tier, 0);
 }
 
 export function resolveRoleImagineName(
@@ -987,6 +1074,12 @@ function findObservedSkill(body: JsonRecord, skillId: number): JsonRecord | unde
       && (classId == null || numericValue(profession.profession_id) === classId))
     .flatMap((profession) => arrayValue(profession?.skills));
   return [...arrayValue(body.active_skills), ...professionSkills]
+    .map(recordValue)
+    .find((skill) => skill != null && observedSkillMatches(skill, skillId));
+}
+
+function findObservedBattleImagine(body: JsonRecord, skillId: number): JsonRecord | undefined {
+  return arrayValue(body.battle_imagine_skills)
     .map(recordValue)
     .find((skill) => skill != null && observedSkillMatches(skill, skillId));
 }

@@ -74,10 +74,23 @@ describe("BPSR profile presentation catalog", () => {
     }));
     expect(catalog.skills["3021"]).toEqual(expect.objectContaining({
       action_kind: "role_imagine", maximum_tier: 4, replacement_imagine_skill_id: 3902,
+      archive_guide_id: 1001, archive_member_imagine_skill_ids: [],
     }));
     expect(catalog.skills["3028"]).toEqual(expect.objectContaining({
       action_kind: "role_imagine", maximum_tier: 4, replacement_imagine_skill_id: 3951,
+      archive_guide_id: 1008,
+      archive_member_imagine_skill_ids: [3951, 3948, 3906, 3914, 3915, 3959],
     }));
+    expect(catalog.role_imagine_tier_policy).toEqual({
+      unobserved_battle_imagine_tier: 0,
+      empty_archive_member_list_uses_all_observed_imagines: true,
+      requirements: [
+        { tier: 1, minimum_total_imagine_tier: 5, minimum_core_imagine_tier: 0 },
+        { tier: 2, minimum_total_imagine_tier: 15, minimum_core_imagine_tier: 1 },
+        { tier: 3, minimum_total_imagine_tier: 20, minimum_core_imagine_tier: 3 },
+        { tier: 4, minimum_total_imagine_tier: 25, minimum_core_imagine_tier: 5 },
+      ],
+    });
     expect(catalog.source_auxiliary_action_identity_proof_sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
