@@ -91,6 +91,9 @@ describe("BPSR profile presentation catalog", () => {
         { tier: 4, minimum_total_imagine_tier: 25, minimum_core_imagine_tier: 5 },
       ],
     });
+    expect(catalog.talents["1129"]?.skill_replacements).toEqual([
+      { source_skill_id: 2220, replacement_skill_id: 2222 },
+    ]);
     expect(catalog.source_auxiliary_action_identity_proof_sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 

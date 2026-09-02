@@ -880,12 +880,13 @@ function equippedSkillsPanel(
       continue;
     }
     const isBattleImagine = sourceSlotId === 7 || sourceSlotId === 8;
-    const localizedImagine = isBattleImagine ? presentation.imagines[String(slot.skillId)] : undefined;
-    const localizedSkill = presentation.skills[String(slot.skillId)];
+    const action = resolveCombatActionPresentation(body, sourceSlotId, slot.skillId, presentation);
+    const localizedImagine = isBattleImagine ? presentation.imagines[String(action.skillId)] : undefined;
+    const localizedSkill = presentation.skills[String(action.skillId)];
     const localized = localizedImagine ?? localizedSkill;
     const skill = isBattleImagine
-      ? findObservedBattleImagine(body, slot.skillId)
-      : skillsById.get(slot.skillId);
+      ? findObservedBattleImagine(body, action.skillId)
+      : findObservedSkill(body, action.skillId) ?? skillsById.get(slot.skillId);
     const observedTier = isBattleImagine ? numericValue(skill?.remodel_level) ?? 0 : undefined;
     const rarity = isBattleImagine
       ? battleImagineRarityLabel(localizedImagine?.rarity, localizedImagine?.item_tier)
@@ -902,14 +903,14 @@ function equippedSkillsPanel(
     tile.append(
       element("strong", "profile-action-name", name || `Unknown skill ${slot.skillId}`),
       element("small", "profile-action-meta", joinFacts([
-        isBattleImagine ? "Battle Imagine" : "Class skill",
+        action.kind,
         isBattleImagine ? rarity : "",
         isBattleImagine
           ? `Tier ${observedTier}`
           : skillProgressFacts(skill?.level, skill?.remodel_level, true, true),
       ])),
     );
-    tile.title = name || `Skill ${slot.skillId}`;
+    tile.title = name || `Skill ${action.skillId}`;
     bar.append(tile);
   }
   panel.append(bar);
@@ -931,6 +932,44 @@ export function combatActionDisplaySlots(): CombatActionDisplaySlot[] {
     displaySlotId: index + 1,
     sourceSlotId,
   }));
+}
+
+export type CombatActionKind = "Basic attack" | "Special attack" | "Class skill" | "Ultimate" | "Battle Imagine";
+
+export interface CombatActionPresentation {
+  skillId: number;
+  kind: CombatActionKind;
+}
+
+export function resolveCombatActionPresentation(
+  body: JsonRecord,
+  sourceSlotId: number,
+  sourceSkillId: number,
+  catalog: ProfilePresentationCatalog,
+): CombatActionPresentation {
+  if (sourceSlotId === 7 || sourceSlotId === 8) {
+    return { skillId: sourceSkillId, kind: "Battle Imagine" };
+  }
+  if (sourceSlotId === 1) return { skillId: sourceSkillId, kind: "Basic attack" };
+  if (sourceSlotId === 6) return { skillId: sourceSkillId, kind: "Ultimate" };
+  if (sourceSlotId !== 2) return { skillId: sourceSkillId, kind: "Class skill" };
+
+  const selectedTalentIds = new Set(
+    arrayValue(body.talents)
+      .map(recordValue)
+      .map((talent) => numericValue(talent?.node_id))
+      .map((nodeId) => nodeId == null ? undefined : catalog.talent_nodes[String(nodeId)]?.talent_id)
+      .filter((talentId): talentId is number => talentId != null),
+  );
+  const replacement = [...selectedTalentIds]
+    .map((talentId) => catalog.talents[String(talentId)])
+    .filter((talent) => talent?.talent_type === 5)
+    .flatMap((talent) => talent.skill_replacements ?? [])
+    .find((candidate) => candidate.source_skill_id === sourceSkillId);
+  return {
+    skillId: replacement?.replacement_skill_id ?? sourceSkillId,
+    kind: "Special attack",
+  };
 }
 
 function equippedRoleSkillsPanel(

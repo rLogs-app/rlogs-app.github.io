@@ -35,6 +35,10 @@ export interface PresentationRecord {
   replacement_imagine_skill_id?: number | null;
   archive_guide_id?: number | null;
   archive_member_imagine_skill_ids?: number[];
+  skill_replacements?: Array<{
+    source_skill_id: number;
+    replacement_skill_id: number;
+  }>;
 }
 
 export interface RoleImagineTierRequirement {
@@ -142,7 +146,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=21`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=22`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {

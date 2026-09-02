@@ -18,6 +18,7 @@ import {
   orderedMedalEntries,
   photoWallIdentityCount,
   resolveCombatStatFamilies,
+  resolveCombatActionPresentation,
   resolveActiveEquipmentSetEffects,
   resolveEquippedSkillSlots,
   resolveEquippedRoleSkillSlots,
@@ -210,6 +211,19 @@ describe("equipped combat skills", () => {
   it("presents the protobuf remodel level as the user-facing skill tier", () => {
     expect(skillProgressFacts(60, 6)).toBe("Level 60 · Tier 6");
     expect(skillProgressFacts(1, 5, false, true)).toBe("Tier 5");
+  });
+
+  it("uses the selected specialization's exact special-attack replacement", () => {
+    expect(resolveCombatActionPresentation({
+      talents: [{ node_id: 1_129_002 }],
+    }, 2, 2_220, allTreesCatalog)).toEqual({
+      skillId: 2_222,
+      kind: "Special attack",
+    });
+    expect(allTreesCatalog.skills["2222"]?.name).toBe("Double Arrow");
+    expect(resolveCombatActionPresentation({}, 1, 2_201, allTreesCatalog).kind).toBe("Basic attack");
+    expect(resolveCombatActionPresentation({}, 6, 2_209, allTreesCatalog).kind).toBe("Ultimate");
+    expect(resolveCombatActionPresentation({}, 9, 2_231, allTreesCatalog).kind).toBe("Class skill");
   });
 
   it("uses exact action-slot evidence and excludes non-combat bindings", () => {

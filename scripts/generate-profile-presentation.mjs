@@ -355,6 +355,7 @@ for (const file of readJsonFiles(talentCatalogRoot)) {
   const talent = readJson(file);
   if (talent?.kind !== "talent" || !Number.isInteger(talent.id)) continue;
   const attributes = talent.attributes ?? {};
+  const exactTalent = talentTable[String(talent.id)];
   talents[String(talent.id)] = {
     name: talentLocale.get(talent.localization_key) ?? talentLocale.get(`talent.${talent.id}.name`) ?? `Unknown talent ${talent.id}`,
     description: talentLocale.get(attributes.description_localization_key ?? `talent.${talent.id}.description`)
@@ -364,6 +365,14 @@ for (const file of readJsonFiles(talentCatalogRoot)) {
     profession_id: attributes.profession_id ?? null,
     talent_type: attributes.talent_type ?? null,
     talent_level: attributes.talent_level ?? null,
+    skill_replacements: (exactTalent?.TalentEffect ?? [])
+      .filter((effect) =>
+        Array.isArray(effect)
+        && effect.length >= 3
+        && effect[0] === 6
+        && Number.isInteger(effect[1])
+        && Number.isInteger(effect[2]))
+      .map((effect) => ({ source_skill_id: effect[1], replacement_skill_id: effect[2] })),
   };
 }
 
