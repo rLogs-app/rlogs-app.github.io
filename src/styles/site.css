@@ -2725,6 +2725,10 @@ footer {
   overflow-wrap: anywhere;
 }
 
+.profile-detail-modal-panel--equipment .profile-equipment-attributes .profile-equipment-effect-row {
+  grid-column: 1 / -1;
+}
+
 .profile-detail-modal-panel--equipment .profile-active-set-effects {
   gap: 4px;
   margin-top: 1px;
