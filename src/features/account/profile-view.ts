@@ -859,7 +859,7 @@ function equippedSkillsPanel(
   const panel = element("div", "profile-loadout-panel");
   panel.append(
     element("h4", "profile-subsection-title", "Equipped combat actions"),
-    element("p", "profile-subsection-copy", "Displayed in in-game action-bar order: seven class skills, then two Battle Imagines."),
+    element("p", "profile-subsection-copy", "Displayed in in-game action-bar order: seven combat actions, then two Battle Imagines."),
   );
   const skillsById = new Map<number, JsonRecord>();
   for (const value of skills) {
@@ -924,11 +924,12 @@ export interface CombatActionDisplaySlot {
 
 /**
  * BPSR stores the two primary Battle Imagines in slots 7 and 8 and the final
- * class action in slot 9. The in-game bar displays seven class actions first,
- * so presentation order is 1-6, 9, 7, 8 without altering the source evidence.
+ * fourth class action in slot 9. The in-game bar displays basic, special, four
+ * class actions, and the ultimate before the Imagines, so presentation order
+ * is 1-5, 9, 6, 7, 8 without altering the source evidence.
  */
 export function combatActionDisplaySlots(): CombatActionDisplaySlot[] {
-  return [1, 2, 3, 4, 5, 6, 9, 7, 8].map((sourceSlotId, index) => ({
+  return [1, 2, 3, 4, 5, 9, 6, 7, 8].map((sourceSlotId, index) => ({
     displaySlotId: index + 1,
     sourceSlotId,
   }));

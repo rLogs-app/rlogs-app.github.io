@@ -201,8 +201,8 @@ describe("equipped combat skills", () => {
       { displaySlotId: 3, sourceSlotId: 3 },
       { displaySlotId: 4, sourceSlotId: 4 },
       { displaySlotId: 5, sourceSlotId: 5 },
-      { displaySlotId: 6, sourceSlotId: 6 },
-      { displaySlotId: 7, sourceSlotId: 9 },
+      { displaySlotId: 6, sourceSlotId: 9 },
+      { displaySlotId: 7, sourceSlotId: 6 },
       { displaySlotId: 8, sourceSlotId: 7 },
       { displaySlotId: 9, sourceSlotId: 8 },
     ]);
