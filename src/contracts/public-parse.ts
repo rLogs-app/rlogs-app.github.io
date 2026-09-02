@@ -21,6 +21,7 @@ export interface PublicParseCatalogEntry {
   region_id: string;
   activity_id?: string;
   activity_family_id?: string;
+  activity_category_id?: string;
   scene_id?: number;
   scene_name?: string;
   difficulty_family?: string;
@@ -106,6 +107,7 @@ export interface PublicRun {
   correlation_method?: "exact_instance_id" | "isolated_artifact";
   activity_id: string | null;
   activity_family_id: string | null;
+  activity_category_id?: string | null;
   scene_id: number | null;
   scene_name: string | null;
   difficulty_family: string | null;

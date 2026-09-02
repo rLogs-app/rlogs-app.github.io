@@ -5,7 +5,13 @@ import type {
   PublicParseReport,
   PublicRunReconciliation,
 } from "../../contracts/public-parse";
-import { filterSearch, humanizeAttributionComponent, renderReport } from "./parse-browser";
+import {
+  activityCategoryId,
+  activityLabel,
+  filterSearch,
+  humanizeAttributionComponent,
+  renderReport,
+} from "./parse-browser";
 
 const parse: PublicParseCatalogEntry = {
   report_id: `rpt_${"a".repeat(32)}`,
@@ -23,6 +29,12 @@ const parse: PublicParseCatalogEntry = {
 };
 
 describe("parse search", () => {
+  it("presents the fixed broad activity categories", () => {
+    expect(activityLabel("stimens")).toBe("Stimens");
+    expect(activityLabel("solo-content")).toBe("Solo Content");
+    expect(activityCategoryId(parse)).toBe("stimens");
+  });
+
   it("removes internal effect and action identifiers from attribution labels", () => {
     expect(humanizeAttributionComponent(
       "Encore (55333) standalone-generated-damage (Actions 230401/230501)",

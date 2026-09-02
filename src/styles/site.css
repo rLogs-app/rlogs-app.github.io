@@ -4024,6 +4024,10 @@ footer {
   background: rgb(10 20 33 / 82%);
 }
 
+.account-sync-steps li:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
 .account-sync-step-number {
   display: grid;
   width: 30px;
@@ -4389,6 +4393,10 @@ footer p {
 
   .account-sync-steps {
     grid-template-columns: 1fr;
+  }
+
+  .account-sync-steps li:last-child:nth-child(odd) {
+    grid-column: auto;
   }
 
   .account-sync-success {

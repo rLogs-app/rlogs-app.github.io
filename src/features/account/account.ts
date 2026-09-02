@@ -228,6 +228,28 @@ async function renderSignedIn(
     publicIdentity.append(publicLink);
   }
 
+  const destinations = document.createElement("section");
+  destinations.className = "account-settings-card";
+  destinations.append(element("h3", "", "Your rLogs"));
+  const destinationLinks = document.createElement("div");
+  destinationLinks.className = "linked-profile-list";
+  const myProfile = document.createElement("a");
+  myProfile.className = "linked-profile-card";
+  myProfile.href = "/account/";
+  myProfile.append(
+    element("strong", "", "My Profile"),
+    element("small", "", "View your claimed characters and synced game profiles"),
+  );
+  const myParses = document.createElement("a");
+  myParses.className = "linked-profile-card";
+  myParses.href = "/my-parses/";
+  myParses.append(
+    element("strong", "", "My Parses"),
+    element("small", "", "View reports containing your claimed UIDs and manage visibility"),
+  );
+  destinationLinks.append(myProfile, myParses);
+  destinations.append(destinationLinks);
+
   const usernameForm = document.createElement("form");
   usernameForm.className = "account-username-form account-settings-card";
   const usernameLabel = document.createElement("label");
@@ -344,6 +366,7 @@ async function renderSignedIn(
   );
   content.replaceChildren(
     identity,
+    destinations,
     profileSyncGuide(true),
     publicIdentity,
     usernameForm,
@@ -387,12 +410,16 @@ function profileSyncGuide(signedIn: boolean): HTMLElement {
       "On that same Account & Profiles page, check Automatically sync my profile and choose Save options. Photo Wall images have their own optional checkbox.",
     ],
     [
-      "Prove the character in a live parse",
-      "Open BPSR on the character you want to link and keep rLogs monitoring. Start and complete a real live parse so rLogs can observe your personal UID, seal the snapshot, and upload it. Replays, imports, offline captures, and shared logs cannot claim a UID.",
+      "Refresh your character snapshot",
+      "Open BPSR on the character you want to link and keep rLogs monitoring. Change to another line/channel or go through a loading screen. Combat is not required. This lets rLogs observe your personal UID and upload the new snapshot; replays, imports, offline captures, and shared logs cannot claim it.",
+    ],
+    [
+      "Upload Photo Wall pictures (optional)",
+      "First enable Publish my Photo Wall images and save the option. While rLogs is still monitoring, open your own Photo Wall in BPSR, then open each saved picture you want published in the full-size viewer. This separate step lets rLogs observe the exact UID, Photo ID, and rendered image response.",
     ],
     [
       "Check My Profile",
-      "After the verified snapshot uploads, refresh My Profile. Your character name and UID will appear automatically. To link another character, play that character and repeat only the live-parse step.",
+      "After the verified snapshot uploads, refresh My Profile. Your character name and UID will appear automatically. Photo Wall pictures appear after their separate in-game viewing step. To link another character, play that character and repeat the line-change or loading-screen step.",
     ],
   ];
   entries.forEach(([title, description], index) => {
@@ -411,7 +438,7 @@ function profileSyncGuide(signedIn: boolean): HTMLElement {
     element(
       "span",
       "",
-      "the desktop says “This PC is authenticated,” Profile Sync says “Enabled,” and My Profile shows the correct character name and UID.",
+      "the desktop says “This PC is authenticated,” Profile Sync says “Enabled,” and My Profile shows the correct character name and UID. If you opted into Photo Wall publishing, its status should also report the exact in-game image as observed or published.",
     ),
   );
   guide.append(success);

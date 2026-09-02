@@ -24,6 +24,13 @@ import {
 
 const baseUrl = import.meta.env.BASE_URL;
 const configuredApi = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/, "");
+const activityCategories = [
+  ["dungeons", "Dungeons"],
+  ["solo-content", "Solo Content"],
+  ["raids", "Raids"],
+  ["gauntlets", "Gauntlets"],
+  ["stimens", "Stimens"],
+] as const;
 
 interface ParseControls {
   search: HTMLInputElement;
@@ -72,7 +79,13 @@ export async function mountParseBrowser(): Promise<void> {
   }
 
   populateSelect(controls.region, catalog.facets.regions.map((item) => [item.id, label(item.id, item.count)]));
-  populateSelect(controls.activity, catalog.facets.activities.map((item) => [item.id, label(item.id, item.count)]));
+  populateSelect(
+    controls.activity,
+    activityCategories.map(([id, name]) => [
+      id,
+      label(name, catalog.facets.activities.find((item) => item.id === id)?.count ?? 0),
+    ]),
+  );
   populateSelect(
     controls.scene,
     catalog.facets.scenes.map((item) => [String(item.id), label(item.label ?? `Scene ${item.id}`, item.count)]),
@@ -717,7 +730,8 @@ function filterDemoCatalog(catalog: PublicParseCatalog, controls: ParseControls)
   const entries = catalog.entries.filter(
     (entry) =>
       (!controls.region.value || controls.region.value === entry.region_id) &&
-      (!controls.activity.value || controls.activity.value === entry.activity_id) &&
+      (!controls.activity.value ||
+        controls.activity.value === activityCategoryId(entry)) &&
       (!controls.scene.value || Number(controls.scene.value) === entry.scene_id) &&
       (!controls.difficulty.value || controls.difficulty.value === entry.difficulty_family) &&
       (!controls.terminal.value || controls.terminal.value === entry.terminal_state),
@@ -736,6 +750,7 @@ export function filterSearch(
       entry.scene_name,
       entry.activity_id,
       entry.activity_family_id,
+      entry.activity_category_id,
       entry.region_id,
       entry.deployment_id,
       entry.difficulty_family,
@@ -770,7 +785,28 @@ function formatNumber(value: number): string {
 }
 
 function title(value: string | null | undefined): string {
-  return value ? value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : "";
+  return value
+    ? value.replace(/[_-]+/gu, " ").replace(/\b\w/gu, (letter) => letter.toUpperCase())
+    : "";
+}
+
+export function activityLabel(value: string): string {
+  return activityCategories.find(([id]) => id === value)?.[1] ?? title(value);
+}
+
+export function activityCategoryId(entry: PublicParseCatalogEntry): string | undefined {
+  if (entry.activity_category_id) return entry.activity_category_id;
+  const family = entry.activity_family_id?.toLowerCase();
+  if (
+    family?.includes("stimen") ||
+    (entry.scene_id != null &&
+      ((entry.scene_id >= 30_101 && entry.scene_id <= 30_175) ||
+        (entry.scene_id >= 31_101 && entry.scene_id <= 31_175) ||
+        (entry.scene_id >= 32_101 && entry.scene_id <= 32_160)))
+  ) {
+    return "stimens";
+  }
+  return family ? "dungeons" : undefined;
 }
 
 function label(value: string, count: number): string {

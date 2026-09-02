@@ -51,7 +51,8 @@ export function mountSiteNavigation(): SitePage {
   for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-nav-page]")) {
     if (
       link.dataset.navPage === page ||
-      (page === "users" && link.dataset.navPage === "profiles")
+      (page === "users" && link.dataset.navPage === "profiles") ||
+      ((page === "account" || page === "my-parses") && link.dataset.navPage === "my-account")
     ) link.setAttribute("aria-current", "page");
   }
 

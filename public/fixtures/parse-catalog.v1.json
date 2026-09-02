@@ -11,6 +11,7 @@
     "region_id": "global",
     "activity_id": "scene.1631",
     "activity_family_id": "tina-mindrealm",
+    "activity_category_id": "dungeons",
     "scene_id": 1631,
     "scene_name": "Chaotic - Tina's Mindrealm",
     "difficulty_family": "normal",
@@ -21,7 +22,7 @@
   "facets": {
     "deployments": [{ "id": "global", "count": 1 }],
     "regions": [{ "id": "global", "count": 1 }],
-    "activities": [{ "id": "scene.1631", "count": 1 }],
+    "activities": [{ "id": "dungeons", "count": 1 }],
     "scenes": [{ "id": 1631, "label": "Chaotic - Tina's Mindrealm", "count": 1 }],
     "difficulties": [{ "id": "normal", "count": 1 }],
     "terminal_states": [{ "id": "completed", "count": 1 }]
