@@ -1939,7 +1939,11 @@ function equipmentAttributeList(item: JsonRecord): HTMLElement | undefined {
         const match = /^(.*?)\s+([+-].*)$/u.exec(effect);
         rows.append(compactRow(match?.[1] ?? localized?.name ?? "Equipment attribute", match?.[2] ?? effect));
       }
-      for (const description of buffDescriptions) rows.append(compactRow("Equipment effect", description));
+      for (const description of buffDescriptions) {
+        const row = compactRow("Equipment effect", description);
+        row.classList.add("profile-equipment-effect-row");
+        rows.append(row);
+      }
       if (!effectDetails.length && !buffDescriptions.length) {
         rows.append(compactRow(localized?.name ?? `Unknown equipment attribute ${attributeId}`, "Value unavailable"));
       }
