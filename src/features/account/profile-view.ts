@@ -19,7 +19,8 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   presentation = await loadProfilePresentation();
   const body = profile.envelope.body;
   const root = element("article", "synced-character-profile");
-  profileDetailModal = createProfileDetailModal();
+  const characterName = stringValue(body.display_name) ?? profile.entry.label;
+  profileDetailModal = createProfileDetailModal(characterName, profile.entry.character_id);
   const heading = element("header", "character-profile-heading");
   const identity = element("div", "character-profile-identity");
   const appearance = recordValue(body.appearance);
@@ -28,7 +29,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     const image = document.createElement("img");
     image.className = "character-profile-picture";
     image.src = profileImageUrl;
-    image.alt = `${stringValue(body.display_name) ?? profile.entry.label} profile picture`;
+    image.alt = `${characterName} profile picture`;
     image.loading = "eager";
     image.referrerPolicy = "no-referrer";
     identity.append(image);
@@ -36,7 +37,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   const identityCopy = element("div");
   identityCopy.append(
     element("p", "eyebrow", "Synced character"),
-    element("h2", "", stringValue(body.display_name) ?? profile.entry.label),
+    element("h2", "", characterName),
     element(
       "p",
       "identity-id",
@@ -54,7 +55,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     const portrait = document.createElement("img");
     portrait.className = "character-half-body-picture";
     portrait.src = halfBodyImageUrl;
-    portrait.alt = `${stringValue(body.display_name) ?? profile.entry.label} character portrait`;
+    portrait.alt = `${characterName} character portrait`;
     portrait.loading = "lazy";
     portrait.referrerPolicy = "no-referrer";
     portraitPanel.append(portrait);
@@ -154,7 +155,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   return root;
 }
 
-function createProfileDetailModal(): ProfileDetailModal {
+function createProfileDetailModal(characterName: string, characterId: string): ProfileDetailModal {
   document.body.classList.remove("profile-modal-open");
   document.querySelector("#profile-detail-modal")?.remove();
   const host = element("div", "profile-detail-modal");
@@ -164,14 +165,17 @@ function createProfileDetailModal(): ProfileDetailModal {
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-modal", "true");
   const heading = element("header", "profile-detail-modal-heading");
+  const headingCopy = element("div", "profile-detail-modal-heading-copy");
   const title = element("h2", "");
+  const identity = element("p", "profile-detail-modal-identity", `${characterName} · UID ${characterId}`);
   const close = document.createElement("button");
   close.type = "button";
   close.className = "profile-detail-modal-close";
   close.setAttribute("aria-label", "Close profile details");
   close.textContent = "×";
   const content = element("div", "profile-detail-modal-content");
-  heading.append(title, close);
+  headingCopy.append(title, identity);
+  heading.append(headingCopy, close);
   panel.append(heading, content);
   host.append(panel);
   document.body.append(host);
