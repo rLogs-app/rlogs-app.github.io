@@ -2666,6 +2666,15 @@ footer {
   box-sizing: border-box;
 }
 
+.profile-detail-modal-panel--talent {
+  width: min(1380px, 100%);
+  overflow: hidden;
+}
+
+.profile-detail-modal-panel--talent .profile-detail-modal-content {
+  overflow: hidden;
+}
+
 .profile-detail-modal-panel--equipment .profile-detail-modal-heading {
   min-height: 54px;
   padding-block: 8px;
@@ -3394,6 +3403,37 @@ footer {
   border-top: 1px solid rgb(42 65 93 / 72%);
 }
 
+.profile-talent-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 330px);
+  gap: 12px;
+  height: clamp(430px, calc(100dvh - 150px), 720px);
+  min-height: 0;
+}
+
+.profile-talent-explorer {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.profile-talent-sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 7px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.profile-talent-detail-label {
+  color: var(--accent);
+  font: 700 9px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .profile-talent-heading {
   display: flex;
   gap: 12px;
@@ -3449,11 +3489,15 @@ footer {
 }
 
 .profile-talent-detail {
-  display: flex;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 11px;
-  min-height: 66px;
-  align-items: center;
+  min-width: 0;
+  min-height: 0;
+  align-items: start;
   padding: 9px 11px;
+  overflow: hidden;
   border: 1px solid rgb(48 77 108 / 78%);
   border-radius: 9px;
   background: linear-gradient(100deg, rgb(17 31 48 / 90%), rgb(10 19 31 / 72%));
@@ -3471,7 +3515,12 @@ footer {
 
 .profile-talent-detail > span {
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 2px;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .profile-talent-detail small {
@@ -3486,8 +3535,9 @@ footer {
 }
 
 .profile-talent-detail p {
-  max-width: 700px;
-  max-height: 132px;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
   margin: 3px 0 0;
   overflow: auto;
   color: #aebfd1;
@@ -3551,7 +3601,10 @@ footer {
 }
 
 .profile-talent-viewport {
-  max-height: min(520px, 56vh);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
   overflow: auto;
   border: 1px solid rgb(43 67 94 / 78%);
   border-radius: 11px;
@@ -3566,6 +3619,28 @@ footer {
   overscroll-behavior: contain;
   touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 760px) {
+  .profile-detail-modal-panel--talent .profile-detail-modal-content {
+    box-sizing: border-box;
+    height: calc(100dvh - 66px);
+  }
+
+  .profile-talent-panel,
+  .profile-talent-workspace {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .profile-talent-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) clamp(150px, 24svh, 190px);
+  }
+
+  .profile-talent-sidebar {
+    min-height: 0;
+  }
 }
 
 .profile-talent-viewport:focus-visible {
@@ -4237,9 +4312,10 @@ footer p {
   }
 
   .profile-talent-viewport {
-    width: calc(100% + 22px);
-    max-height: 68svh;
-    margin-inline: -11px;
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    margin-inline: 0;
     border-radius: 8px;
   }
 

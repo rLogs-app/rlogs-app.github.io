@@ -206,6 +206,10 @@ function createProfileDetailModal(characterName: string, characterId: string): P
         "profile-detail-modal-panel--equipment",
         detail.classList.contains("profile-equipment-modal-detail"),
       );
+      panel.classList.toggle(
+        "profile-detail-modal-panel--talent",
+        detail.classList.contains("profile-talent-panel"),
+      );
       content.replaceChildren(detail);
       host.hidden = false;
       document.body.classList.add("profile-modal-open");
@@ -1274,6 +1278,9 @@ function learnedSkillList(skills: JsonValue[]): HTMLElement {
 
 function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
   const panel = element("div", "profile-talent-panel");
+  const workspace = element("div", "profile-talent-workspace");
+  const explorer = element("div", "profile-talent-explorer");
+  const sidebar = element("aside", "profile-talent-sidebar");
   const heading = element("div", "profile-talent-heading");
   const headingCopy = element("div", "profile-talent-heading-copy");
   headingCopy.append(
@@ -1287,7 +1294,9 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
   );
   heading.append(headingCopy, legend);
 
+  const detailLabel = element("small", "profile-talent-detail-label", "Selected talent");
   const detail = element("div", "profile-talent-detail");
+  detail.setAttribute("aria-live", "polite");
   const navigation = element("div", "profile-talent-navigation");
   navigation.append(element("small", "profile-talent-navigation-hint", "Drag or swipe to explore the full tree"));
   const controls = element("div", "profile-talent-controls");
@@ -1419,7 +1428,10 @@ function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
 
   zoomSpace.append(canvas);
   viewport.append(zoomSpace);
-  panel.append(heading, detail, navigation, viewport);
+  explorer.append(heading, navigation, viewport);
+  sidebar.append(detailLabel, detail);
+  workspace.append(explorer, sidebar);
+  panel.append(workspace);
   selectNode(focusNode);
   applyZoom(zoom);
   requestAnimationFrame(() => centerNode("auto"));
