@@ -914,7 +914,7 @@ function equippedRoleSkillsPanel(
     }
     const localized = presentation.skills[String(slot.skillId)];
     const skill = findObservedSkill(body, slot.skillId);
-    const isImagineRoleSkill = localized?.replacement_imagine_skill_id != null;
+    const isImagineRoleSkill = localized?.action_kind === "role_imagine";
     const imagineTier = isImagineRoleSkill
       ? resolveRoleImagineTier(body, slot.skillId, presentation)
       : undefined;
@@ -944,9 +944,16 @@ export function resolveRoleImagineTier(
   skillId: number,
   catalog: ProfilePresentationCatalog,
 ): number | undefined {
-  if (catalog.skills[String(skillId)]?.replacement_imagine_skill_id == null) return undefined;
+  const presentation = catalog.skills[String(skillId)];
+  const maximumTier = presentation?.maximum_tier;
+  if (presentation?.action_kind !== "role_imagine"
+    || presentation.replacement_imagine_skill_id == null
+    || typeof maximumTier !== "number"
+    || !Number.isInteger(maximumTier)) return undefined;
   const tier = numericValue(findObservedSkill(body, skillId)?.remodel_level);
-  return tier != null && tier >= 1 && tier <= 4 ? tier : undefined;
+  return tier != null && tier >= 1 && tier <= maximumTier
+    ? tier
+    : undefined;
 }
 
 export function resolveRoleImagineName(

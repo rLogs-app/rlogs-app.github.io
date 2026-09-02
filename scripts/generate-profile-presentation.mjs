@@ -58,6 +58,11 @@ const auxiliaryActionPresentationPath = path.join(
   "runtime/auxiliary-action-presentation.v1.json",
 );
 const auxiliaryActionPresentation = readJson(auxiliaryActionPresentationPath);
+const auxiliaryActionIdentityProofPath = path.join(
+  gameDataRoot,
+  "runtime/auxiliary-action-identity-proof.v1.json",
+);
+const auxiliaryActionIdentityProof = readJson(auxiliaryActionIdentityProofPath);
 const attributeDescriptionsTable = readJson(path.join(tableRoot, "AttrDescription.json"));
 const imaginePresentation = readJson(path.join(gameDataRoot, "runtime/battle-imagine-presentation.v1.json"));
 const imagineNames = new Map(readJson(path.join(gameDataRoot, "runtime/localization/en-US/battle-imagine-names.v1.json")).imagines);
@@ -260,14 +265,52 @@ if (
   || auxiliaryActionPresentation.skills.length !== 20
   || auxiliaryActionPresentation.skills.some((skill) =>
     !Number.isInteger(skill.skill_id)
+    || !["role_skill", "role_imagine"].includes(skill.action_kind)
+    || (skill.action_kind === "role_skill" && skill.maximum_tier !== null)
+    || (skill.action_kind === "role_imagine" && skill.maximum_tier !== 4)
     || (skill.replacement_imagine_skill_id !== null
       && !Number.isInteger(skill.replacement_imagine_skill_id)))
 ) {
   throw new Error("The canonical BPSR auxiliary-action presentation catalog is invalid or stale.");
 }
+if (
+  auxiliaryActionIdentityProof.schema_version !== 1
+  || auxiliaryActionIdentityProof.game_build !== String(sourceBuildId)
+  || auxiliaryActionIdentityProof.deployment_id !== "global"
+  || auxiliaryActionIdentityProof.policy?.role_action_and_normal_imagine_action_ids_are_distinct !== true
+  || auxiliaryActionIdentityProof.policy?.role_imagine_maximum_tier !== 4
+  || !Array.isArray(auxiliaryActionIdentityProof.pairs)
+  || auxiliaryActionIdentityProof.pairs.length !== 8
+) {
+  throw new Error("The current-build BPSR auxiliary-action identity proof is invalid or stale.");
+}
 const auxiliaryActionsBySkillId = new Map(
   auxiliaryActionPresentation.skills.map((skill) => [skill.skill_id, skill]),
 );
+const auxiliaryIdentityByRoleActionId = new Map(
+  auxiliaryActionIdentityProof.pairs.map((pair) => [pair.role_action_id, pair]),
+);
+for (const action of auxiliaryActionPresentation.skills) {
+  const pair = auxiliaryIdentityByRoleActionId.get(action.skill_id);
+  if (action.action_kind === "role_skill") {
+    if (pair != null || action.replacement_imagine_skill_id !== null) {
+      throw new Error(`Native role action ${action.skill_id} incorrectly claims Imagine identity.`);
+    }
+    continue;
+  }
+  const imagine = imaginePresentation.imagines.find(
+    (candidate) => candidate.skill_id === pair?.normal_imagine_action_id,
+  );
+  if (
+    pair == null
+    || pair.role_action_id === pair.normal_imagine_action_id
+    || action.replacement_imagine_skill_id !== pair.normal_imagine_action_id
+    || imagine?.item_id !== pair.battle_imagine_item_id
+    || imagine?.maximum_tier !== auxiliaryActionIdentityProof.policy.battle_imagine_maximum_tier
+  ) {
+    throw new Error(`Imagine role action ${action.skill_id} failed its current-build identity proof.`);
+  }
+}
 const skills = Object.fromEntries(
   Object.values(skillsTable)
     .filter((skill) => skill.Id >= 2_000 && skill.Id < 4_000 && skill.Name)
@@ -275,6 +318,8 @@ const skills = Object.fromEntries(
       name: skill.Name,
       icon: copyNamedIcon(skill.Icon, "skills"),
       skill_type: skill.SkillType,
+      action_kind: auxiliaryActionsBySkillId.get(skill.Id)?.action_kind ?? null,
+      maximum_tier: auxiliaryActionsBySkillId.get(skill.Id)?.maximum_tier ?? null,
       replacement_imagine_skill_id:
         auxiliaryActionsBySkillId.get(skill.Id)?.replacement_imagine_skill_id ?? null,
     }]),
@@ -553,6 +598,9 @@ const catalog = {
   source_buff_table_sha256: createHash("sha256").update(readFileSync(buffTablePath)).digest("hex"),
   source_auxiliary_action_presentation_sha256: createHash("sha256")
     .update(readFileSync(auxiliaryActionPresentationPath))
+    .digest("hex"),
+  source_auxiliary_action_identity_proof_sha256: createHash("sha256")
+    .update(readFileSync(auxiliaryActionIdentityProofPath))
     .digest("hex"),
   equipment_slots: {
     "200": "Weapon", "201": "Headwear", "202": "Armor", "203": "Gloves",

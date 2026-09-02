@@ -69,9 +69,16 @@ describe("BPSR profile presentation catalog", () => {
   });
 
   it("classifies native and Imagine replacement role skills from the reviewed catalog", () => {
-    expect(catalog.skills["3011"]?.replacement_imagine_skill_id).toBeNull();
-    expect(catalog.skills["3021"]?.replacement_imagine_skill_id).toBe(3902);
-    expect(catalog.skills["3028"]?.replacement_imagine_skill_id).toBe(3951);
+    expect(catalog.skills["3011"]).toEqual(expect.objectContaining({
+      action_kind: "role_skill", maximum_tier: null, replacement_imagine_skill_id: null,
+    }));
+    expect(catalog.skills["3021"]).toEqual(expect.objectContaining({
+      action_kind: "role_imagine", maximum_tier: 4, replacement_imagine_skill_id: 3902,
+    }));
+    expect(catalog.skills["3028"]).toEqual(expect.objectContaining({
+      action_kind: "role_imagine", maximum_tier: 4, replacement_imagine_skill_id: 3951,
+    }));
+    expect(catalog.source_auxiliary_action_identity_proof_sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("uses the exact current Will Wish SSR pools instead of treating every orange Imagine as SSR", () => {
