@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { MyParseCatalogEntry } from "../../contracts/public-parse";
-import { filterMyParses } from "./my-parses";
+import { filterMyParses, renderMyParseEntry } from "./my-parses";
 
 const entry: MyParseCatalogEntry = {
   report_id: `rpt_${"ab".repeat(16)}`,
@@ -31,5 +31,17 @@ describe("My Parses", () => {
   it("searches verified membership, scene, and visibility", () => {
     expect(filterMyParses([entry], "3296036 unlisted floor 54")).toEqual([entry]);
     expect(filterMyParses([entry], "private")).toEqual([]);
+  });
+
+  it("lets only the uploader change a parse's visibility", () => {
+    const participantHtml = renderMyParseEntry(entry);
+    const ownerHtml = renderMyParseEntry({ ...entry, submitted_by_you: true });
+
+    expect(participantHtml).not.toContain("data-visibility-report");
+    expect(participantHtml).toContain("Participant: 3296036");
+    expect(ownerHtml).toContain(`data-visibility-report="${entry.report_id}"`);
+    expect(ownerHtml).toContain('<option value="public">Public</option>');
+    expect(ownerHtml).toContain('<option value="unlisted" selected>Unlisted</option>');
+    expect(ownerHtml).toContain('<option value="private">Private</option>');
   });
 });

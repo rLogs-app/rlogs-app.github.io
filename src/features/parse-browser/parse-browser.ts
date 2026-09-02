@@ -5,6 +5,9 @@ import {
   type PublicParseCatalog,
   type PublicParseCatalogEntry,
   type PublicParseReport,
+  type PublicParticipant,
+  type PublicRdpsEffectPresentation,
+  type PublicRdpsInfluence,
   type PublicReconciledParticipant,
   type PublicRunReconciliation,
   type PublicRun,
@@ -224,6 +227,10 @@ export function renderReport(
     <div class="parse-party"><div class="parse-party-head"><strong>Party</strong><small>${run.participants.length} combatants / rDPS ${escapeHtml(run.rdps_status)}</small></div>
       ${participants.map((actor) => renderParticipant(actor, run.active_combat_micros, reconciled)).join("")}
     </div>
+    ${renderRunTimeline(run, participants)}
+    ${renderSkillContributions(participants)}
+    ${renderRdpsCalculations(run, reconciliation, participants, reconciled)}
+    ${renderEvidenceCoverage(report, run, reconciliation, participants, reconciled)}
     <p class="parse-proof">Build ${escapeHtml(report.client_build)} / ${report.verification.event_count.toLocaleString()} canonical events / ${run.data_gap_count} data gaps / report ${escapeHtml(report.report_id)}${run.run_group_id ? ` / group ${escapeHtml(run.run_group_id)}` : ""}</p>
   </article>`;
 }
@@ -301,6 +308,293 @@ function renderSwiftVortexCandidateAudit(reconciliation: PublicRunReconciliation
   const blockers = blockerSummary ? ` Blockers: ${blockerSummary}.` : "";
 
   return `<div class="reconciliation-proof pending"><strong>Swift Vortex candidate evidence</strong><span>${audit.candidate_status_event_count} status events / ${audit.exact_paired_receipt_count} exact paired receipts / ${audit.distinct_provider_entity_count} providers / ${audit.distinct_recipient_entity_count} recipients. ${escapeHtml(magnitude)} ${escapeHtml(gate)} Production attribution remains disabled.${escapeHtml(blockers)}</span></div>`;
+}
+
+type AnalysisParticipant = PublicParticipant | PublicReconciledParticipant;
+
+const chartColors = [
+  "#58e6df",
+  "#6ea8ff",
+  "#b58cff",
+  "#ff78b9",
+  "#ffb454",
+  "#8cda66",
+  "#f06d6d",
+  "#8ad7ff",
+  "#d6d96b",
+  "#a6a9ff",
+] as const;
+
+function renderRunTimeline(run: PublicRun, participants: AnalysisParticipant[]): string {
+  const actors = participants.filter((actor) => (actor.series?.length ?? 0) > 0);
+  if (!actors.length) {
+    return analysisPanel(
+      "Run timeline",
+      "A synchronized one-second timeline will appear for newly projected reports. This legacy report has aggregate totals only.",
+    );
+  }
+
+  const durationSeconds = Math.max(
+    1,
+    Math.ceil((run.total_run_time_micros ?? run.active_combat_micros) / 1_000_000),
+    ...actors.flatMap((actor) => actor.series?.map((point) => point.second) ?? []),
+  );
+  const maximumDamage = Math.max(
+    1,
+    ...actors.flatMap((actor) => actor.series?.map((point) => point.damage) ?? []),
+  );
+  const width = 1_000;
+  const height = 280;
+  const left = 58;
+  const right = 18;
+  const top = 18;
+  const bottom = 42;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const x = (second: number): number => left + (Math.min(durationSeconds, second) / durationSeconds) * plotWidth;
+  const y = (damage: number): number => top + plotHeight - (Math.max(0, damage) / maximumDamage) * plotHeight;
+  const grid = Array.from({ length: 5 }, (_, index) => {
+    const fraction = index / 4;
+    const gridY = top + plotHeight * fraction;
+    const value = maximumDamage * (1 - fraction);
+    return `<line x1="${left}" y1="${gridY.toFixed(2)}" x2="${width - right}" y2="${gridY.toFixed(2)}" class="parse-chart-grid"/><text x="${left - 8}" y="${(gridY + 4).toFixed(2)}" text-anchor="end">${escapeHtml(formatCompact(value))}</text>`;
+  }).join("");
+  const timeTicks = Array.from({ length: 5 }, (_, index) => {
+    const second = (durationSeconds * index) / 4;
+    return `<text x="${x(second).toFixed(2)}" y="${height - 12}" text-anchor="middle">${escapeHtml(formatSeconds(second))}</text>`;
+  }).join("");
+  let segmentElapsed = 0;
+  const segmentMarkers = run.segments
+    .map((segment) => {
+      segmentElapsed += segment.wall_time_micros / 1_000_000;
+      if (segmentElapsed >= durationSeconds) return "";
+      const markerX = x(segmentElapsed);
+      return `<line x1="${markerX.toFixed(2)}" y1="${top}" x2="${markerX.toFixed(2)}" y2="${top + plotHeight}" class="parse-segment-line"><title>${escapeHtml(`${title(segment.kind)} ends at ${formatSeconds(segmentElapsed)}`)}</title></line>`;
+    })
+    .join("");
+  const paths = actors
+    .map((actor, index) => {
+      const color = chartColors[index % chartColors.length];
+      const path = damageSeriesPath(actor.series ?? [], durationSeconds, x, y);
+      const deaths = (actor.death_seconds ?? [])
+        .map((second) => `<circle cx="${x(second).toFixed(2)}" cy="${(top + 10).toFixed(2)}" r="5" fill="${color}" class="parse-death-marker"><title>${escapeHtml(`${participantName(actor)} died at ${formatSeconds(second)}`)}</title></circle>`)
+        .join("");
+      return `<path d="${path}" fill="none" stroke="${color}" class="parse-timeline-path"><title>${escapeHtml(participantName(actor))} damage per second</title></path>${deaths}`;
+    })
+    .join("");
+  const legend = actors
+    .map((actor, index) => `<span><i style="--series-color:${chartColors[index % chartColors.length]}"></i>${escapeHtml(participantName(actor))}</span>`)
+    .join("");
+
+  return `<section class="parse-analysis-panel parse-timeline-panel">
+    <div class="parse-analysis-heading"><div><p class="eyebrow">Synchronized evidence</p><h4>Run timeline</h4></div><small>One-second damage · diamond markers are deaths</small></div>
+    <div class="parse-chart-scroll"><svg class="parse-timeline-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Per-player damage timeline for ${escapeHtml(formatSeconds(durationSeconds))}">
+      ${grid}${timeTicks}${segmentMarkers}${paths}
+    </svg></div>
+    <div class="parse-chart-legend">${legend}</div>
+  </section>`;
+}
+
+function damageSeriesPath(
+  points: NonNullable<PublicParticipant["series"]>,
+  durationSeconds: number,
+  x: (second: number) => number,
+  y: (damage: number) => number,
+): string {
+  const bySecond = new Map<number, number>();
+  for (const point of points) bySecond.set(point.second, (bySecond.get(point.second) ?? 0) + point.damage);
+  const observed = [...bySecond.entries()].sort(([left], [right]) => left - right);
+  const vertices: Array<[number, number]> = [[0, 0]];
+  let previous = 0;
+  for (const [second, damage] of observed) {
+    if (second > previous + 1) {
+      vertices.push([previous + 1, 0], [second - 1, 0]);
+    }
+    vertices.push([second, damage]);
+    previous = second;
+  }
+  if (previous < durationSeconds) vertices.push([Math.min(durationSeconds, previous + 1), 0], [durationSeconds, 0]);
+  return vertices
+    .map(([second, damage], index) => `${index === 0 ? "M" : "L"}${x(second).toFixed(2)},${y(damage).toFixed(2)}`)
+    .join(" ");
+}
+
+function renderSkillContributions(participants: AnalysisParticipant[]): string {
+  const actors = participants.filter((actor) => (actor.abilities?.some((ability) => ability.damage > 0) ?? false));
+  if (!actors.length) {
+    return analysisPanel(
+      "Skill contribution",
+      "Skill-level totals will appear for newly projected reports. No skill rows were published with this legacy report.",
+    );
+  }
+  const cards = actors.map((actor, actorIndex) => renderSkillCard(actor, actorIndex)).join("");
+  return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">Per-player breakdown</p><h4>Skill contribution</h4></div><small>Raw damage share; exact observed child skills remain separate</small></div><div class="parse-skill-grid">${cards}</div></section>`;
+}
+
+function renderSkillCard(actor: AnalysisParticipant, actorIndex: number): string {
+  const abilities = [...(actor.abilities ?? [])].filter((ability) => ability.damage > 0).sort((left, right) => right.damage - left.damage);
+  const total = abilities.reduce((sum, ability) => sum + ability.damage, 0);
+  const visible = abilities.slice(0, 7).map((ability) => ({
+    name: ability.presentation_name ?? `Skill ${ability.ability_id}`,
+    damage: ability.damage,
+    casts: ability.casts,
+    hits: ability.hits,
+    criticalHits: ability.critical_hits,
+  }));
+  const other = abilities.slice(7);
+  if (other.length) {
+    visible.push({
+      name: `Other (${other.length})`,
+      damage: other.reduce((sum, ability) => sum + ability.damage, 0),
+      casts: other.reduce((sum, ability) => sum + ability.casts, 0),
+      hits: other.reduce((sum, ability) => sum + ability.hits, 0),
+      criticalHits: other.reduce((sum, ability) => sum + ability.critical_hits, 0),
+    });
+  }
+  let cursor = 0;
+  const slices = visible.map((ability, index) => {
+    const start = cursor;
+    cursor += total > 0 ? (ability.damage / total) * 100 : 0;
+    return `${chartColors[(actorIndex + index) % chartColors.length]} ${start.toFixed(3)}% ${cursor.toFixed(3)}%`;
+  });
+  const rows = visible
+    .map((ability, index) => {
+      const percent = total > 0 ? (ability.damage / total) * 100 : 0;
+      const criticalRate = ability.hits > 0 ? (ability.criticalHits / ability.hits) * 100 : 0;
+      return `<li><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${ability.casts.toLocaleString()} casts · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
+    })
+    .join("");
+  return `<details class="parse-skill-card"${actorIndex === 0 ? " open" : ""}><summary><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span><span>${formatNumber(actor.damage)} damage</span></summary><div class="parse-skill-content"><div class="parse-skill-pie" style="--skill-pie:conic-gradient(${slices.join(",")})" role="img" aria-label="Skill damage shares for ${escapeHtml(participantName(actor))}"><span>${abilities.length}<small>skills</small></span></div><ol>${rows}</ol></div></details>`;
+}
+
+function renderRdpsCalculations(
+  run: PublicRun,
+  reconciliation: PublicRunReconciliation | null,
+  participants: AnalysisParticipant[],
+  reconciled: boolean,
+): string {
+  const influences = reconciled
+    ? (reconciliation?.rdps_influences ?? [])
+    : (run.rdps_influences ?? []);
+  const effects = reconciled ? (reconciliation?.rdps_effects ?? []) : (run.rdps_effects ?? []);
+  const formulas = participants
+    .filter((participant): participant is PublicReconciledParticipant => "rdps_damage" in participant)
+    .map((participant) => `<div class="rdps-formula-row"><span><strong>${escapeHtml(participantName(participant))}</strong><small>${participant.rdps_incomplete ? "Known subtotal; unresolved evidence remains" : "Conserved exact total"}</small></span><code>${formatNumber(participant.damage)} + ${formatOptionalNumber(participant.contribution_given)} given - ${formatOptionalNumber(participant.contribution_received)} received = ${formatOptionalNumber(participant.rdps_damage)} rDMG</code></div>`)
+    .join("");
+  if (!influences.length && !formulas) {
+    return analysisPanel(
+      "rDPS calculations",
+      "No exact influence ledger was published for this report. rDPS remains explicitly unresolved rather than being copied from DPS.",
+    );
+  }
+  const grouped = groupInfluences(influences, effects, participants);
+  const rows = grouped
+    .map((group) => `<div class="rdps-ledger-row"><span><strong>${escapeHtml(group.provider)}</strong><small>granted through ${escapeHtml(group.effect)}${group.components.size ? ` · ${escapeHtml([...group.components].map(title).join(", "))}` : ""}</small></span><span><small>Recipients</small><strong>${group.recipients.size.toLocaleString()}</strong></span><span><small>Damage events</small><strong>${group.events.toLocaleString()}</strong></span><span><small>Observed damage</small><strong>${formatBigInt(group.observedDamage)}</strong></span><span><small>Attributed rDMG</small><strong>${group.allocated ? formatBigInt(group.attributed) : "Unresolved"}${group.incomplete ? "*" : ""}</strong></span></div>`)
+    .join("");
+  const evidenceLabel = reconciled ? "Cross-vantage server replay" : "Single-vantage server replay";
+  return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">${evidenceLabel}</p><h4>rDPS calculations</h4></div><small>Raw + granted - received = rDMG; party totals must conserve</small></div>${formulas ? `<div class="rdps-formulas">${formulas}</div>` : ""}${rows ? `<div class="rdps-ledger"><div class="rdps-ledger-head"><strong>Provider and effect ledger</strong><small>${influences.length.toLocaleString()} exact relationship rows</small></div>${rows}</div>` : ""}<p class="parse-analysis-note">* A marked value is a packet-proven known subtotal with at least one unresolved external input. It is never silently promoted to an exact result.</p></section>`;
+}
+
+interface GroupedInfluence {
+  provider: string;
+  effect: string;
+  recipients: Set<string>;
+  components: Set<string>;
+  events: number;
+  observedDamage: bigint;
+  attributed: bigint;
+  allocated: boolean;
+  incomplete: boolean;
+}
+
+function groupInfluences(
+  influences: PublicRdpsInfluence[],
+  effects: PublicRdpsEffectPresentation[],
+  participants: AnalysisParticipant[],
+): GroupedInfluence[] {
+  const actorNames = new Map(participants.map((actor) => [actor.actor_id, participantName(actor)]));
+  const effectNames = new Map(effects.map((effect) => [effect.effect_id, effect.presentation_name]));
+  const groups = new Map<string, GroupedInfluence>();
+  for (const influence of influences) {
+    const key = `${influence.provider_actor_id}\0${influence.effect_id}`;
+    const group = groups.get(key) ?? {
+      provider: actorNames.get(influence.provider_actor_id) ?? `Player ${influence.provider_actor_id}`,
+      effect: effectNames.get(influence.effect_id) ?? `Effect ${influence.effect_id}`,
+      recipients: new Set<string>(),
+      components: new Set<string>(),
+      events: 0,
+      observedDamage: 0n,
+      attributed: 0n,
+      allocated: true,
+      incomplete: false,
+    };
+    group.recipients.add(actorNames.get(influence.recipient_actor_id) ?? influence.recipient_actor_id);
+    if (influence.attribution_component) group.components.add(influence.attribution_component);
+    group.events += influence.damage_event_count;
+    group.observedDamage += parseInteger(influence.observed_damage) ?? 0n;
+    const attributed = influence.attributed_rdps == null ? null : parseInteger(influence.attributed_rdps);
+    if (attributed == null) group.allocated = false;
+    else group.attributed += attributed;
+    group.incomplete ||= !influence.complete_effect || !influence.damage_context_complete || attributed == null;
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((left, right) => compareBigInt(right.attributed, left.attributed));
+}
+
+function renderEvidenceCoverage(
+  report: PublicParseReport,
+  run: PublicRun,
+  reconciliation: PublicRunReconciliation | null,
+  participants: AnalysisParticipant[],
+  reconciled: boolean,
+): string {
+  if (!reconciliation) {
+    return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">Proof boundary</p><h4>Evidence coverage</h4></div><span class="status-chip neutral">Single vantage</span></div><div class="evidence-metrics">${metric("Reports", "1")}${metric("Canonical events", report.verification.event_count.toLocaleString())}${metric("Data gaps", run.data_gap_count.toLocaleString())}${metric("Attribution", run.rdps_status === "complete" ? "Locally complete" : "Awaiting more vantage points")}</div><p class="parse-analysis-note">This is a server replay of one sealed observer. Additional uploads from the exact same game instance can supply remote state without duplicating combat damage.</p></section>`;
+  }
+  const namesByCharacter = new Map(participants.flatMap((actor) => actor.character_id ? [[actor.character_id, participantName(actor)] as const] : []));
+  const characters = reconciliation.characters
+    .map((character) => `<li><span><strong>${escapeHtml(namesByCharacter.get(character.character_id) ?? `UID ${character.character_id}`)}</strong><small>${escapeHtml(title(character.disposition))}</small></span><span><strong>${character.state_witness_count.toLocaleString()}</strong><small>state witnesses · ${character.game_time_aligned_state_witness_count.toLocaleString()} aligned</small></span></li>`)
+    .join("");
+  const blockers = reconciliation.state_replay_blockers.length
+    ? `<div class="evidence-blockers"><strong>Still unresolved</strong><ul>${reconciliation.state_replay_blockers.map((blocker) => `<li>${escapeHtml(title(blocker))}</li>`).join("")}</ul></div>`
+    : "";
+  const reports = reconciliation.reports
+    .map((source) => `<li><span>${source.canonical_spine ? '<span class="status-chip success">Canonical spine</span>' : '<span class="status-chip neutral">Evidence witness</span>'}</span><code>${escapeHtml(source.report_id)}</code><small>${source.local_profile_witnesses.length} local profile / ${source.local_state_witnesses.length} state witnesses</small></li>`)
+    .join("");
+  return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">Proof boundary</p><h4>Evidence coverage</h4></div><span class="status-chip ${reconciled ? "success" : "neutral"}">${reconciled ? "Reconciled" : "More evidence needed"}</span></div><div class="evidence-metrics">${metric("Reports", reconciliation.reports.length.toLocaleString())}${metric("Local vantage", `${reconciliation.local_vantage_character_count}/${reconciliation.participant_character_count}`)}${metric("Replay readiness", title(reconciliation.state_replay_readiness))}${metric("Conservation", reconciliation.conservation?.conserved ? "Passed" : "Pending")}</div>${blockers}<div class="evidence-grid"><div><h5>Character coverage</h5><ul class="evidence-character-list">${characters}</ul></div><details><summary>Source reports and provenance</summary><ul class="evidence-report-list">${reports}</ul>${reconciliation.verified_state_input_sha256 ? `<p><small>Verified state input</small><code>${escapeHtml(reconciliation.verified_state_input_sha256)}</code></p>` : ""}</details></div></section>`;
+}
+
+function analysisPanel(titleText: string, body: string): string {
+  return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><h4>${escapeHtml(titleText)}</h4></div><p class="empty-state">${escapeHtml(body)}</p></section>`;
+}
+
+function participantName(actor: PublicParticipant): string {
+  return actor.display_name ?? (actor.character_id ? `UID ${actor.character_id}` : `Player ${actor.actor_id}`);
+}
+
+function formatOptionalNumber(value: number | null): string {
+  return value == null ? "?" : formatNumber(value);
+}
+
+function parseInteger(value: string): bigint | null {
+  return /^-?\d+$/u.test(value) ? BigInt(value) : null;
+}
+
+function compareBigInt(left: bigint, right: bigint): number {
+  return left === right ? 0 : left > right ? 1 : -1;
+}
+
+function formatBigInt(value: bigint): string {
+  return new Intl.NumberFormat().format(value);
+}
+
+function formatCompact(value: number): string {
+  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function formatSeconds(value: number): string {
+  const seconds = Math.max(0, Math.round(value));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function damageRate(damage: number, activeCombatMicros: number): number {
@@ -401,9 +695,16 @@ function label(value: string, count: number): string {
 }
 
 function escapeHtml(value: string): string {
-  const node = document.createElement("span");
-  node.textContent = value;
-  return node.innerHTML;
+  return value.replace(/[&<>"']/gu, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[character] ?? character;
+  });
 }
 
 function message(error: unknown): string {

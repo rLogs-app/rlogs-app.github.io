@@ -72,7 +72,7 @@ export interface SceneFacetValue {
 }
 
 export interface PublicParseReport {
-  schema_version: 6 | 7;
+  schema_version: 6 | 7 | 8;
   report_id: string;
   visibility: "public" | "unlisted" | "private";
   created_unix_millis: number;
@@ -124,6 +124,8 @@ export interface PublicRun {
   submission_disposition: string;
   segments: PublicRunSegment[];
   participants: PublicParticipant[];
+  rdps_influences?: PublicRdpsInfluence[];
+  rdps_effects?: PublicRdpsEffectPresentation[];
 }
 
 export interface PublicRunSegment {
@@ -151,10 +153,66 @@ export interface PublicParticipant {
   tps: number;
   rdps: number | null;
   deaths: number;
+  death_seconds?: number[];
+  abilities?: PublicAbilitySummary[];
+  series?: PublicSeriesPoint[];
+}
+
+export interface PublicAbilitySummary {
+  ability_id: string;
+  presentation_name: string | null;
+  presentation_kind: string | null;
+  icon_asset_path: string | null;
+  casts: number;
+  hits: number;
+  critical_hits: number;
+  damage: number;
+  effective_damage: number;
+  healing: number;
+  effective_healing: number;
+  shielding: number;
+}
+
+export interface PublicSeriesPoint {
+  second: number;
+  damage: number;
+  effective_healing: number;
+  damage_taken: number;
+}
+
+export interface PublicRdpsEffectPresentation {
+  effect_id: string;
+  presentation_name: string;
+  presentation_kind: string;
+  icon_asset_path: string | null;
+}
+
+export interface PublicRationalDamageDelta {
+  numerator: string;
+  denominator: string;
+  contribution_count: number;
+}
+
+export interface PublicRdpsInfluence {
+  effect_id: string;
+  attribution_component: string | null;
+  complete_effect: boolean;
+  provider_actor_id: string;
+  recipient_actor_id: string;
+  affected_ability_id: string | null;
+  target_actor_id: string | null;
+  first_observed_micros: number;
+  last_observed_micros: number;
+  damage_event_count: number;
+  observed_damage: string;
+  exact_integer_delta: string;
+  exact_rational_deltas: PublicRationalDamageDelta[];
+  attributed_rdps: string | null;
+  damage_context_complete: boolean;
 }
 
 export interface PublicRunReconciliation {
-  schema_version: 5 | 6 | 7;
+  schema_version: 5 | 6 | 7 | 8;
   reconciliation_id: string;
   run_group_id: string;
   status: RunAttributionReconciliationStatus;
@@ -174,6 +232,8 @@ export interface PublicRunReconciliation {
   verified_state_input_sha256?: string;
   reconciled_participants: PublicReconciledParticipant[];
   conservation?: PublicAttributionConservation;
+  rdps_influences?: PublicRdpsInfluence[];
+  rdps_effects?: PublicRdpsEffectPresentation[];
   swift_vortex_candidate_audit?: SwiftVortexCandidateAuditReport;
   attribution_replay_completed: boolean;
 }
@@ -248,6 +308,13 @@ export interface PublicAttributionConservation {
   conserved: boolean;
 }
 
+export interface UpdateParseVisibilityResponse {
+  schema_version: 1;
+  report_id: string;
+  visibility: "public" | "unlisted" | "private";
+  share_url: string | null;
+}
+
 const reportIdPattern = /^rpt_[a-f0-9]{32}$/;
 const runGroupIdPattern = /^run_[a-f0-9]{32}$/;
 const reconciliationIdPattern = /^rec_[a-f0-9]{32}$/;
@@ -290,7 +357,9 @@ function isCatalogFacets(value: unknown): value is CatalogFacets {
 export function isPublicParseReport(value: unknown): value is PublicParseReport {
   return (
     isRecord(value) &&
-    (value.schema_version === 6 || value.schema_version === 7) &&
+    (value.schema_version === 6 ||
+      value.schema_version === 7 ||
+      value.schema_version === 8) &&
     typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) &&
     (value.visibility === "public" ||
@@ -335,10 +404,28 @@ function isMyParseCatalogEntry(value: unknown): value is MyParseCatalogEntry {
   );
 }
 
+export function isUpdateParseVisibilityResponse(
+  value: unknown,
+): value is UpdateParseVisibilityResponse {
+  return (
+    isRecord(value) &&
+    value.schema_version === 1 &&
+    typeof value.report_id === "string" &&
+    reportIdPattern.test(value.report_id) &&
+    (value.visibility === "public" ||
+      value.visibility === "unlisted" ||
+      value.visibility === "private") &&
+    (value.share_url == null || typeof value.share_url === "string")
+  );
+}
+
 export function isPublicRunReconciliation(value: unknown): value is PublicRunReconciliation {
   if (
     !isRecord(value) ||
-    (value.schema_version !== 5 && value.schema_version !== 6 && value.schema_version !== 7) ||
+    (value.schema_version !== 5 &&
+      value.schema_version !== 6 &&
+      value.schema_version !== 7 &&
+      value.schema_version !== 8) ||
     typeof value.reconciliation_id !== "string" ||
     !reconciliationIdPattern.test(value.reconciliation_id) ||
     typeof value.run_group_id !== "string" ||

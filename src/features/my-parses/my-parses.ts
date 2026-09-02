@@ -1,8 +1,12 @@
 import {
   isMyParseCatalog,
   isPublicParseReport,
+  isPublicRunReconciliation,
+  isUpdateParseVisibilityResponse,
   type MyParseCatalog,
   type MyParseCatalogEntry,
+  type PublicRunReconciliation,
+  validateRunGroupId,
 } from "../../contracts/public-parse";
 import { renderCatalogEntry, renderReport } from "../parse-browser/parse-browser";
 
@@ -68,6 +72,9 @@ export async function mountMyParses(): Promise<void> {
         ),
       );
     });
+    list.querySelectorAll<HTMLSelectElement>("[data-visibility-report]").forEach((control) => {
+      control.addEventListener("change", () => void updateVisibility(control));
+    });
     list.querySelector<HTMLButtonElement>("[data-load-more]")?.addEventListener("click", () =>
       void loadMore(),
     );
@@ -104,7 +111,25 @@ export async function mountMyParses(): Promise<void> {
       );
       const value: unknown = await response.json();
       if (!isPublicParseReport(value)) throw new Error("The server returned an unsupported parse contract.");
-      detail.innerHTML = renderReport(value, runIndex, null, null);
+      const run = value.runs.find((candidate) => candidate.run_index === runIndex) ?? value.runs[0];
+      let reconciliation: PublicRunReconciliation | null = null;
+      let reconciliationError: string | null = null;
+      if (run?.run_group_id && validateRunGroupId(run.run_group_id)) {
+        try {
+          const reconciliationResponse = await authenticatedFetch(
+            `${configuredApi}/v1/run-groups/${encodeURIComponent(run.run_group_id)}/reconciliation`,
+            authenticatedSession,
+          );
+          const reconciliationValue: unknown = await reconciliationResponse.json();
+          if (!isPublicRunReconciliation(reconciliationValue)) {
+            throw new Error("The server returned an unsupported reconciliation contract.");
+          }
+          reconciliation = reconciliationValue;
+        } catch (error) {
+          reconciliationError = errorText(error);
+        }
+      }
+      detail.innerHTML = renderReport(value, runIndex, reconciliation, reconciliationError);
       history.replaceState(
         null,
         "",
@@ -112,6 +137,48 @@ export async function mountMyParses(): Promise<void> {
       );
     } catch (error) {
       detail.innerHTML = `<p class="empty-state">${escapeHtml(errorText(error))}</p>`;
+    }
+  }
+
+  async function updateVisibility(control: HTMLSelectElement): Promise<void> {
+    const reportId = control.dataset.visibilityReport ?? "";
+    const previous = control.dataset.currentVisibility ?? "unlisted";
+    const visibility = control.value;
+    if (!/^rpt_[a-f0-9]{32}$/u.test(reportId) || !["public", "unlisted", "private"].includes(visibility)) {
+      control.value = previous;
+      return;
+    }
+    control.disabled = true;
+    status.textContent = `Changing to ${title(visibility)}…`;
+    status.className = "status-chip neutral";
+    try {
+      const response = await authenticatedFetch(
+        `${configuredApi}/v1/auth/parses/${encodeURIComponent(reportId)}/visibility`,
+        authenticatedSession,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ visibility }),
+        },
+      );
+      const value: unknown = await response.json();
+      if (!isUpdateParseVisibilityResponse(value)) {
+        throw new Error("The server returned an unsupported visibility receipt.");
+      }
+      catalog = {
+        ...catalog,
+        entries: catalog.entries.map((entry) =>
+          entry.report_id === reportId ? { ...entry, visibility: value.visibility } : entry,
+        ),
+      };
+      renderList();
+      status.textContent = `${title(value.visibility)} · saved on server`;
+      status.className = "status-chip success";
+    } catch (error) {
+      control.value = previous;
+      control.disabled = false;
+      status.textContent = errorText(error);
+      status.className = "status-chip danger";
     }
   }
 }
@@ -126,12 +193,17 @@ async function fetchCatalog(session: WebSession, offset = 0): Promise<MyParseCat
   return value;
 }
 
-async function authenticatedFetch(url: string, session: WebSession): Promise<Response> {
+async function authenticatedFetch(
+  url: string,
+  session: WebSession,
+  init: RequestInit = {},
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  headers.set("Authorization", `Bearer ${session.access_token}`);
   const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-    },
+    ...init,
+    headers,
   });
   if (response.status === 401) {
     localStorage.removeItem(sessionKey);
@@ -169,12 +241,15 @@ export function filterMyParses(
   });
 }
 
-function renderMyParseEntry(entry: MyParseCatalogEntry): string {
+export function renderMyParseEntry(entry: MyParseCatalogEntry): string {
   const relationship = entry.submitted_by_you
     ? "Submitted by you"
     : `Participant${entry.matched_character_ids.length === 1 ? "" : "s"}: ${entry.matched_character_ids.join(", ")}`;
+  const visibility = entry.submitted_by_you
+    ? `<label class="my-parse-visibility"><span>Visibility</span><select data-visibility-report="${escapeHtml(entry.report_id)}" data-current-visibility="${entry.visibility}" aria-label="Visibility for ${escapeHtml(entry.scene_name ?? entry.report_id)}"><option value="public"${entry.visibility === "public" ? " selected" : ""}>Public</option><option value="unlisted"${entry.visibility === "unlisted" ? " selected" : ""}>Unlisted</option><option value="private"${entry.visibility === "private" ? " selected" : ""}>Private</option></select></label>`
+    : `<span class="status-chip neutral">${escapeHtml(title(entry.visibility))}</span>`;
   return `<article class="my-parse-entry">
-    <div class="my-parse-entry-meta"><span class="status-chip neutral">${escapeHtml(title(entry.visibility))}</span><span>${escapeHtml(relationship)}</span></div>
+    <div class="my-parse-entry-meta">${visibility}<span>${escapeHtml(relationship)}</span></div>
     ${renderCatalogEntry(entry)}
   </article>`;
 }
@@ -216,9 +291,16 @@ function title(value: string): string {
 }
 
 function escapeHtml(value: string): string {
-  const node = document.createElement("span");
-  node.textContent = value;
-  return node.innerHTML;
+  return value.replace(/[&<>"']/gu, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[character] ?? character;
+  });
 }
 
 function errorText(error: unknown): string {

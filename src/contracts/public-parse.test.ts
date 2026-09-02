@@ -4,6 +4,7 @@ import {
   isMyParseCatalog,
   isPublicParseReport,
   isPublicRunReconciliation,
+  isUpdateParseVisibilityResponse,
   validateReportId,
   validateRunGroupId,
 } from "./public-parse";
@@ -44,13 +45,32 @@ describe("public parse contract", () => {
     ).toBe(true);
     expect(
       isPublicParseReport({
-        schema_version: 7,
+        schema_version: 8,
         report_id: `rpt_${"ab".repeat(16)}`,
         visibility: "unlisted",
         verification: { tier: "replayed" },
         runs: [],
       }),
     ).toBe(true);
+  });
+
+  it("accepts a server-authoritative visibility update receipt", () => {
+    expect(
+      isUpdateParseVisibilityResponse({
+        schema_version: 1,
+        report_id: `rpt_${"ab".repeat(16)}`,
+        visibility: "public",
+        share_url: `/parses/?report=rpt_${"ab".repeat(16)}&run=0`,
+      }),
+    ).toBe(true);
+    expect(
+      isUpdateParseVisibilityResponse({
+        schema_version: 1,
+        report_id: "../../another-report",
+        visibility: "public",
+        share_url: null,
+      }),
+    ).toBe(false);
   });
 
   it("accepts authenticated My Parses membership without making it a public catalog", () => {
