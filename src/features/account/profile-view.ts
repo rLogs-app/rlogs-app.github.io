@@ -7,12 +7,19 @@ import {
 
 type JsonRecord = Record<string, JsonValue>;
 let presentation: ProfilePresentationCatalog;
+let profileDetailModal: ProfileDetailModal;
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
+
+interface ProfileDetailModal {
+  host: HTMLElement;
+  show(title: string, content: HTMLElement, trigger: HTMLElement): void;
+}
 
 export async function renderSyncedCharacterProfile(profile: PublishedProfile): Promise<HTMLElement> {
   presentation = await loadProfilePresentation();
   const body = profile.envelope.body;
   const root = element("article", "synced-character-profile");
+  profileDetailModal = createProfileDetailModal();
   const heading = element("header", "character-profile-heading");
   const identity = element("div", "character-profile-identity");
   const appearance = recordValue(body.appearance);
@@ -85,17 +92,13 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     "The newest complete character snapshot, followed by the loadout it describes.",
   );
   const combatSections = element("div", "profile-section-grid");
-  const combatPrimary = element("div", "profile-section-column");
-  const combatSecondary = element("div", "profile-section-column");
-  combatPrimary.append(
+  combatSections.classList.add("profile-combat-section-grid");
+  combatSections.append(
     combatStatsSection(body),
+    imagineSection(arrayValue(body.owned_imagines), arrayValue(body.battle_imagine_skills)),
     equipmentSection(body),
     moduleSection(inventory, equippedSlots),
   );
-  combatSecondary.append(
-    imagineSection(arrayValue(body.owned_imagines), arrayValue(body.battle_imagine_skills)),
-  );
-  combatSections.append(combatPrimary, combatSecondary);
   combatGroup.append(combatSections, skillsSection(body));
 
   const progressionGroup = profileSectionGroup(
@@ -119,8 +122,6 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   content.append(combatGroup, progressionGroup, collectionGroup);
   root.append(content);
 
-  const allDetails = element("details", "profile-all-details");
-  const summaryLabel = element("summary", "", "All other synced character details");
   const facts = element("dl", "profile-facts");
   const represented = new Set([
     "equipment",
@@ -140,14 +141,85 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   for (const [key, value] of Object.entries(body)) {
     if (!represented.has(key)) appendFact(facts, title(key), compactValue(value));
   }
-  allDetails.append(summaryLabel, facts);
   const extraGroup = profileSectionGroup(
     "Extra character data",
     "Additional synced fields that do not belong to the combat or collection summaries above.",
   );
-  extraGroup.append(allDetails);
+  extraGroup.append(profileDetailButton(
+    "View all other synced character details",
+    "Extra character data",
+    () => facts,
+  ));
   root.append(extraGroup);
   return root;
+}
+
+function createProfileDetailModal(): ProfileDetailModal {
+  document.body.classList.remove("profile-modal-open");
+  document.querySelector("#profile-detail-modal")?.remove();
+  const host = element("div", "profile-detail-modal");
+  host.id = "profile-detail-modal";
+  host.hidden = true;
+  const panel = element("section", "profile-detail-modal-panel");
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  const heading = element("header", "profile-detail-modal-heading");
+  const title = element("h2", "");
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "profile-detail-modal-close";
+  close.setAttribute("aria-label", "Close profile details");
+  close.textContent = "×";
+  const content = element("div", "profile-detail-modal-content");
+  heading.append(title, close);
+  panel.append(heading, content);
+  host.append(panel);
+  document.body.append(host);
+  let restoreFocus: HTMLElement | null = null;
+
+  const hide = (): void => {
+    if (host.hidden) return;
+    host.hidden = true;
+    document.body.classList.remove("profile-modal-open");
+    restoreFocus?.focus();
+    restoreFocus = null;
+  };
+  close.addEventListener("click", hide);
+  host.addEventListener("click", (event) => {
+    if (event.target === host) hide();
+  });
+  host.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hide();
+  });
+
+  return {
+    host,
+    show(label, detail, trigger) {
+      restoreFocus = trigger;
+      title.textContent = label;
+      panel.setAttribute("aria-label", label);
+      content.replaceChildren(detail);
+      host.hidden = false;
+      document.body.classList.add("profile-modal-open");
+      close.focus();
+    },
+  };
+}
+
+function profileDetailButton(
+  label: string,
+  modalTitle: string,
+  buildContent: () => HTMLElement,
+): HTMLButtonElement {
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "profile-detail-trigger";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.textContent = label;
+  trigger.addEventListener("click", () => {
+    profileDetailModal.show(modalTitle, buildContent(), trigger);
+  });
+  return trigger;
 }
 
 export type CombatStatComponent =
@@ -251,31 +323,32 @@ function combatStatsSection(body: JsonRecord): HTMLElement {
     "profile-observation-note",
     "Profile values come from the newest complete character snapshot. Temporary combat buffs and deltas are shown only in the live Stats overlay.",
   ));
-  const disclosure = element("details", "profile-combat-stat-disclosure");
-  disclosure.append(element(
-    "summary",
-    "",
-    `Show ${nonzero.length.toLocaleString()} current stats and their exact component breakdowns`,
-  ));
-  let rendered = false;
-  disclosure.addEventListener("toggle", () => {
-    if (!disclosure.open || rendered) return;
-    rendered = true;
-    disclosure.append(combatStatGrid(nonzero));
-    if (zero.length) {
-      const observedZero = element("details", "profile-zero-stat-details");
-      observedZero.append(
-        element("summary", "", `${zero.length.toLocaleString()} additional observed zero-value stats`),
-        combatStatGrid(zero),
+  if (nonzero.length) section.append(combatStatGrid(nonzero.slice(0, 6), false));
+  section.append(profileDetailButton(
+    `View all ${families.length.toLocaleString()} observed stats`,
+    "Character stats",
+    () => {
+      const detail = element("div", "profile-detail-stack");
+      detail.append(
+        element("p", "profile-detail-intro", "Current nonzero values and their exact packet components."),
+        combatStatGrid(nonzero, true),
       );
-      disclosure.append(observedZero);
-    }
-  });
-  section.append(disclosure);
+      if (zero.length) {
+        detail.append(
+          element("h3", "profile-detail-subheading", `${zero.length.toLocaleString()} observed zero-value stats`),
+          combatStatGrid(zero, true),
+        );
+      }
+      return detail;
+    },
+  ));
   return section;
 }
 
-function combatStatGrid(families: CombatStatFamilyView[]): HTMLElement {
+function combatStatGrid(
+  families: CombatStatFamilyView[],
+  includeBreakdowns: boolean,
+): HTMLElement {
   const grid = element("div", "profile-combat-stat-grid");
   for (const family of families) {
     const final = family.components.find((component) => component.component === "final") ??
@@ -290,9 +363,8 @@ function combatStatGrid(families: CombatStatFamilyView[]): HTMLElement {
       )),
       element("span", "profile-combat-stat-name", family.name),
     );
-    if (family.components.length > 1) {
-      const breakdown = element("details", "profile-combat-stat-breakdown");
-      breakdown.append(element("summary", "", "Breakdown"));
+    if (includeBreakdowns && family.components.length > 1) {
+      const breakdown = element("div", "profile-combat-stat-breakdown");
       const rows = element("div", "profile-compact-list");
       for (const component of family.components) {
         rows.append(compactRow(
@@ -300,7 +372,7 @@ function combatStatGrid(families: CombatStatFamilyView[]): HTMLElement {
           formatSignedFightAttributeValue(component.value, component.numberType, component.formatType),
         ));
       }
-      breakdown.append(rows);
+      breakdown.append(element("small", "profile-detail-label", "Breakdown"), rows);
       card.append(breakdown);
     }
     grid.append(card);
@@ -349,46 +421,65 @@ function equipmentSection(body: JsonRecord): HTMLElement {
       ])),
     );
     card.append(copy);
-    const attributeList = equipmentAttributeList(item);
     const enchantments = arrayValue(item.enchantments);
-    if (attributeList || enchantments.length || setEffects.length) {
-      const details = element("details", "profile-equipment-details");
-      details.append(element("summary", "", equipmentAttributeSummary(item, setEffects.length)));
-      if (attributeList) details.append(attributeList);
-      if (setEffects.length) details.append(equipmentSetEffectList(setEffects));
-      card.append(details);
-    }
-    if (enchantments.length) {
-      const sigils = element("div", "profile-sigil-list");
-      for (const value of enchantments) {
-        const enchantment = recordValue(value);
-        if (!enchantment) continue;
-        const enchantmentId = numericValue(enchantment.enchantment_id);
-        const level = numericValue(enchantment.level);
-        const sigil = enchantmentId == null ? undefined : presentation.items[String(enchantmentId)];
-        const sigilLevel = enchantmentId == null || level == null
-          ? undefined
-          : presentation.sigils[String(enchantmentId)]?.find((entry) => entry.level === level);
-        const row = element("div", "profile-sigil-row");
-        appendPresentationIcon(row, sigilLevel?.icon ?? sigil?.icon, sigilLevel?.name ?? sigil?.name ?? "Sigil", "profile-sigil-icon");
-        const copy = element("span");
-        copy.append(
-          element("strong", "", sigilLevel?.name ?? sigil?.name ?? `Unknown sigil ${displayValue(enchantment.enchantment_id)}`),
-          element("small", "", joinFacts([qualityLabel(sigilLevel?.quality ?? sigil?.quality), pair("Sigil level", enchantment.level)])),
-        );
-        for (const effect of sigilLevel?.effects ?? []) {
-          copy.append(element("small", "", `${effect.name} +${effect.value.toLocaleString()}`));
-        }
-        row.append(copy);
-        sigils.append(row);
-      }
-      const details = card.querySelector<HTMLDetailsElement>(".profile-equipment-details");
-      details?.append(sigils);
+    if (equipmentAttributeList(item) || enchantments.length || setEffects.length) {
+      card.append(profileDetailButton(
+        "View details",
+        localized?.name ?? slotName,
+        () => equipmentDetailPanel(item, setEffects, enchantments),
+      ));
     }
     grid.append(card);
   }
   section.append(items.length ? grid : empty("No equipment was present in the latest synced snapshot."));
   return section;
+}
+
+function equipmentDetailPanel(
+  item: JsonRecord,
+  setEffects: ResolvedEquipmentSetEffect[],
+  enchantments: JsonValue[],
+): HTMLElement {
+  const detail = element("div", "profile-detail-stack profile-equipment-modal-detail");
+  const attributes = equipmentAttributeList(item);
+  if (attributes) {
+    detail.append(element("h3", "profile-detail-subheading", "Attributes"), attributes);
+  }
+  if (setEffects.length) detail.append(equipmentSetEffectList(setEffects));
+  if (enchantments.length) {
+    detail.append(
+      element("h3", "profile-detail-subheading", "Sigils"),
+      equipmentSigilList(enchantments),
+    );
+  }
+  return detail;
+}
+
+function equipmentSigilList(enchantments: JsonValue[]): HTMLElement {
+  const sigils = element("div", "profile-sigil-list");
+  for (const value of enchantments) {
+    const enchantment = recordValue(value);
+    if (!enchantment) continue;
+    const enchantmentId = numericValue(enchantment.enchantment_id);
+    const level = numericValue(enchantment.level);
+    const sigil = enchantmentId == null ? undefined : presentation.items[String(enchantmentId)];
+    const sigilLevel = enchantmentId == null || level == null
+      ? undefined
+      : presentation.sigils[String(enchantmentId)]?.find((entry) => entry.level === level);
+    const row = element("div", "profile-sigil-row");
+    appendPresentationIcon(row, sigilLevel?.icon ?? sigil?.icon, sigilLevel?.name ?? sigil?.name ?? "Sigil", "profile-sigil-icon");
+    const copy = element("span");
+    copy.append(
+      element("strong", "", sigilLevel?.name ?? sigil?.name ?? `Unknown sigil ${displayValue(enchantment.enchantment_id)}`),
+      element("small", "", joinFacts([qualityLabel(sigilLevel?.quality ?? sigil?.quality), pair("Sigil level", enchantment.level)])),
+    );
+    for (const effect of sigilLevel?.effects ?? []) {
+      copy.append(element("small", "", `${effect.name} +${effect.value.toLocaleString()}`));
+    }
+    row.append(copy);
+    sigils.append(row);
+  }
+  return sigils;
 }
 
 export interface ResolvedEquipmentSetEffect {
@@ -454,15 +545,11 @@ function imagineSection(owned: JsonValue[], skills: JsonValue[]): HTMLElement {
   const previewSet = new Set(preview);
   const remaining = sorted.filter((value) => !previewSet.has(value));
   if (remaining.length) {
-    const collection = element("details", "profile-imagine-collection");
-    collection.append(element("summary", "", `Show ${remaining.length} more owned Battle Imagines`));
-    let rendered = false;
-    collection.addEventListener("toggle", () => {
-      if (!collection.open || rendered) return;
-      rendered = true;
-      collection.append(battleImagineGrid(remaining));
-    });
-    section.append(collection);
+    section.append(profileDetailButton(
+      `View all ${sorted.length} Battle Imagines`,
+      "Battle Imagine collection",
+      () => battleImagineGrid(sorted),
+    ));
   }
   return section;
 }
@@ -616,15 +703,11 @@ function skillsSection(body: JsonRecord): HTMLElement {
   if (learnedSkills.length) section.append(learnedSkillsPanel(learnedSkills));
 
   if (tree) {
-    const disclosure = element("details", "profile-talent-disclosure");
-    disclosure.append(element("summary", "", `Open ${tree.specializationName} talent tree`));
-    let rendered = false;
-    disclosure.addEventListener("toggle", () => {
-      if (!disclosure.open || rendered) return;
-      rendered = true;
-      disclosure.append(talentTreePanel(tree));
-    });
-    section.append(disclosure);
+    section.append(profileDetailButton(
+      `Open ${tree.specializationName} talent tree`,
+      `${tree.specializationName} talent tree`,
+      () => talentTreePanel(tree),
+    ));
   } else if (talents.length) {
     section.append(empty("Talent points were observed, but this build's exact tree layout is unavailable."));
   }
@@ -1154,8 +1237,14 @@ function observedSkillMatches(skill: JsonRecord, skillId: number): boolean {
 }
 
 function learnedSkillsPanel(skills: JsonValue[]): HTMLElement {
-  const details = element("details", "profile-learned-skills");
-  details.append(element("summary", "", `Other learned skills · ${skills.length}`));
+  return profileDetailButton(
+    `View ${skills.length} other learned skills`,
+    "Other learned skills",
+    () => learnedSkillList(skills),
+  );
+}
+
+function learnedSkillList(skills: JsonValue[]): HTMLElement {
   const list = element("div", "profile-compact-list profile-learned-skill-list");
   for (const value of skills) {
     const skill = recordValue(value);
@@ -1172,8 +1261,7 @@ function learnedSkillsPanel(skills: JsonValue[]): HTMLElement {
     row.append(copy);
     list.append(row);
   }
-  details.append(list);
-  return details;
+  return list;
 }
 
 function talentTreePanel(tree: TalentTreeLayoutView): HTMLElement {
@@ -1447,12 +1535,11 @@ function medalCollection(medals: OwnedMedalEntry[]): HTMLElement {
   const previewCount = 6;
   collection.append(heading, medalList(medals.slice(0, previewCount)));
   if (medals.length > previewCount) {
-    const more = element("details", "profile-medal-more") as HTMLDetailsElement;
-    more.append(
-      element("summary", "", `Show ${medals.length - previewCount} more badges`),
-      medalList(medals.slice(previewCount)),
-    );
-    collection.append(more);
+    collection.append(profileDetailButton(
+      `View all ${medals.length} badges`,
+      "Badge collection",
+      () => medalList(medals),
+    ));
   }
   return collection;
 }
@@ -1634,38 +1721,38 @@ function achievementSection(body: JsonRecord): HTMLElement {
   return section;
 }
 
-function achievementGroup(label: string, values: JsonValue[]): HTMLDetailsElement {
-  const details = element("details", "achievement-group") as HTMLDetailsElement;
-  details.append(element("summary", "", `${label} · ${values.length.toLocaleString()}`));
-  let rendered = false;
-  details.addEventListener("toggle", () => {
-    if (!details.open || rendered) return;
-    rendered = true;
-    const list = element("div", "achievement-list");
-    for (const value of values) {
-      const achievement = recordValue(value);
-      if (!achievement) continue;
-      const achievementId = numericValue(achievement.achievement_id);
-      const localized = achievementId == null
-        ? undefined
-        : presentation.achievements[String(achievementId)];
-      const row = element("article", "profile-achievement-row");
-      const category = cleanAchievementCategory(localized?.category);
-      row.append(
-        element("strong", "", localized?.name ?? `Unlocalized achievement ${displayValue(achievementId)}`),
-        element("small", "", joinFacts([
-          category,
-          pair("Level", localized?.achievement_level),
-          achievementProgress(achievement, localized),
-          achievement.reward_claimed === true ? "Reward claimed" : "",
-        ])),
-      );
-      if (localized?.description) row.append(element("span", "", localized.description));
-      list.append(row);
-    }
-    details.append(list);
-  }, { once: false });
-  return details;
+function achievementGroup(label: string, values: JsonValue[]): HTMLButtonElement {
+  return profileDetailButton(
+    `${label} · ${values.length.toLocaleString()}`,
+    label,
+    () => achievementList(values),
+  );
+}
+
+function achievementList(values: JsonValue[]): HTMLElement {
+  const list = element("div", "achievement-list");
+  for (const value of values) {
+    const achievement = recordValue(value);
+    if (!achievement) continue;
+    const achievementId = numericValue(achievement.achievement_id);
+    const localized = achievementId == null
+      ? undefined
+      : presentation.achievements[String(achievementId)];
+    const row = element("article", "profile-achievement-row");
+    const category = cleanAchievementCategory(localized?.category);
+    row.append(
+      element("strong", "", localized?.name ?? `Unlocalized achievement ${displayValue(achievementId)}`),
+      element("small", "", joinFacts([
+        category,
+        pair("Level", localized?.achievement_level),
+        achievementProgress(achievement, localized),
+        achievement.reward_claimed === true ? "Reward claimed" : "",
+      ])),
+    );
+    if (localized?.description) row.append(element("span", "", localized.description));
+    list.append(row);
+  }
+  return list;
 }
 
 function achievementProgress(
@@ -1717,19 +1804,23 @@ function masterDungeonBreakdown(values: JsonValue[]): HTMLElement {
   const bySeason = masterDungeonRows(values);
   const container = element("div", "master-score-seasons");
   for (const [seasonId, rows] of [...bySeason.entries()].sort(([left], [right]) => right - left)) {
-    const details = element("details", "master-score-season");
-    if (seasonId === Math.max(...bySeason.keys())) details.open = true;
     const total = rows.reduce((sum, row) => sum + row.score, 0);
-    details.append(element("summary", "", `Season ${seasonId} · ${total.toLocaleString()} Master Score`));
-    const table = element("div", "master-score-table");
-    table.append(masterScoreRow("Dungeon", "Best difficulty", "Score", "Best time", true));
-    for (const row of rows.sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))) {
-      table.append(masterScoreRow(row.name, row.difficultyName, row.score.toLocaleString(), formatDuration(row.passTime), false));
-    }
-    details.append(table);
-    container.append(details);
+    container.append(profileDetailButton(
+      `Season ${seasonId} · ${total.toLocaleString()} Master Score`,
+      `Season ${seasonId} dungeon scores`,
+      () => masterScoreTable(rows),
+    ));
   }
   return container;
+}
+
+function masterScoreTable(rows: MasterDungeonRow[]): HTMLElement {
+  const table = element("div", "master-score-table");
+  table.append(masterScoreRow("Dungeon", "Best difficulty", "Score", "Best time", true));
+  for (const row of [...rows].sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))) {
+    table.append(masterScoreRow(row.name, row.difficultyName, row.score.toLocaleString(), formatDuration(row.passTime), false));
+  }
+  return table;
 }
 
 function masterScoreRow(dungeon: string, difficulty: string, score: string, time: string, heading: boolean): HTMLElement {
