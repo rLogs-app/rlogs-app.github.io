@@ -156,7 +156,7 @@ async function renderSignedOut(status: HTMLElement, content: HTMLElement): Promi
     link.setAttribute("aria-disabled", "true");
     link.addEventListener("click", (event) => event.preventDefault());
   }
-  content.replaceChildren(copy, link);
+  content.replaceChildren(copy, link, profileSyncGuide(false));
 }
 
 async function renderSignedIn(
@@ -342,7 +342,80 @@ async function renderSignedIn(
     actions,
     output,
   );
-  content.replaceChildren(identity, publicIdentity, usernameForm, linkedProfiles, connection);
+  content.replaceChildren(
+    identity,
+    profileSyncGuide(true),
+    publicIdentity,
+    usernameForm,
+    linkedProfiles,
+    connection,
+  );
+}
+
+function profileSyncGuide(signedIn: boolean): HTMLElement {
+  const guide = document.createElement("section");
+  guide.className = "account-sync-guide account-settings-card";
+  guide.append(
+    element("p", "eyebrow", "One-time setup"),
+    element("h3", "", "Connect your game profile to rLogs"),
+    element(
+      "p",
+      "account-sync-intro",
+      "Your Discord login owns the website account. Your BPSR UID is linked only after the desktop app proves it from your own live game session.",
+    ),
+  );
+
+  const steps = document.createElement("ol");
+  steps.className = "account-sync-steps";
+  const entries: Array<[string, string]> = [
+    [
+      signedIn ? "Discord sign-in complete" : "Sign in with Discord on this website",
+      signedIn
+        ? "You are signed in to the website account that will own the linked character."
+        : "Use the Log in with Discord button. Return to My Account after Discord sends you back.",
+    ],
+    [
+      "Create and copy an app token",
+      "On My Account, find Desktop connection, choose Create app token, then Copy token. It is shown once, so do not close the page yet and never share it.",
+    ],
+    [
+      "Connect the rLogs desktop app",
+      "Open rLogs → Settings → BPSR Profile Sync → Account & Profiles. Paste the token into App token from My Profile, then choose Validate and connect this PC.",
+    ],
+    [
+      "Turn on automatic profile sync",
+      "On that same Account & Profiles page, check Automatically sync my profile and choose Save options. Photo Wall images have their own optional checkbox.",
+    ],
+    [
+      "Prove the character in a live parse",
+      "Open BPSR on the character you want to link and keep rLogs monitoring. Start and complete a real live parse so rLogs can observe your personal UID, seal the snapshot, and upload it. Replays, imports, offline captures, and shared logs cannot claim a UID.",
+    ],
+    [
+      "Check My Profile",
+      "After the verified snapshot uploads, refresh My Profile. Your character name and UID will appear automatically. To link another character, play that character and repeat only the live-parse step.",
+    ],
+  ];
+  entries.forEach(([title, description], index) => {
+    const item = document.createElement("li");
+    const number = element("span", "account-sync-step-number", String(index + 1));
+    const copy = element("span", "account-sync-step-copy");
+    copy.append(element("strong", "", title), element("small", "", description));
+    item.append(number, copy);
+    steps.append(item);
+  });
+  guide.append(steps);
+
+  const success = element("div", "account-sync-success");
+  success.append(
+    element("strong", "", "You are finished when"),
+    element(
+      "span",
+      "",
+      "the desktop says “This PC is authenticated,” Profile Sync says “Enabled,” and My Profile shows the correct character name and UID.",
+    ),
+  );
+  guide.append(success);
+  return guide;
 }
 
 async function renderClaimedProfileLinks(session: WebSession): Promise<HTMLElement> {
@@ -388,11 +461,16 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
   try {
     const catalog = await loadLinkedProfileCatalog(session);
     if (catalog.profiles.length === 0) {
+      const setup = document.createElement("a");
+      setup.className = "button primary account-profile-setup-link";
+      setup.href = "/my-account/";
+      setup.textContent = "Show me how to connect rLogs";
       section.append(
         element("h3", "", "My Profile"),
         message(
           "No UID is linked yet. Connect your local rLogs app and enable BPSR Profile Sync while the game is open. The parser will claim your UID as soon as it observes your personal character snapshot; replayed, imported, offline, and shared logs are rejected.",
         ),
+        setup,
       );
       return section;
     }

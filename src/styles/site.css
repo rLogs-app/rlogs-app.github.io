@@ -3980,6 +3980,104 @@ footer {
   margin-bottom: 0;
 }
 
+.account-sync-guide {
+  display: grid;
+  gap: 10px;
+  border-color: rgb(74 191 202 / 62%);
+  background:
+    radial-gradient(circle at 0 0, rgb(84 224 233 / 10%), transparent 34%),
+    rgb(9 16 26 / 82%);
+}
+
+.account-sync-guide h3 {
+  margin: 0;
+  font-size: clamp(18px, 2vw, 23px);
+}
+
+.account-sync-intro {
+  max-width: 780px;
+  margin: 0;
+  color: #b7c9d9;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.account-sync-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0;
+  margin: 4px 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.account-sync-steps li {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgb(48 77 108 / 72%);
+  border-radius: 9px;
+  background: rgb(10 20 33 / 82%);
+}
+
+.account-sync-step-number {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgb(91 226 235 / 70%);
+  border-radius: 50%;
+  color: #041016;
+  background: var(--accent);
+  font: 800 12px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.account-sync-step-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.account-sync-step-copy strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.account-sync-step-copy small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.account-sync-success {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 9px 11px;
+  border: 1px solid rgb(67 186 128 / 52%);
+  border-radius: 8px;
+  color: #bfe7d0;
+  background: rgb(17 52 39 / 42%);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.account-sync-success strong {
+  color: #7ce1a8;
+  white-space: nowrap;
+}
+
+.account-profile-setup-link {
+  width: fit-content;
+  margin-top: 10px;
+}
+
 .account-username-form,
 .account-username-form label {
   display: grid;
@@ -4287,6 +4385,18 @@ footer p {
   .profile-detail-modal-content .profile-combat-stat-grid,
   .profile-detail-modal-content .profile-medal-list {
     grid-template-columns: 1fr;
+  }
+
+  .account-sync-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .account-sync-success {
+    grid-template-columns: 1fr;
+  }
+
+  .account-sync-success strong {
+    white-space: normal;
   }
 
   .profile-talent-heading {
