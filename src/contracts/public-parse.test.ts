@@ -45,7 +45,7 @@ describe("public parse contract", () => {
     ).toBe(true);
     expect(
       isPublicParseReport({
-        schema_version: 8,
+        schema_version: 9,
         report_id: `rpt_${"ab".repeat(16)}`,
         visibility: "unlisted",
         verification: { tier: "replayed" },

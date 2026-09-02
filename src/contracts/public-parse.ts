@@ -72,7 +72,7 @@ export interface SceneFacetValue {
 }
 
 export interface PublicParseReport {
-  schema_version: 6 | 7 | 8;
+  schema_version: 6 | 7 | 8 | 9;
   report_id: string;
   visibility: "public" | "unlisted" | "private";
   created_unix_millis: number;
@@ -359,7 +359,8 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
     isRecord(value) &&
     (value.schema_version === 6 ||
       value.schema_version === 7 ||
-      value.schema_version === 8) &&
+      value.schema_version === 8 ||
+      value.schema_version === 9) &&
     typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) &&
     (value.visibility === "public" ||
