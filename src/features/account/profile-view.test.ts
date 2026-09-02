@@ -22,6 +22,7 @@ import {
   resolveEquippedRoleSkillSlots,
   resolveEquipmentItemLevel,
   resolvePublishedPhotoUrl,
+  resolveRoleImagineTier,
   resolvedSocialCollectionEvidence,
   resolvedMasterDungeonCount,
   resolveTalentTreeLayout,
@@ -238,6 +239,37 @@ describe("equipped role skills", () => {
       { slotId: 22, skillId: 3612 },
       { slotId: 24, skillId: 3022 },
     ]);
+  });
+
+  it("shows only the observed T1 through T4 domain for Imagine role skills", () => {
+    const body = {
+      class_id: 11,
+      active_skills: [
+        { skill_id: 3021, remodel_level: 4 },
+        { skill_id: 3022, remodel_level: 5 },
+        { skill_id: 3011, remodel_level: 4 },
+      ],
+    };
+    expect(allTreesCatalog.skills["3021"]?.replacement_imagine_skill_id).toBe(3902);
+    expect(allTreesCatalog.skills["3011"]?.replacement_imagine_skill_id).toBeNull();
+    expect(resolveRoleImagineTier(body, 3021, allTreesCatalog)).toBe(4);
+    expect(resolveRoleImagineTier(body, 3022, allTreesCatalog)).toBeUndefined();
+    expect(resolveRoleImagineTier(body, 3011, allTreesCatalog)).toBeUndefined();
+  });
+
+  it("finds an Imagine role-skill tier through replacement and profession evidence", () => {
+    expect(resolveRoleImagineTier({
+      class_id: 11,
+      active_skills: [],
+      combat_professions: [{
+        profession_id: 11,
+        skills: [{
+          skill_id: 900_000,
+          replacement_skill_ids: [3027],
+          remodel_level: 3,
+        }],
+      }],
+    }, 3027, allTreesCatalog)).toBe(3);
   });
 });
 

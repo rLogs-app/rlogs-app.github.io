@@ -601,7 +601,7 @@ function skillsSection(body: JsonRecord): HTMLElement {
   } else {
     section.append(empty("The latest snapshot did not include an equipped combat loadout."));
   }
-  if (equippedRoleSlots.length) section.append(equippedRoleSkillsPanel(skills, equippedRoleSlots));
+  if (equippedRoleSlots.length) section.append(equippedRoleSkillsPanel(body, equippedRoleSlots));
 
   const equippedSkillIds = new Set(
     [...equippedSlots, ...equippedRoleSlots].map((slot) => slot.skillId),
@@ -894,7 +894,7 @@ function equippedSkillsPanel(
 }
 
 function equippedRoleSkillsPanel(
-  skills: JsonValue[],
+  body: JsonRecord,
   equippedSlots: EquippedSkillSlotView[],
 ): HTMLElement {
   const panel = element("div", "profile-loadout-panel profile-role-loadout-panel");
@@ -902,12 +902,6 @@ function equippedRoleSkillsPanel(
     element("h4", "profile-subsection-title", "Equipped role skills"),
     element("p", "profile-subsection-copy", "Displayed in the exact role-slot order observed from the game."),
   );
-  const skillsById = new Map<number, JsonRecord>();
-  for (const value of skills) {
-    const skill = recordValue(value);
-    const skillId = skill == null ? undefined : numericValue(skill.skill_id ?? skill.base_skill_id);
-    if (skill != null && skillId != null) skillsById.set(skillId, skill);
-  }
   const slotsById = new Map(equippedSlots.map((slot) => [slot.slotId, slot]));
   const bar = element("div", "profile-action-bar profile-role-action-bar");
   for (let slotId = 21; slotId <= 24; slotId += 1) {
@@ -920,14 +914,19 @@ function equippedRoleSkillsPanel(
       continue;
     }
     const localized = presentation.skills[String(slot.skillId)];
-    const skill = skillsById.get(slot.skillId);
+    const skill = findObservedSkill(body, slot.skillId);
+    const isImagineRoleSkill = localized?.replacement_imagine_skill_id != null;
+    const imagineTier = isImagineRoleSkill
+      ? resolveRoleImagineTier(body, slot.skillId, presentation)
+      : undefined;
     appendPresentationIcon(tile, localized?.icon, localized?.name ?? "Equipped role skill", "profile-action-icon");
     tile.append(
       element("strong", "profile-action-name", localized?.name ?? `Unknown role skill ${slot.skillId}`),
       element("small", "profile-action-meta", joinFacts([
-        "Role skill",
-        pair("Lv.", skill?.level),
-        pair("Remodel", skill?.remodel_level),
+        isImagineRoleSkill ? "Imagine role skill" : "Role skill",
+        isImagineRoleSkill
+          ? imagineTier == null ? "Tier not observed" : `Tier ${imagineTier}`
+          : pair("Lv.", skill?.level),
       ])),
     );
     tile.title = localized?.name ?? `Role skill ${slot.skillId}`;
@@ -935,6 +934,35 @@ function equippedRoleSkillsPanel(
   }
   panel.append(bar);
   return panel;
+}
+
+export function resolveRoleImagineTier(
+  body: JsonRecord,
+  skillId: number,
+  catalog: ProfilePresentationCatalog,
+): number | undefined {
+  if (catalog.skills[String(skillId)]?.replacement_imagine_skill_id == null) return undefined;
+  const tier = numericValue(findObservedSkill(body, skillId)?.remodel_level);
+  return tier != null && tier >= 1 && tier <= 4 ? tier : undefined;
+}
+
+function findObservedSkill(body: JsonRecord, skillId: number): JsonRecord | undefined {
+  const classId = numericValue(body.class_id);
+  const professionSkills = arrayValue(body.combat_professions)
+    .map(recordValue)
+    .filter((profession) =>
+      profession != null
+      && (classId == null || numericValue(profession.profession_id) === classId))
+    .flatMap((profession) => arrayValue(profession?.skills));
+  return [...arrayValue(body.active_skills), ...professionSkills]
+    .map(recordValue)
+    .find((skill) => skill != null && observedSkillMatches(skill, skillId));
+}
+
+function observedSkillMatches(skill: JsonRecord, skillId: number): boolean {
+  return numericValue(skill.skill_id) === skillId
+    || numericValue(skill.base_skill_id) === skillId
+    || arrayValue(skill.replacement_skill_ids).some((value) => numericValue(value) === skillId);
 }
 
 function learnedSkillsPanel(skills: JsonValue[]): HTMLElement {

@@ -30,6 +30,8 @@ export interface PresentationRecord {
   target?: number | null;
   season_id?: number | null;
   achievement_level?: number | null;
+  skill_type?: number | null;
+  replacement_imagine_skill_id?: number | null;
 }
 
 export interface EquipmentBuffEffectPresentation {
@@ -100,6 +102,7 @@ export interface ProfilePresentationCatalog {
   source_equipment_breakthrough_table_sha256?: string;
   source_equipment_suit_table_sha256?: string;
   source_buff_table_sha256?: string;
+  source_auxiliary_action_presentation_sha256?: string;
   equipment_slots: Record<string, string>;
   quality_names: Record<string, string>;
   equipment_attributes: Record<string, PresentationRecord>;
@@ -122,7 +125,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=18`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=19`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {

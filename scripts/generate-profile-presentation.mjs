@@ -53,6 +53,11 @@ const fightAttributePresentationPath = path.join(
   "runtime/fight-attribute-presentation.v1.json",
 );
 const fightAttributePresentation = readJson(fightAttributePresentationPath);
+const auxiliaryActionPresentationPath = path.join(
+  gameDataRoot,
+  "runtime/auxiliary-action-presentation.v1.json",
+);
+const auxiliaryActionPresentation = readJson(auxiliaryActionPresentationPath);
 const attributeDescriptionsTable = readJson(path.join(tableRoot, "AttrDescription.json"));
 const imaginePresentation = readJson(path.join(gameDataRoot, "runtime/battle-imagine-presentation.v1.json"));
 const imagineNames = new Map(readJson(path.join(gameDataRoot, "runtime/localization/en-US/battle-imagine-names.v1.json")).imagines);
@@ -249,6 +254,20 @@ if (missingSigilLevelIcons.length) {
   throw new Error(`Missing ${missingSigilLevelIcons.length} leveled sigil icons: ${missingSigilLevelIcons.join(", ")}`);
 }
 
+if (
+  auxiliaryActionPresentation.schema_version !== 1
+  || !Array.isArray(auxiliaryActionPresentation.skills)
+  || auxiliaryActionPresentation.skills.length !== 20
+  || auxiliaryActionPresentation.skills.some((skill) =>
+    !Number.isInteger(skill.skill_id)
+    || (skill.replacement_imagine_skill_id !== null
+      && !Number.isInteger(skill.replacement_imagine_skill_id)))
+) {
+  throw new Error("The canonical BPSR auxiliary-action presentation catalog is invalid or stale.");
+}
+const auxiliaryActionsBySkillId = new Map(
+  auxiliaryActionPresentation.skills.map((skill) => [skill.skill_id, skill]),
+);
 const skills = Object.fromEntries(
   Object.values(skillsTable)
     .filter((skill) => skill.Id >= 2_000 && skill.Id < 4_000 && skill.Name)
@@ -256,6 +275,8 @@ const skills = Object.fromEntries(
       name: skill.Name,
       icon: copyNamedIcon(skill.Icon, "skills"),
       skill_type: skill.SkillType,
+      replacement_imagine_skill_id:
+        auxiliaryActionsBySkillId.get(skill.Id)?.replacement_imagine_skill_id ?? null,
     }]),
 );
 
@@ -530,6 +551,9 @@ const catalog = {
   source_equipment_breakthrough_table_sha256: createHash("sha256").update(readFileSync(equipmentBreakthroughTablePath)).digest("hex"),
   source_equipment_suit_table_sha256: createHash("sha256").update(readFileSync(equipmentSuitTablePath)).digest("hex"),
   source_buff_table_sha256: createHash("sha256").update(readFileSync(buffTablePath)).digest("hex"),
+  source_auxiliary_action_presentation_sha256: createHash("sha256")
+    .update(readFileSync(auxiliaryActionPresentationPath))
+    .digest("hex"),
   equipment_slots: {
     "200": "Weapon", "201": "Headwear", "202": "Armor", "203": "Gloves",
     "204": "Shoes", "205": "Earrings", "206": "Necklace", "207": "Ring",

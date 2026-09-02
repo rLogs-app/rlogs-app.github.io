@@ -68,6 +68,12 @@ describe("BPSR profile presentation catalog", () => {
     expect(catalog.imagines["3913"]).toEqual(expect.objectContaining({ name: "Battle Imagine - Shadow Captain", item_tier: 3, rarity: "Epic" }));
   });
 
+  it("classifies native and Imagine replacement role skills from the reviewed catalog", () => {
+    expect(catalog.skills["3011"]?.replacement_imagine_skill_id).toBeNull();
+    expect(catalog.skills["3021"]?.replacement_imagine_skill_id).toBe(3902);
+    expect(catalog.skills["3028"]?.replacement_imagine_skill_id).toBe(3951);
+  });
+
   it("uses the exact current Will Wish SSR pools instead of treating every orange Imagine as SSR", () => {
     const ssrSkillIds = Object.entries(catalog.imagines)
       .filter(([, imagine]) => imagine.rarity === "SSR")
