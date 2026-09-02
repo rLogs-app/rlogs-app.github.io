@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  battleImagineDisplayName,
   battleImagineOwnershipFacts,
   battleImagineRarityLabel,
   calculateTalentTreeGeometry,
@@ -380,6 +381,16 @@ describe("equipment quality presentation", () => {
     ]);
     expect(equipmentQualityToken(6)).toBe("");
     expect(equipmentQualityToken(undefined)).toBe("");
+  });
+});
+
+describe("Battle Imagine card names", () => {
+  it("removes the redundant item-type prefix without altering the catalog", () => {
+    expect(battleImagineDisplayName("Battle Imagine - Rorola")).toBe("Rorola");
+    expect(battleImagineDisplayName("Battle Imagine: Inferno Ogre")).toBe("Inferno Ogre");
+    expect(battleImagineDisplayName("Lucy")).toBe("Lucy");
+    expect(battleImagineDisplayName(undefined)).toBe("");
+    expect(allTreesCatalog.imagines["3948"]?.name).toBe("Battle Imagine - Rorola");
   });
 });
 

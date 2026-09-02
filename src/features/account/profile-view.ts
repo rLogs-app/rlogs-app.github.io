@@ -479,13 +479,14 @@ function battleImagineGrid(records: JsonValue[]): HTMLElement {
       : presentation.imagines[String(skillId)];
     const observedTier = numericValue(item.remodel_level ?? item.breakthrough_level) ?? 0;
     const rarity = battleImagineRarityLabel(localized?.rarity, localized?.item_tier);
+    const displayName = battleImagineDisplayName(localized?.name);
     const card = element("article", "profile-item-card profile-imagine-card");
     if (rarity) card.dataset.rarity = rarity.toLowerCase();
     card.dataset.tier = String(observedTier);
-    appendPresentationIcon(card, localized?.icon, localized?.name ?? "Battle Imagine", "profile-item-icon");
+    appendPresentationIcon(card, localized?.icon, displayName || "Battle Imagine", "profile-item-icon");
     const copy = element("span", "profile-imagine-copy");
     copy.append(
-      element("strong", "", localized?.name ?? `Unknown Battle Imagine ${displayValue(item.imagine_id ?? item.skill_id)}`),
+      element("strong", "", displayName || `Unknown Battle Imagine ${displayValue(item.imagine_id ?? item.skill_id)}`),
       element("small", "", battleImagineOwnershipFacts(
         observedTier,
         item.equipped_slot,
@@ -520,6 +521,11 @@ export function battleImagineRarityLabel(
   }
   const tier = numericValue(legacyItemTier ?? rarity);
   return ({ 3: "Epic", 4: "SR", 5: "SSR" } as Record<number, string>)[tier ?? -1] ?? "";
+}
+
+export function battleImagineDisplayName(value: JsonValue | undefined): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/^Battle Imagine\s*[-–—:]\s*/i, "").trim();
 }
 
 function moduleSection(inventory: JsonValue[], slots: JsonRecord | undefined): HTMLElement {
