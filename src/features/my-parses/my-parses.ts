@@ -9,6 +9,8 @@ import {
   validateRunGroupId,
 } from "../../contracts/public-parse";
 import { renderCatalogEntry, renderReport } from "../parse-browser/parse-browser";
+import { createParseDetailModal } from "../parse-browser/parse-detail-modal";
+import { loadParsePresentation } from "../parse-browser/parse-presentation";
 
 const sessionKey = "rlogs.web-session.v1";
 const configuredApi = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
@@ -24,7 +26,8 @@ export async function mountMyParses(): Promise<void> {
   const browser = required<HTMLElement>("#my-parse-browser");
   const search = required<HTMLInputElement>("#my-parse-search");
   const list = required<HTMLElement>("#my-parse-list");
-  const detail = required<HTMLElement>("#my-parse-detail");
+  const detail = createParseDetailModal(required<HTMLElement>("#my-parse-detail"));
+  const presentationRequest = loadParsePresentation().catch(() => undefined);
   const session = activeSession();
 
   if (!session) {
@@ -103,7 +106,7 @@ export async function mountMyParses(): Promise<void> {
 
   async function openReport(reportId: string, runIndex: number): Promise<void> {
     if (!/^rpt_[a-f0-9]{32}$/u.test(reportId)) return;
-    detail.innerHTML = '<p class="empty-state">Loading your server-verified parse…</p>';
+    detail.show('<p class="empty-state">Loading your server-verified parse…</p>');
     try {
       const response = await authenticatedFetch(
         `${configuredApi}/v1/auth/parses/${encodeURIComponent(reportId)}`,
@@ -129,14 +132,15 @@ export async function mountMyParses(): Promise<void> {
           reconciliationError = errorText(error);
         }
       }
-      detail.innerHTML = renderReport(value, runIndex, reconciliation, reconciliationError);
+      const presentation = await presentationRequest;
+      detail.show(renderReport(value, runIndex, reconciliation, reconciliationError, presentation));
       history.replaceState(
         null,
         "",
         `${location.pathname}?parse=${encodeURIComponent(reportId)}&run=${runIndex}#my-parses`,
       );
     } catch (error) {
-      detail.innerHTML = `<p class="empty-state">${escapeHtml(errorText(error))}</p>`;
+      detail.show(`<p class="empty-state">${escapeHtml(errorText(error))}</p>`);
     }
   }
 

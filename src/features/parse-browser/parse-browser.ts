@@ -14,6 +14,13 @@ import {
   validateReportId,
   validateRunGroupId,
 } from "../../contracts/public-parse";
+import { createParseDetailModal } from "./parse-detail-modal";
+import {
+  loadParsePresentation,
+  localizedActionName,
+  localizedEffectName,
+  type ParsePresentationCatalog,
+} from "./parse-presentation";
 
 const baseUrl = import.meta.env.BASE_URL;
 const configuredApi = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -33,7 +40,14 @@ export async function mountParseBrowser(): Promise<void> {
 
   const status = required<HTMLElement>("#parse-status");
   const list = required<HTMLElement>("#parse-list");
-  const detail = required<HTMLElement>("#parse-detail");
+  const detail = createParseDetailModal(required<HTMLElement>("#parse-detail"), () => {
+    const url = new URL(location.href);
+    url.searchParams.delete("parse");
+    url.searchParams.delete("run");
+    if (url.hash === "#parse") url.hash = "";
+    history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  });
+  const presentationRequest = loadParsePresentation().catch(() => undefined);
   const controls: ParseControls = {
     search: required<HTMLInputElement>("#parse-search"),
     region: required<HTMLSelectElement>("#parse-region"),
@@ -118,9 +132,12 @@ export async function mountParseBrowser(): Promise<void> {
 
   async function openReport(reportId: string, runIndex = 0): Promise<void> {
     if (!validateReportId(reportId)) return;
-    detail.innerHTML = '<p class="empty-state">Loading server-verified parse&hellip;</p>';
+    detail.show('<p class="empty-state">Loading server-verified parse&hellip;</p>');
     try {
-      const report = await fetchReport(reportId);
+      const [report, presentation] = await Promise.all([
+        fetchReport(reportId),
+        presentationRequest,
+      ]);
       const run = report.runs.find((candidate) => candidate.run_index === runIndex) ?? report.runs[0];
       let reconciliation: PublicRunReconciliation | null = null;
       let reconciliationError: string | null = null;
@@ -131,14 +148,14 @@ export async function mountParseBrowser(): Promise<void> {
           reconciliationError = message(error);
         }
       }
-      detail.innerHTML = renderReport(report, runIndex, reconciliation, reconciliationError);
+      detail.show(renderReport(report, runIndex, reconciliation, reconciliationError, presentation));
       history.replaceState(
         null,
         "",
         `${location.pathname}?parse=${encodeURIComponent(reportId)}&run=${runIndex}#parse`,
       );
     } catch (error) {
-      detail.innerHTML = `<p class="empty-state">${escapeHtml(message(error))}</p>`;
+      detail.show(`<p class="empty-state">${escapeHtml(message(error))}</p>`);
     }
   }
 }
@@ -194,6 +211,7 @@ export function renderReport(
   runIndex: number,
   reconciliation: PublicRunReconciliation | null,
   reconciliationError: string | null,
+  presentation?: ParsePresentationCatalog,
 ): string {
   const run = report.runs.find((candidate) => candidate.run_index === runIndex) ?? report.runs[0];
   if (!run) return '<p class="empty-state">This report contains no public run.</p>';
@@ -218,8 +236,9 @@ export function renderReport(
       ${metric("Run", formatDuration(run.total_run_time_micros))}
       ${metric("Game", formatDuration(run.game_time_micros))}
       ${metric("Active", formatDuration(run.active_combat_micros))}
-      ${metric("Team DPS", formatNumber(teamDps))}
-      ${metric(reconciled ? "Team rDPS" : "Team eDPS", formatNumber(teamRdps ?? teamEdps))}
+      ${metric("Team eDPS", formatNumber(teamDps))}
+      ${metric("Team aDPS", formatNumber(teamEdps))}
+      ${reconciled ? metric("Team rDPS", formatNumber(teamRdps ?? 0)) : ""}
       ${metric("Retries", `${run.retry_count} / ${run.boss_retry_count} boss`)}
     </div>
     ${renderReconciliationProof(reconciliation, reconciliationError, reconciled)}
@@ -228,8 +247,8 @@ export function renderReport(
       ${participants.map((actor) => renderParticipant(actor, run.active_combat_micros, reconciled)).join("")}
     </div>
     ${renderRunTimeline(run, participants)}
-    ${renderSkillContributions(participants)}
-    ${renderRdpsCalculations(run, reconciliation, participants, reconciled)}
+    ${renderSkillContributions(participants, presentation)}
+    ${renderRdpsCalculations(run, reconciliation, participants, reconciled, presentation)}
     ${renderEvidenceCoverage(report, run, reconciliation, participants, reconciled)}
     <p class="parse-proof">Build ${escapeHtml(report.client_build)} / ${report.verification.event_count.toLocaleString()} canonical events / ${run.data_gap_count} data gaps / report ${escapeHtml(report.report_id)}${run.run_group_id ? ` / group ${escapeHtml(run.run_group_id)}` : ""}</p>
   </article>`;
@@ -245,7 +264,8 @@ function renderParticipant(
     return `<div class="parse-party-row reconciled"><span><strong>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</strong>
       <small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span>
       <span><small>Damage</small><strong>${formatNumber(actor.damage)}</strong></span>
-      <span><small>DPS</small><strong>${formatNumber(actor.dps)}</strong></span>
+      <span><small>eDPS</small><strong>${formatNumber(actor.dps)}</strong></span>
+      <span><small>aDPS</small><strong>${formatNumber(actor.encounter_dps)}</strong></span>
       <span><small>rDMG</small><strong>${actor.rdps_damage == null ? "-" : formatNumber(actor.rdps_damage)}${actor.rdps_incomplete ? "*" : ""}</strong></span>
       <span><small>rDPS</small><strong>${rdps == null ? "-" : formatNumber(rdps)}${actor.rdps_incomplete ? "*" : ""}</strong></span>
       <span><small>Given</small><strong>${actor.contribution_given == null ? "-" : formatNumber(actor.contribution_given)}</strong></span>
@@ -255,8 +275,8 @@ function renderParticipant(
   return `<div class="parse-party-row"><span><strong>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</strong>
     <small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span>
     <span><small>Damage</small><strong>${formatNumber(actor.damage)}</strong></span>
-    <span><small>DPS</small><strong>${formatNumber(actor.dps)}</strong></span>
-    <span><small>eDPS</small><strong>${formatNumber(actor.encounter_dps)}</strong></span>
+    <span><small>eDPS</small><strong>${formatNumber(actor.dps)}</strong></span>
+    <span><small>aDPS</small><strong>${formatNumber(actor.encounter_dps)}</strong></span>
     <span><small>rDPS</small><strong>${actor.rdps == null ? "-" : formatNumber(actor.rdps)}</strong></span>
     <span><small>Deaths</small><strong>${actor.deaths}</strong></span></div>`;
 }
@@ -419,7 +439,10 @@ function damageSeriesPath(
     .join(" ");
 }
 
-function renderSkillContributions(participants: AnalysisParticipant[]): string {
+function renderSkillContributions(
+  participants: AnalysisParticipant[],
+  presentation?: ParsePresentationCatalog,
+): string {
   const actors = participants.filter((actor) => (actor.abilities?.some((ability) => ability.damage > 0) ?? false));
   if (!actors.length) {
     return analysisPanel(
@@ -427,15 +450,21 @@ function renderSkillContributions(participants: AnalysisParticipant[]): string {
       "Skill-level totals will appear for newly projected reports. No skill rows were published with this legacy report.",
     );
   }
-  const cards = actors.map((actor, actorIndex) => renderSkillCard(actor, actorIndex)).join("");
+  const cards = actors
+    .map((actor, actorIndex) => renderSkillCard(actor, actorIndex, presentation))
+    .join("");
   return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">Per-player breakdown</p><h4>Skill contribution</h4></div><small>Raw damage share; exact observed child skills remain separate</small></div><div class="parse-skill-grid">${cards}</div></section>`;
 }
 
-function renderSkillCard(actor: AnalysisParticipant, actorIndex: number): string {
+function renderSkillCard(
+  actor: AnalysisParticipant,
+  actorIndex: number,
+  presentation?: ParsePresentationCatalog,
+): string {
   const abilities = [...(actor.abilities ?? [])].filter((ability) => ability.damage > 0).sort((left, right) => right.damage - left.damage);
   const total = abilities.reduce((sum, ability) => sum + ability.damage, 0);
   const visible = abilities.slice(0, 7).map((ability) => ({
-    name: ability.presentation_name ?? `Skill ${ability.ability_id}`,
+    name: localizedActionName(presentation, ability.ability_id, ability.presentation_name),
     damage: ability.damage,
     casts: ability.casts,
     hits: ability.hits,
@@ -472,6 +501,7 @@ function renderRdpsCalculations(
   reconciliation: PublicRunReconciliation | null,
   participants: AnalysisParticipant[],
   reconciled: boolean,
+  presentation?: ParsePresentationCatalog,
 ): string {
   const influences = reconciled
     ? (reconciliation?.rdps_influences ?? [])
@@ -487,7 +517,7 @@ function renderRdpsCalculations(
       "No exact influence ledger was published for this report. rDPS remains explicitly unresolved rather than being copied from DPS.",
     );
   }
-  const grouped = groupInfluences(influences, effects, participants);
+  const grouped = groupInfluences(influences, effects, participants, presentation);
   const rows = grouped
     .map((group) => `<div class="rdps-ledger-row"><span><strong>${escapeHtml(group.provider)}</strong><small>granted through ${escapeHtml(group.effect)}${group.components.size ? ` · ${escapeHtml([...group.components].map(title).join(", "))}` : ""}</small></span><span><small>Recipients</small><strong>${group.recipients.size.toLocaleString()}</strong></span><span><small>Damage events</small><strong>${group.events.toLocaleString()}</strong></span><span><small>Observed damage</small><strong>${formatBigInt(group.observedDamage)}</strong></span><span><small>Attributed rDMG</small><strong>${group.allocated ? formatBigInt(group.attributed) : "Unresolved"}${group.incomplete ? "*" : ""}</strong></span></div>`)
     .join("");
@@ -511,6 +541,7 @@ function groupInfluences(
   influences: PublicRdpsInfluence[],
   effects: PublicRdpsEffectPresentation[],
   participants: AnalysisParticipant[],
+  presentation?: ParsePresentationCatalog,
 ): GroupedInfluence[] {
   const actorNames = new Map(participants.map((actor) => [actor.actor_id, participantName(actor)]));
   const effectNames = new Map(effects.map((effect) => [effect.effect_id, effect.presentation_name]));
@@ -519,7 +550,11 @@ function groupInfluences(
     const key = `${influence.provider_actor_id}\0${influence.effect_id}`;
     const group = groups.get(key) ?? {
       provider: actorNames.get(influence.provider_actor_id) ?? `Player ${influence.provider_actor_id}`,
-      effect: effectNames.get(influence.effect_id) ?? `Effect ${influence.effect_id}`,
+      effect: localizedEffectName(
+        presentation,
+        influence.effect_id,
+        effectNames.get(influence.effect_id) ?? null,
+      ),
       recipients: new Set<string>(),
       components: new Set<string>(),
       events: 0,
