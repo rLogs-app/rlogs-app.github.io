@@ -55,26 +55,36 @@ describe("parse search", () => {
         ],
       },
     ];
-    const influence = (provider: string, action: string, amount: string, events: number) => ({
+    const influence = (
+      provider: string,
+      action: string,
+      amount: string,
+      events: number,
+      criticalHits: number,
+    ) => ({
       effect_id: "55333", attribution_component: "Encore standalone generated damage",
       complete_effect: true, provider_actor_id: provider, recipient_actor_id: "damage",
       affected_ability_id: action, target_actor_id: "boss", first_observed_micros: 1,
-      last_observed_micros: 2, damage_event_count: events, observed_damage: amount,
+      last_observed_micros: 2, damage_event_count: events,
+      critical_hit_count: criticalHits, observed_damage: amount,
       exact_integer_delta: amount, exact_rational_deltas: [], attributed_rdps: amount,
       damage_context_complete: true,
     });
     const projected = ownedSkillParticipants(
       actors,
-      [influence("healer-a", "230401", "100", 2), influence("healer-b", "230501", "200", 3)],
+      [
+        influence("healer-a", "230401", "100", 2, 1),
+        influence("healer-b", "230501", "200", 3, 2),
+      ],
       [{ effect_id: "55333", presentation_name: "Encore", presentation_kind: "status", icon_asset_path: null }],
     );
 
     expect(projected.find((actor) => actor.actor_id === "damage")?.abilities).toEqual([]);
     expect(projected.find((actor) => actor.actor_id === "healer-a")?.abilities?.[0]).toMatchObject({
-      presentation_name: "Encore", damage: 100, hits: 2,
+      presentation_name: "Encore", damage: 100, hits: 2, critical_hits: 1,
     });
     expect(projected.find((actor) => actor.actor_id === "healer-b")?.abilities?.[0]).toMatchObject({
-      presentation_name: "Encore", damage: 200, hits: 3,
+      presentation_name: "Encore", damage: 200, hits: 3, critical_hits: 2,
     });
   });
 

@@ -23,6 +23,7 @@ import {
   profileBaseCombatStatValues,
   profileCollectionSummary,
   photoWallDisplayEntries,
+  photoWallGridPosition,
   photoWallIdentityCount,
   profileProgressSummary,
   reputationViews,
@@ -760,6 +761,18 @@ describe("profile collection evidence labels", () => {
 });
 
 describe("published Photo Wall URLs", () => {
+  it("preserves the game's four-by-three page and slot geometry", () => {
+    expect(photoWallGridPosition("1")).toEqual({ page: 0, row: 0, column: 0 });
+    expect(photoWallGridPosition("4")).toEqual({ page: 0, row: 0, column: 3 });
+    expect(photoWallGridPosition("5")).toEqual({ page: 0, row: 1, column: 0 });
+    expect(photoWallGridPosition("12")).toEqual({ page: 0, row: 2, column: 3 });
+    expect(photoWallGridPosition("13")).toEqual({ page: 1, row: 0, column: 0 });
+    expect(photoWallGridPosition("48")).toEqual({ page: 3, row: 2, column: 3 });
+    expect(photoWallGridPosition("0")).toEqual({ page: 0, row: 0, column: 0 });
+    expect(photoWallGridPosition("49")).toBeUndefined();
+    expect(photoWallGridPosition("not-a-slot")).toBeUndefined();
+  });
+
   it("shows exact album or asset identities even before a wall-slot snapshot arrives", () => {
     expect(photoWallDisplayEntries([42, 41, 42], undefined, [43, 41])).toEqual([
       { slot: null, photoId: 41 },
@@ -771,11 +784,16 @@ describe("published Photo Wall URLs", () => {
       { slot: null, photoId: 41 },
       { slot: null, photoId: 43 },
     ]);
+    expect(photoWallDisplayEntries([42], { "1": 42, "4": 42 })).toEqual([
+      { slot: "1", photoId: 42 },
+      { slot: "4", photoId: 42 },
+    ]);
   });
 
   it("counts displayed wall identities even when the album list is absent", () => {
     expect(photoWallIdentityCount([], { "1": 1 })).toBe(1);
     expect(photoWallIdentityCount([1, 2, 2], { "1": 1, "2": 3 })).toBe(3);
+    expect(photoWallIdentityCount([], undefined, [4, 4, 5])).toBe(2);
     expect(photoWallIdentityCount([0, -1, "invalid"], { "1": 0 })).toBe(0);
   });
 

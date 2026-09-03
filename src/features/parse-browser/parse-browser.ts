@@ -559,7 +559,11 @@ export function ownedSkillParticipants(
     ...actor,
     abilities: actor.abilities?.map((ability) => ({ ...ability })),
   }]));
-  const movements = new Map<string, Map<string, { damage: bigint; events: number }>>();
+  const movements = new Map<string, Map<string, {
+    damage: bigint;
+    events: number;
+    criticalHits: number | null;
+  }>>();
   for (const influence of influences) {
     if (
       influence.effect_id !== encoreEffectId ||
@@ -575,15 +579,26 @@ export function ownedSkillParticipants(
     if (amount == null || amount <= 0n) continue;
     const key = `${influence.recipient_actor_id}\0${influence.affected_ability_id}`;
     const providers = movements.get(key) ?? new Map();
-    const previous = providers.get(influence.provider_actor_id) ?? { damage: 0n, events: 0 };
+    const previous = providers.get(influence.provider_actor_id) ?? {
+      damage: 0n,
+      events: 0,
+      criticalHits: 0,
+    };
     providers.set(influence.provider_actor_id, {
       damage: previous.damage + amount,
       events: previous.events + influence.damage_event_count,
+      criticalHits: previous.criticalHits === null || influence.critical_hit_count == null
+        ? null
+        : previous.criticalHits + influence.critical_hit_count,
     });
     movements.set(key, providers);
   }
 
-  const providerTotals = new Map<string, { damage: bigint; events: number }>();
+  const providerTotals = new Map<string, {
+    damage: bigint;
+    events: number;
+    criticalHits: number | null;
+  }>();
   for (const [key, providers] of movements) {
     const separator = key.indexOf("\0");
     const recipientId = key.slice(0, separator);
@@ -596,10 +611,17 @@ export function ownedSkillParticipants(
     recipient!.abilities = recipient!.abilities!.filter((candidate) => candidate !== ability);
     for (const [providerId, value] of providers) {
       if (!byActor.has(providerId)) continue;
-      const previous = providerTotals.get(providerId) ?? { damage: 0n, events: 0 };
+      const previous = providerTotals.get(providerId) ?? {
+        damage: 0n,
+        events: 0,
+        criticalHits: 0,
+      };
       providerTotals.set(providerId, {
         damage: previous.damage + value.damage,
         events: previous.events + value.events,
+        criticalHits: previous.criticalHits === null || value.criticalHits === null
+          ? null
+          : previous.criticalHits + value.criticalHits,
       });
     }
   }
@@ -620,7 +642,7 @@ export function ownedSkillParticipants(
       presentation_recount_group_name: null,
       casts: 0,
       hits: value.events,
-      critical_hits: 0,
+      critical_hits: value.criticalHits ?? 0,
       damage,
       effective_damage: damage,
       healing: 0,

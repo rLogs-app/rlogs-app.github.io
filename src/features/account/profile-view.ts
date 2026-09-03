@@ -1769,38 +1769,197 @@ function photoWallSection(body: JsonRecord): HTMLElement {
     wall,
     [...assets.keys()].map(Number),
   );
-  const photoCount = photoWallIdentityCount(photos, wall);
+  const photoCount = photoWallIdentityCount(photos, wall, [...assets.keys()].map(Number));
   const section = profileSection(
     "Photo Wall",
     `${photoCount.toLocaleString()} ${photoCount === 1 ? "photo reference" : "photo references"} · ${placements.length.toLocaleString()} ${placements.length === 1 ? "wall slot" : "wall slots"} · ${assets.size.toLocaleString()} verified ${assets.size === 1 ? "image" : "images"}`,
   );
-  const grid = element("div", "profile-item-grid photo-wall-grid");
-  for (const { slot, photoId } of displayEntries) {
-    const card = element("article", "profile-item-card photo-wall-card");
+  const photoImage = ({ slot, photoId }: PhotoWallDisplayEntry): { url?: string; alt: string; label: string; caption: string } => {
     const asset = assets.get(String(photoId));
-    const imageUrl =
-      resolvePublishedPhotoUrl(asset?.image_path) ??
-      safeImageUrl(asset?.image_url ?? asset?.thumbnail_url);
-    if (imageUrl) {
+    const url = resolvePublishedPhotoUrl(asset?.image_path) ?? safeImageUrl(asset?.image_url ?? asset?.thumbnail_url);
+    const label = slot == null ? `Photo ${photoId}` : `Wall slot ${slot}`;
+    return {
+      url,
+      alt: stringValue(asset?.alt_text) ?? (slot == null ? `Photo Wall image ${photoId}` : `Photo Wall image ${slot}`),
+      label,
+      caption: stringValue(asset?.caption) ?? label,
+    };
+  };
+  const createPhotoCard = (entry: PhotoWallDisplayEntry, openFullImage = true): HTMLElement => {
+    const { slot, photoId } = entry;
+    const card = element("article", "profile-item-card photo-wall-card");
+    const photo = photoImage(entry);
+    if (photo.url) {
       const image = document.createElement("img");
       image.className = "photo-wall-image";
-      image.src = imageUrl;
-      image.alt = stringValue(asset?.alt_text) ?? (slot == null
-        ? `Photo Wall image ${photoId}`
-        : `Photo Wall image ${slot}`);
+      image.src = photo.url;
+      image.alt = photo.alt;
       image.loading = "lazy";
       image.referrerPolicy = "no-referrer";
-      card.append(image);
+      if (!openFullImage) {
+        card.append(image);
+        return card;
+      }
+      const trigger = document.createElement("button");
+      trigger.type = "button";
+      trigger.className = "photo-wall-thumbnail";
+      trigger.setAttribute("aria-haspopup", "dialog");
+      trigger.setAttribute("aria-label", `Open ${photo.label}`);
+      trigger.title = `${photo.label} · ${photo.caption}`;
+      trigger.append(image);
+      trigger.addEventListener("click", () => {
+        const detail = element("figure", "photo-wall-modal-detail");
+        const fullImage = document.createElement("img");
+        fullImage.className = "photo-wall-full-image";
+        fullImage.src = photo.url!;
+        fullImage.alt = image.alt;
+        fullImage.referrerPolicy = "no-referrer";
+        detail.append(
+          fullImage,
+          element("figcaption", "", photo.caption),
+        );
+        profileDetailModal.show(photo.label, detail, trigger);
+      });
+      card.append(trigger);
+    } else {
+      card.append(
+        element("strong", "", slot == null ? `Photo ${photoId}` : `Wall slot ${slot}`),
+        element("span", "", `Photo ${displayValue(photoId)} · awaiting exact live image capture`),
+      );
     }
-    card.append(
-      element("strong", "", slot == null ? `Photo ${photoId}` : `Wall slot ${slot}`),
-      imageUrl ? element("small", "", stringValue(asset?.caption) ?? "Published from the in-game Photo Wall") : element("span", "", `Photo ${displayValue(photoId)} · awaiting exact live image capture`),
-    );
-    grid.append(card);
+    return card;
+  };
+
+  const placedPages = new Map<number, Array<{ entry: PhotoWallDisplayEntry; position: PhotoWallGridPosition }>>();
+  const unplaced: PhotoWallDisplayEntry[] = [];
+  for (const entry of displayEntries) {
+    const position = entry.slot == null ? undefined : photoWallGridPosition(entry.slot);
+    if (!position) {
+      unplaced.push(entry);
+      continue;
+    }
+    const page = placedPages.get(position.page) ?? [];
+    page.push({ entry, position });
+    placedPages.set(position.page, page);
+  }
+
+  const wallGrid = (pageNumber: number, openFullImage = true): HTMLElement => {
+    const grid = element("div", "profile-item-grid photo-wall-grid");
+    for (const { entry, position } of placedPages.get(pageNumber) ?? []) {
+      const card = createPhotoCard(entry, openFullImage);
+      card.style.gridColumn = String(position.column + 1);
+      card.style.gridRow = String(position.row + 1);
+      grid.append(card);
+    }
+    return grid;
+  };
+  const albumGrid = (entries: PhotoWallDisplayEntry[], openFullImage = true): HTMLElement => {
+    const grid = element("div", "profile-item-grid photo-wall-grid photo-wall-album-grid");
+    for (const entry of entries) grid.append(createPhotoCard(entry, openFullImage));
+    return grid;
+  };
+  const buildAlbumViewer = (): HTMLElement => {
+    const albumPages: Array<{ label: string; entries: PhotoWallDisplayEntry[]; wallPage?: number }> = [];
+    if (placedPages.size > 0) {
+      for (let page = 0; page < 4; page += 1) {
+        albumPages.push({
+          label: `Wall page ${page + 1}`,
+          entries: (placedPages.get(page) ?? []).map(({ entry }) => entry),
+          wallPage: page,
+        });
+      }
+    }
+    for (let offset = 0; offset < unplaced.length; offset += 12) {
+      albumPages.push({
+        label: `Other photos ${Math.floor(offset / 12) + 1}`,
+        entries: unplaced.slice(offset, offset + 12),
+      });
+    }
+
+    const viewer = element("div", "photo-wall-album-viewer");
+    const toolbar = element("div", "photo-wall-album-toolbar");
+    const previous = document.createElement("button");
+    previous.type = "button";
+    previous.className = "photo-wall-album-arrow";
+    previous.textContent = "‹";
+    previous.setAttribute("aria-label", "Previous Photo Wall page");
+    const pageLabel = element("strong", "photo-wall-album-page-label");
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "photo-wall-album-arrow";
+    next.textContent = "›";
+    next.setAttribute("aria-label", "Next Photo Wall page");
+    toolbar.append(previous, pageLabel, next);
+    const stage = element("div", "photo-wall-album-stage");
+    const previews = element("div", "photo-wall-page-previews");
+    previews.setAttribute("aria-label", "Photo Wall page previews");
+    const previewButtons: HTMLButtonElement[] = [];
+    let activePage = 0;
+
+    const renderPage = (index: number): void => {
+      activePage = Math.max(0, Math.min(index, albumPages.length - 1));
+      const page = albumPages[activePage]!;
+      pageLabel.textContent = `${page.label} · ${activePage + 1} of ${albumPages.length}`;
+      stage.replaceChildren(page.wallPage == null
+        ? albumGrid(page.entries, false)
+        : wallGrid(page.wallPage, false));
+      previous.disabled = activePage === 0;
+      next.disabled = activePage === albumPages.length - 1;
+      previewButtons.forEach((button, buttonIndex) => {
+        button.classList.toggle("is-active", buttonIndex === activePage);
+        button.setAttribute("aria-current", buttonIndex === activePage ? "page" : "false");
+      });
+    };
+
+    for (const [index, page] of albumPages.entries()) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "photo-wall-page-preview";
+      button.setAttribute("aria-label", `Show ${page.label}`);
+      const previewGrid = element("span", "photo-wall-page-preview-grid");
+      for (const entry of page.entries) {
+        const photo = photoImage(entry);
+        if (!photo.url) continue;
+        const image = document.createElement("img");
+        image.src = photo.url;
+        image.alt = "";
+        image.loading = "lazy";
+        const position = entry.slot == null ? undefined : photoWallGridPosition(entry.slot);
+        if (position && page.wallPage != null) {
+          image.style.gridColumn = String(position.column + 1);
+          image.style.gridRow = String(position.row + 1);
+        }
+        previewGrid.append(image);
+      }
+      button.append(previewGrid, element("span", "", page.label));
+      button.addEventListener("click", () => renderPage(index));
+      previews.append(button);
+      previewButtons.push(button);
+    }
+    previous.addEventListener("click", () => renderPage(activePage - 1));
+    next.addEventListener("click", () => renderPage(activePage + 1));
+    viewer.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowLeft") renderPage(activePage - 1);
+      if (event.key === "ArrowRight") renderPage(activePage + 1);
+    });
+    viewer.append(toolbar, stage, previews);
+    renderPage(0);
+    return viewer;
+  };
+
+  const content = element("div", "photo-wall-content");
+  if (placedPages.size > 0) {
+    content.append(wallGrid(0));
+  } else if (unplaced.length > 0) {
+    content.append(albumGrid(unplaced.slice(0, 12)));
+  }
+  const hasMorePhotos = placedPages.size > 0 || unplaced.length > 12;
+  if (hasMorePhotos) {
+    content.append(profileDetailButton("View full Photo Wall", "Photo Wall", buildAlbumViewer));
   }
   section.append(
     displayEntries.length
-      ? grid
+      ? content
       : empty("No Photo Wall identity was present in the latest synced snapshot."),
   );
   return section;
@@ -1809,6 +1968,26 @@ function photoWallSection(body: JsonRecord): HTMLElement {
 export interface PhotoWallDisplayEntry {
   slot: string | null;
   photoId: number;
+}
+
+export interface PhotoWallGridPosition {
+  page: number;
+  row: number;
+  column: number;
+}
+
+/** Maps the packet's Photo Wall key to the game's 4 × 3, four-page layout. */
+export function photoWallGridPosition(slot: string): PhotoWallGridPosition | undefined {
+  const parsed = Number(slot);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 48) return undefined;
+  // Current packets use the same 1-based indices as the Lua UI. Preserve a
+  // legacy zero key as the first cell for older synthetic/profile snapshots.
+  const position = parsed === 0 ? 0 : parsed - 1;
+  return {
+    page: Math.floor(position / 12),
+    row: Math.floor((position % 12) / 4),
+    column: position % 4,
+  };
 }
 
 export function photoWallDisplayEntries(
@@ -1820,7 +1999,7 @@ export function photoWallDisplayEntries(
   const seen = new Set<number>();
   for (const [slot, value] of Object.entries(wall ?? {})) {
     const photoId = numericValue(value);
-    if (photoId == null || photoId <= 0 || seen.has(photoId)) continue;
+    if (photoId == null || photoId <= 0) continue;
     entries.push({ slot, photoId });
     seen.add(photoId);
   }
@@ -1837,9 +2016,10 @@ export function photoWallDisplayEntries(
 export function photoWallIdentityCount(
   photoIds: JsonValue[],
   wall: JsonRecord | undefined,
+  assetIds: number[] = [],
 ): number {
   const identities = new Set<number>();
-  for (const value of photoIds) {
+  for (const value of [...photoIds, ...assetIds]) {
     const photoId = numericValue(value);
     if (photoId != null && photoId > 0) identities.add(photoId);
   }
