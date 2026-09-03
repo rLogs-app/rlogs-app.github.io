@@ -1463,17 +1463,32 @@ export function talentPresentationFacts(talent: { level?: JsonValue; node_id?: J
 }
 
 function collectionsSection(body: JsonRecord): HTMLElement {
+  const social = recordValue(body.social_display);
+  const medals = orderedMedalEntries(social?.medal_ids, social?.medal_slots);
+  const section = profileSection("Collections & appearance", "Latest verified observations");
+  section.classList.add("profile-compact-section");
+  section.append(
+    compactMetricGrid(profileCollectionSummary(body)),
+    element(
+      "small",
+      "profile-observation-note",
+      "Missing collection values are not treated as zero. Counts include only ownership confirmed by live profile packets.",
+    ),
+  );
+  if (medals.length) section.append(medalCollection(medals));
+  return section;
+}
+
+export function profileCollectionSummary(body: JsonRecord): ProfileProgressMetric[][] {
   const appearance = recordValue(body.appearance);
   const collection = recordValue(body.collection_summary);
   const social = recordValue(body.social_display);
   const socialEvidence = resolvedSocialCollectionEvidence(social);
   const equippedTitleId = social?.equipped_title_id ?? arrayValue(social?.title_ids)[0];
-  const equippedTitle = equippedTitleId == null ? undefined : presentation.titles[String(equippedTitleId)];
+  const equippedTitle = equippedTitleId == null ? undefined : presentation?.titles[String(equippedTitleId)];
   const medals = orderedMedalEntries(social?.medal_ids, social?.medal_slots);
-  const section = profileSection("Collections & appearance", "Latest verified observations");
-  const facts = element("dl", "profile-facts");
-  appendFact(facts, "Meowlux score", resolvedMeowluxScore(body)?.toLocaleString() ?? "—");
-  for (const [label, value] of [
+  return compactMetricRows([
+    ["Meowlux score", resolvedMeowluxScore(body)?.toLocaleString() ?? "—"],
     ["Fashion points", collection?.fashion_points],
     ["Mount points", collection?.mount_points],
     ["Weapon skin points", collection?.weapon_skin_points],
@@ -1487,17 +1502,7 @@ function collectionsSection(body: JsonRecord): HTMLElement {
     ["Equipped title", equippedTitle?.name ?? equippedTitleId],
     ["Equipped title level", social?.equipped_title_level],
     ["Medals", medals.length],
-  ] as Array<[string, JsonValue | number | undefined]>) appendFact(facts, label, displayValue(value));
-  section.append(
-    facts,
-    element(
-      "small",
-      "profile-observation-note",
-      "Missing collection values are not treated as zero. Counts include only ownership confirmed by live profile packets.",
-    ),
-  );
-  if (medals.length) section.append(medalCollection(medals));
-  return section;
+  ]);
 }
 
 export function resolvedSocialCollectionEvidence(
@@ -1792,21 +1797,8 @@ function cleanAchievementCategory(value: string | null | undefined): string {
 function progressSection(body: JsonRecord): HTMLElement {
   const summary = profileProgressSummary(body);
   const section = profileSection("Progression & activities", "Latest observed progress");
-  section.classList.add("profile-progress-section");
-  const facts = element("dl", "profile-progress-grid");
-  for (const row of summary.rows) {
-    const rowElement = element("div", "profile-progress-row");
-    for (const metric of row) {
-      const item = element("div", "profile-progress-metric");
-      item.append(
-        element("dt", "", metric.label),
-        element("dd", "", metric.value),
-      );
-      rowElement.append(item);
-    }
-    facts.append(rowElement);
-  }
-  section.append(facts);
+  section.classList.add("profile-compact-section");
+  section.append(compactMetricGrid(summary.rows));
   if (summary.masterDungeons.length) {
     section.append(masterDungeonBreakdown(summary.masterDungeons));
   }
@@ -1832,7 +1824,7 @@ export function profileProgressSummary(body: JsonRecord): ProfileProgressSummary
     masterDungeons,
     numericValue(season?.season_id),
   );
-  const metrics = [
+  const metrics: Array<[string, JsonValue | number | undefined]> = [
     ["Season", season?.season_id],
     ["Season level", season?.level],
     ["Master score", resolvedMasterScore(body)],
@@ -1842,15 +1834,36 @@ export function profileProgressSummary(body: JsonRecord): ProfileProgressSummary
     ["Combat professions", arrayValue(body.combat_professions).length],
     ["Life professions", arrayValue(body.life_professions).length],
     ["Reputations", arrayValue(body.reputations).length],
-  ].map(([label, value]) => ({
-    label: String(label),
-    value: displayValue(value),
-  }));
+  ];
+  return { rows: compactMetricRows(metrics), masterDungeons };
+}
+
+function compactMetricRows(
+  metrics: Array<[string, JsonValue | number | undefined]>,
+): ProfileProgressMetric[][] {
+  const normalized = metrics.map(([label, value]) => ({ label, value: displayValue(value) }));
   const rows: ProfileProgressMetric[][] = [];
-  for (let index = 0; index < metrics.length; index += 2) {
-    rows.push(metrics.slice(index, index + 2));
+  for (let index = 0; index < normalized.length; index += 2) {
+    rows.push(normalized.slice(index, index + 2));
   }
-  return { rows, masterDungeons };
+  return rows;
+}
+
+function compactMetricGrid(rows: ProfileProgressMetric[][]): HTMLElement {
+  const facts = element("dl", "profile-compact-grid");
+  for (const row of rows) {
+    const rowElement = element("div", "profile-compact-row");
+    for (const metric of row) {
+      const item = element("div", "profile-compact-metric");
+      item.append(
+        element("dt", "", metric.label),
+        element("dd", "", metric.value),
+      );
+      rowElement.append(item);
+    }
+    facts.append(rowElement);
+  }
+  return facts;
 }
 
 function masterDungeonBreakdown(values: JsonValue[]): HTMLElement {

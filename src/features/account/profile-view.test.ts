@@ -19,6 +19,7 @@ import {
   masterDungeonRows,
   orderedMedalEntries,
   profileBaseCombatStatValues,
+  profileCollectionSummary,
   photoWallDisplayEntries,
   photoWallIdentityCount,
   profileProgressSummary,
@@ -90,6 +91,40 @@ describe("profile progression summary", () => {
     ]);
     expect(summary.rows[0]?.map(({ value }) => value)).toEqual(["3", "100"]);
     expect(summary.rows[3]?.map(({ value }) => value)).toEqual(["9", "9"]);
+  });
+});
+
+describe("profile collection summary", () => {
+  it("pairs collection and social metrics into compact two-column rows", () => {
+    const rows = profileCollectionSummary({
+      meowlux_score: 8_405,
+      appearance: { unlocked_profile_image_ids: [] },
+      collection_summary: {
+        fashion_points: 6_935,
+        mount_points: 1_320,
+        weapon_skin_points: 150,
+        owned_fashion_ids: Array.from({ length: 210 }, () => null),
+        owned_mount_ids: Array.from({ length: 12 }, () => null),
+        owned_weapon_skin_ids: Array.from({ length: 5 }, () => null),
+        vanity_pet_ids: Array.from({ length: 2 }, () => null),
+      },
+      social_display: {
+        guild_name: "Sheep",
+        title_ids: Array.from({ length: 258 }, (_, index) => index),
+      },
+    });
+
+    expect(rows.map((row) => row.map(({ label }) => label))).toEqual([
+      ["Meowlux score", "Fashion points"],
+      ["Mount points", "Weapon skin points"],
+      ["Profile images unlocked", "Fashion owned"],
+      ["Mounts owned", "Weapon skins owned"],
+      ["Vanity pets", "Guild"],
+      ["Titles observed", "Equipped title"],
+      ["Equipped title level", "Medals"],
+    ]);
+    expect(rows[0]?.map(({ value }) => value)).toEqual(["8,405", "6,935"]);
+    expect(rows[4]?.map(({ value }) => value)).toEqual(["2", "Sheep"]);
   });
 });
 
