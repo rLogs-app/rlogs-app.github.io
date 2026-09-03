@@ -105,6 +105,20 @@ describe("parse search", () => {
         { second: 2, damage: 600, effective_healing: 0, damage_taken: 0 },
       ],
     };
+    participant.abilities.push(...Array.from({ length: 7 }, (_, index) => ({
+      ability_id: `grouped-${index + 1}`,
+      presentation_name: `Grouped Skill ${index + 1}`,
+      presentation_kind: "skill",
+      icon_asset_path: `/assets/skills/grouped-${index + 1}.webp`,
+      casts: index + 1,
+      hits: (index + 1) * 2,
+      critical_hits: index,
+      damage: 7 - index,
+      effective_damage: 7 - index,
+      healing: 0,
+      effective_healing: 0,
+      shielding: 0,
+    })));
     const report: PublicParseReport = {
       schema_version: 10,
       report_id: reportId,
@@ -285,6 +299,11 @@ describe("parse search", () => {
     expect(html).toContain("Skill contribution");
     expect(html).toContain("Falcon Strike");
     expect(html).toContain("Falcon Lightning Strike");
+    expect(html).toContain("Other (2)");
+    expect(html).toContain("data-skill-other-trigger");
+    expect(html).toContain("View 2 other skill details for MarieRose");
+    expect(html).toContain("Other skills · MarieRose");
+    expect(html).toContain("Grouped Skill 7");
     expect(html).toContain("rDPS calculations");
     expect(html).toContain("Harmony Grace");
     expect(html).toContain("Evidence coverage");

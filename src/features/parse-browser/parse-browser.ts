@@ -47,7 +47,20 @@ export async function mountParseBrowser(): Promise<void> {
 
   const status = required<HTMLElement>("#parse-status");
   const list = required<HTMLElement>("#parse-list");
-  const detail = createParseDetailModal(required<HTMLElement>("#parse-detail"), () => {
+  const detailHost = required<HTMLElement>("#parse-detail");
+  document.querySelector("#parse-skill-detail")?.remove();
+  const skillDetailHost = document.createElement("div");
+  skillDetailHost.id = "parse-skill-detail";
+  document.body.append(skillDetailHost);
+  const skillDetail = createParseDetailModal(skillDetailHost, () => undefined, {
+    ariaLabel: "Other skill details",
+    closeAriaLabel: "Close other skill details",
+    bodyClass: "parse-skill-modal-open",
+    hostClass: "parse-skill-detail-modal",
+    panelClass: "parse-skill-detail-modal-panel",
+  });
+  const detail = createParseDetailModal(detailHost, () => {
+    skillDetail.close();
     const url = new URL(location.href);
     url.searchParams.delete("parse");
     url.searchParams.delete("run");
@@ -162,6 +175,7 @@ export async function mountParseBrowser(): Promise<void> {
         }
       }
       detail.show(renderReport(report, runIndex, reconciliation, reconciliationError, presentation));
+      bindOtherSkillDetails(detailHost, skillDetail);
       history.replaceState(
         null,
         "",
@@ -171,6 +185,16 @@ export async function mountParseBrowser(): Promise<void> {
       detail.show(`<p class="empty-state">${escapeHtml(message(error))}</p>`);
     }
   }
+}
+
+function bindOtherSkillDetails(root: ParentNode, modal: ReturnType<typeof createParseDetailModal>): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-skill-other-trigger]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const template = button.parentElement?.querySelector<HTMLTemplateElement>("template[data-skill-other-content]");
+      const html = template?.innerHTML.trim();
+      if (html) modal.show(html);
+    });
+  });
 }
 
 async function fetchCatalog(query = ""): Promise<PublicParseCatalog> {
@@ -518,6 +542,7 @@ function renderSkillCard(
     casts: ability.casts,
     hits: ability.hits,
     criticalHits: ability.critical_hits,
+    isOther: false,
   }));
   const other = abilities.slice(7);
   if (other.length) {
@@ -527,6 +552,7 @@ function renderSkillCard(
       casts: other.reduce((sum, ability) => sum + ability.casts, 0),
       hits: other.reduce((sum, ability) => sum + ability.hits, 0),
       criticalHits: other.reduce((sum, ability) => sum + ability.critical_hits, 0),
+      isOther: true,
     });
   }
   let cursor = 0;
@@ -539,10 +565,32 @@ function renderSkillCard(
     .map((ability, index) => {
       const percent = total > 0 ? (ability.damage / total) * 100 : 0;
       const criticalRate = ability.hits > 0 ? (ability.criticalHits / ability.hits) * 100 : 0;
+      if (ability.isOther) {
+        const actorName = participantName(actor);
+        const details = renderOtherSkillDetails(actor, other, total, presentation);
+        return `<li class="parse-skill-other-row"><button class="parse-skill-other-trigger" type="button" data-skill-other-trigger aria-haspopup="dialog" aria-label="View ${other.length} other skill details for ${escapeHtml(actorName)}"><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${ability.casts.toLocaleString()} casts · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span><b aria-hidden="true">›</b></button><template data-skill-other-content>${details}</template></li>`;
+      }
       return `<li><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${ability.casts.toLocaleString()} casts · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
     })
     .join("");
   return `<details class="parse-skill-card"${actorIndex === 0 ? " open" : ""}><summary><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span><span>${formatNumber(actor.damage)} damage</span></summary><div class="parse-skill-content"><div class="parse-skill-pie" style="--skill-pie:conic-gradient(${slices.join(",")})" role="img" aria-label="Skill damage shares for ${escapeHtml(participantName(actor))}"><span>${abilities.length}<small>skills</small></span></div><ol>${rows}</ol></div></details>`;
+}
+
+function renderOtherSkillDetails(
+  actor: AnalysisParticipant,
+  abilities: NonNullable<AnalysisParticipant["abilities"]>,
+  totalDamage: number,
+  presentation?: ParsePresentationCatalog,
+): string {
+  const groupedDamage = abilities.reduce((sum, ability) => sum + ability.damage, 0);
+  const groupedPercent = totalDamage > 0 ? (groupedDamage / totalDamage) * 100 : 0;
+  const rows = abilities.map((ability, index) => {
+    const percent = totalDamage > 0 ? (ability.damage / totalDamage) * 100 : 0;
+    const criticalRate = ability.hits > 0 ? (ability.critical_hits / ability.hits) * 100 : 0;
+    const name = localizedActionName(presentation, ability.ability_id, ability.presentation_name);
+    return `<li><span class="parse-skill-drilldown-rank">${index + 8}</span><span><strong>${escapeHtml(name)}</strong><small>${ability.casts.toLocaleString()} casts · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
+  }).join("");
+  return `<article class="parse-skill-drilldown"><header><p class="eyebrow">Complete skill contribution</p><h3>Other skills · ${escapeHtml(participantName(actor))}</h3><p>${abilities.length.toLocaleString()} skills grouped in the compact chart</p></header><div class="parse-skill-drilldown-summary"><span><small>Grouped damage</small><strong>${formatNumber(groupedDamage)}</strong></span><span><small>Player share</small><strong>${groupedPercent.toFixed(1)}%</strong></span></div><ol class="parse-skill-drilldown-list">${rows}</ol></article>`;
 }
 
 function renderRdpsCalculations(
