@@ -261,6 +261,12 @@ export function renderReport(
       reconciliation.reconciled_participants.length,
   );
   const participants = reconciled ? reconciliation!.reconciled_participants : run.participants;
+  const skillInfluences = reconciled
+    ? (reconciliation?.rdps_influences ?? [])
+    : (run.rdps_influences ?? []);
+  const skillEffects = reconciled
+    ? (reconciliation?.rdps_effects ?? [])
+    : (run.rdps_effects ?? []);
   const teamRdps = reconciled
     ? damageRate(reconciliation!.conservation!.rdps_damage, run.active_combat_micros)
     : null;
@@ -285,7 +291,7 @@ export function renderReport(
     </div>
     ${renderCombatLoadoutPhases(run, participants, presentation)}
     ${renderRunTimeline(run, participants)}
-    ${renderSkillContributions(participants, presentation)}
+    ${renderSkillContributions(participants, skillInfluences, skillEffects, presentation)}
     ${renderRdpsCalculations(run, reconciliation, participants, reconciled, presentation)}
     ${renderEvidenceCoverage(report, run, reconciliation, participants, reconciled)}
     <p class="parse-proof">Build ${escapeHtml(report.client_build)} / ${report.verification.event_count.toLocaleString()} canonical events / ${run.data_gap_count} data gaps / report ${escapeHtml(report.report_id)}${run.run_group_id ? ` / group ${escapeHtml(run.run_group_id)}` : ""}</p>
@@ -514,9 +520,12 @@ function damageSeriesPath(
 
 function renderSkillContributions(
   participants: AnalysisParticipant[],
+  influences: PublicRdpsInfluence[],
+  effects: PublicRdpsEffectPresentation[],
   presentation?: ParsePresentationCatalog,
 ): string {
-  const actors = participants.filter((actor) => (actor.abilities?.some((ability) => ability.damage > 0) ?? false));
+  const actors = ownedSkillParticipants(participants, influences, effects)
+    .filter((actor) => (actor.abilities?.some((ability) => ability.damage > 0) ?? false));
   if (!actors.length) {
     return analysisPanel(
       "Skill contribution",
@@ -526,7 +535,100 @@ function renderSkillContributions(
   const cards = actors
     .map((actor, actorIndex) => renderSkillCard(actor, actorIndex, presentation))
     .join("");
-  return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">Per-player breakdown</p><h4>Skill contribution</h4></div><small>Raw damage share; exact observed child skills remain separate</small></div><div class="parse-skill-grid">${cards}</div></section>`;
+  return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">Packet-proven ownership</p><h4>Skill contribution</h4></div><small>Generated support damage follows its proven provider; raw party totals remain unchanged</small></div><div class="parse-skill-grid">${cards}</div></section>`;
+}
+
+const encoreEffectId = "55333";
+const encoreDamageActionIds = new Set(["230401", "230501"]);
+
+/**
+ * Encore damage is emitted on the recipient's wire actor, while the exact
+ * status-source lifecycle proves which external healer generated it. Keep the
+ * immutable raw participant totals intact everywhere else, but present a
+ * semantic skill-ownership view here. A move is allowed only when complete
+ * influence rows cover the entire raw Encore action total; missing or
+ * overlapping-provider evidence therefore remains on the recipient rather
+ * than being guessed.
+ */
+export function ownedSkillParticipants(
+  participants: AnalysisParticipant[],
+  influences: PublicRdpsInfluence[],
+  effects: PublicRdpsEffectPresentation[],
+): AnalysisParticipant[] {
+  const byActor = new Map(participants.map((actor) => [actor.actor_id, {
+    ...actor,
+    abilities: actor.abilities?.map((ability) => ({ ...ability })),
+  }]));
+  const movements = new Map<string, Map<string, { damage: bigint; events: number }>>();
+  for (const influence of influences) {
+    if (
+      influence.effect_id !== encoreEffectId ||
+      !influence.complete_effect ||
+      !influence.damage_context_complete ||
+      influence.provider_actor_id === influence.recipient_actor_id ||
+      !influence.affected_ability_id ||
+      !encoreDamageActionIds.has(influence.affected_ability_id)
+    ) continue;
+    const amount = influence.attributed_rdps == null
+      ? null
+      : parseInteger(influence.attributed_rdps);
+    if (amount == null || amount <= 0n) continue;
+    const key = `${influence.recipient_actor_id}\0${influence.affected_ability_id}`;
+    const providers = movements.get(key) ?? new Map();
+    const previous = providers.get(influence.provider_actor_id) ?? { damage: 0n, events: 0 };
+    providers.set(influence.provider_actor_id, {
+      damage: previous.damage + amount,
+      events: previous.events + influence.damage_event_count,
+    });
+    movements.set(key, providers);
+  }
+
+  const providerTotals = new Map<string, { damage: bigint; events: number }>();
+  for (const [key, providers] of movements) {
+    const separator = key.indexOf("\0");
+    const recipientId = key.slice(0, separator);
+    const actionId = key.slice(separator + 1);
+    const recipient = byActor.get(recipientId);
+    const ability = recipient?.abilities?.find((candidate) => candidate.ability_id === actionId);
+    if (!ability) continue;
+    const moved = [...providers.values()].reduce((sum, value) => sum + value.damage, 0n);
+    if (!Number.isSafeInteger(ability.damage) || moved !== BigInt(ability.damage)) continue;
+    recipient!.abilities = recipient!.abilities!.filter((candidate) => candidate !== ability);
+    for (const [providerId, value] of providers) {
+      if (!byActor.has(providerId)) continue;
+      const previous = providerTotals.get(providerId) ?? { damage: 0n, events: 0 };
+      providerTotals.set(providerId, {
+        damage: previous.damage + value.damage,
+        events: previous.events + value.events,
+      });
+    }
+  }
+
+  const encoreName = effects.find((effect) => effect.effect_id === encoreEffectId)
+    ?.presentation_name ?? "Encore";
+  for (const [providerId, value] of providerTotals) {
+    const provider = byActor.get(providerId);
+    const damage = Number(value.damage);
+    if (!provider || !Number.isSafeInteger(damage)) continue;
+    provider.abilities ??= [];
+    provider.abilities.push({
+      ability_id: `support-effect:${encoreEffectId}`,
+      presentation_name: encoreName,
+      presentation_kind: "support-generated-damage",
+      icon_asset_path: null,
+      presentation_recount_group_id: null,
+      presentation_recount_group_name: null,
+      casts: 0,
+      hits: value.events,
+      critical_hits: 0,
+      damage,
+      effective_damage: damage,
+      healing: 0,
+      effective_healing: 0,
+      shielding: 0,
+    });
+  }
+  return participants.map((actor) => byActor.get(actor.actor_id) ?? actor);
 }
 
 function renderSkillCard(
@@ -544,6 +646,7 @@ function renderSkillCard(
     castLabel: skillCastLabel(ability, castContext),
     hits: ability.hits,
     criticalHits: ability.critical_hits,
+    supportGenerated: ability.presentation_kind === "support-generated-damage",
     isOther: false,
   }));
   const other = abilities.slice(7);
@@ -554,6 +657,7 @@ function renderSkillCard(
       castLabel: groupedSkillCastLabel(other, castContext),
       hits: other.reduce((sum, ability) => sum + ability.hits, 0),
       criticalHits: other.reduce((sum, ability) => sum + ability.critical_hits, 0),
+      supportGenerated: false,
       isOther: true,
     });
   }
@@ -567,15 +671,18 @@ function renderSkillCard(
     .map((ability, index) => {
       const percent = total > 0 ? (ability.damage / total) * 100 : 0;
       const criticalRate = ability.hits > 0 ? (ability.criticalHits / ability.hits) * 100 : 0;
+      const observation = ability.supportGenerated
+        ? `${ability.hits.toLocaleString()} generated hits · provider proven`
+        : `${ability.castLabel} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit`;
       if (ability.isOther) {
         const actorName = participantName(actor);
         const details = renderOtherSkillDetails(actor, other, total, castContext, presentation);
         return `<li class="parse-skill-other-row"><button class="parse-skill-other-trigger" type="button" data-skill-other-trigger aria-haspopup="dialog" aria-label="View ${other.length} other skill details for ${escapeHtml(actorName)}"><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${ability.castLabel} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span><b aria-hidden="true">›</b></button><template data-skill-other-content>${details}</template></li>`;
       }
-      return `<li><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${ability.castLabel} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
+      return `<li><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${escapeHtml(observation)}</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
     })
     .join("");
-  return `<details class="parse-skill-card"${actorIndex === 0 ? " open" : ""}><summary><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span><span>${formatNumber(actor.damage)} damage</span></summary><div class="parse-skill-content"><div class="parse-skill-pie" style="--skill-pie:conic-gradient(${slices.join(",")})" role="img" aria-label="Skill damage shares for ${escapeHtml(participantName(actor))}"><span>${abilities.length}<small>skills</small></span></div><ol>${rows}</ol></div></details>`;
+  return `<details class="parse-skill-card"${actorIndex === 0 ? " open" : ""}><summary><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span><span>${formatNumber(total)} owned damage</span></summary><div class="parse-skill-content"><div class="parse-skill-pie" style="--skill-pie:conic-gradient(${slices.join(",")})" role="img" aria-label="Skill damage shares for ${escapeHtml(participantName(actor))}"><span>${abilities.length}<small>skills</small></span></div><ol>${rows}</ol></div></details>`;
 }
 
 function renderOtherSkillDetails(

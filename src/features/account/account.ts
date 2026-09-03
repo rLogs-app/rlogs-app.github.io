@@ -12,6 +12,7 @@ interface AccountView {
   discord_username: string;
   discord_global_name: string | null;
   discord_avatar_url: string | null;
+  publish_verified_parses: boolean;
 }
 
 interface WebSession {
@@ -304,6 +305,61 @@ async function renderSignedIn(
     }
   });
 
+  const parsePublicationForm = document.createElement("form");
+  parsePublicationForm.className = "account-publication-form account-settings-card";
+  const parsePublicationLabel = document.createElement("label");
+  const parsePublication = document.createElement("input");
+  parsePublication.type = "checkbox";
+  parsePublication.checked = account.publish_verified_parses;
+  parsePublicationLabel.append(
+    parsePublication,
+    element("span", "", "Automatically publish my verified parses"),
+  );
+  const parsePublicationHelp = element(
+    "small",
+    "",
+    "After rLogs verifies and replays an uploaded log on the server, its eligible runs become public and can enter leaderboards. Raw uploads and failed verification never become public. You can still make individual reports private later.",
+  );
+  const saveParsePublication = element("button", "button primary", "Save parse preference");
+  saveParsePublication.type = "submit";
+  const parsePublicationStatus = element("span", "account-inline-status");
+  parsePublicationStatus.setAttribute("role", "status");
+  parsePublicationForm.append(
+    element("p", "eyebrow", "Parse privacy"),
+    parsePublicationLabel,
+    parsePublicationHelp,
+    saveParsePublication,
+    parsePublicationStatus,
+  );
+  parsePublicationForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    saveParsePublication.disabled = true;
+    parsePublicationStatus.textContent = "Saving…";
+    try {
+      const response = await fetch(`${apiBase}/v1/auth/me/parse-publication`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ publish_verified_parses: parsePublication.checked }),
+      });
+      if (!response.ok) throw new Error(`Parse preference update failed with HTTP ${response.status}.`);
+      const updated = parseAccount(await response.json());
+      account = updated;
+      session.account = updated;
+      localStorage.setItem(sessionKey, JSON.stringify(session));
+      parsePublication.checked = updated.publish_verified_parses;
+      parsePublicationStatus.textContent = updated.publish_verified_parses
+        ? "Saved · future verified parses publish automatically"
+        : "Saved · automatic publication is off";
+    } catch (error) {
+      parsePublicationStatus.textContent = errorText(error);
+    } finally {
+      saveParsePublication.disabled = false;
+    }
+  });
+
   const explanation = message(
     "Generate a token for one PC, then paste it into rLogs Settings → Website account connection. Log Uploader and Profile Sync share it. The desktop stores the token in Windows Credential Manager; the website will never show it again.",
   );
@@ -370,6 +426,7 @@ async function renderSignedIn(
     profileSyncGuide(true),
     publicIdentity,
     usernameForm,
+    parsePublicationForm,
     linkedProfiles,
     connection,
   );
@@ -566,11 +623,15 @@ export function parseAccount(value: unknown): AccountView {
     !(value.username === undefined ||
       (typeof value.username === "string" && /^[a-z0-9][a-z0-9_-]{1,22}[a-z0-9]$/u.test(value.username))) ||
     !isNullableString(value.discord_global_name) ||
-    !isNullableString(value.discord_avatar_url)
+    !isNullableString(value.discord_avatar_url) ||
+    !(value.publish_verified_parses === undefined || typeof value.publish_verified_parses === "boolean")
   ) {
     throw new Error("The account response is invalid.");
   }
-  return value as unknown as AccountView;
+  return {
+    ...value,
+    publish_verified_parses: value.publish_verified_parses === true,
+  } as unknown as AccountView;
 }
 
 export function parseWebSession(value: unknown): WebSession {

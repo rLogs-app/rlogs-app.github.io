@@ -10,6 +10,7 @@ import {
   activityLabel,
   filterSearch,
   humanizeAttributionComponent,
+  ownedSkillParticipants,
   renderReport,
 } from "./parse-browser";
 
@@ -29,6 +30,66 @@ const parse: PublicParseCatalogEntry = {
 };
 
 describe("parse search", () => {
+  it("moves only fully proven Encore output to the exact support provider", () => {
+    const actors = [
+      {
+        actor_id: "healer-a", character_id: "1", display_name: "Healer A", actor_kind: "player",
+        class_id: 13, class_name: "Beat Performer", specialization_id: 1,
+        specialization_name: "Concerto", damage: 10, dps: 1, encounter_dps: 1,
+        hps: 10, tps: 0, rdps: null, deaths: 0, abilities: [],
+      },
+      {
+        actor_id: "healer-b", character_id: "2", display_name: "Healer B", actor_kind: "player",
+        class_id: 13, class_name: "Beat Performer", specialization_id: 1,
+        specialization_name: "Concerto", damage: 20, dps: 2, encounter_dps: 2,
+        hps: 20, tps: 0, rdps: null, deaths: 0, abilities: [],
+      },
+      {
+        actor_id: "damage", character_id: "3", display_name: "Damage", actor_kind: "player",
+        class_id: 11, class_name: "Marksman", specialization_id: 2,
+        specialization_name: "Falconry", damage: 300, dps: 30, encounter_dps: 30,
+        hps: 0, tps: 0, rdps: null, deaths: 0,
+        abilities: [
+          { ability_id: "230401", presentation_name: "Encore", presentation_kind: "support-generated-damage", icon_asset_path: null, casts: 0, hits: 2, critical_hits: 1, damage: 100, effective_damage: 100, healing: 0, effective_healing: 0, shielding: 0 },
+          { ability_id: "230501", presentation_name: "Encore", presentation_kind: "support-generated-damage", icon_asset_path: null, casts: 0, hits: 3, critical_hits: 2, damage: 200, effective_damage: 200, healing: 0, effective_healing: 0, shielding: 0 },
+        ],
+      },
+    ];
+    const influence = (provider: string, action: string, amount: string, events: number) => ({
+      effect_id: "55333", attribution_component: "Encore standalone generated damage",
+      complete_effect: true, provider_actor_id: provider, recipient_actor_id: "damage",
+      affected_ability_id: action, target_actor_id: "boss", first_observed_micros: 1,
+      last_observed_micros: 2, damage_event_count: events, observed_damage: amount,
+      exact_integer_delta: amount, exact_rational_deltas: [], attributed_rdps: amount,
+      damage_context_complete: true,
+    });
+    const projected = ownedSkillParticipants(
+      actors,
+      [influence("healer-a", "230401", "100", 2), influence("healer-b", "230501", "200", 3)],
+      [{ effect_id: "55333", presentation_name: "Encore", presentation_kind: "status", icon_asset_path: null }],
+    );
+
+    expect(projected.find((actor) => actor.actor_id === "damage")?.abilities).toEqual([]);
+    expect(projected.find((actor) => actor.actor_id === "healer-a")?.abilities?.[0]).toMatchObject({
+      presentation_name: "Encore", damage: 100, hits: 2,
+    });
+    expect(projected.find((actor) => actor.actor_id === "healer-b")?.abilities?.[0]).toMatchObject({
+      presentation_name: "Encore", damage: 200, hits: 3,
+    });
+  });
+
+  it("does not move a partially proven Encore action", () => {
+    const actor = {
+      actor_id: "damage", character_id: "3", display_name: "Damage", actor_kind: "player",
+      class_id: 11, class_name: "Marksman", specialization_id: 2,
+      specialization_name: "Falconry", damage: 100, dps: 10, encounter_dps: 10,
+      hps: 0, tps: 0, rdps: null, deaths: 0,
+      abilities: [{ ability_id: "230401", presentation_name: "Encore", presentation_kind: "support-generated-damage", icon_asset_path: null, casts: 0, hits: 2, critical_hits: 1, damage: 100, effective_damage: 100, healing: 0, effective_healing: 0, shielding: 0 }],
+    };
+    const projected = ownedSkillParticipants([actor], [], []);
+    expect(projected[0]?.abilities?.[0]?.damage).toBe(100);
+  });
+
   it("presents the fixed broad activity categories", () => {
     expect(activityLabel("stimens")).toBe("Stimens");
     expect(activityLabel("solo-content")).toBe("Solo Content");

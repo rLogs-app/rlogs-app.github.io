@@ -4607,6 +4607,28 @@ footer {
   width: fit-content;
 }
 
+.account-publication-form {
+  display: grid;
+  gap: 10px;
+}
+
+.account-publication-form label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-weight: 800;
+}
+
+.account-publication-form input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
+.account-publication-form .button {
+  width: fit-content;
+}
+
 .account-inline-status {
   color: var(--muted);
   font-size: 12px;

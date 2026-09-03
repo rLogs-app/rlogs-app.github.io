@@ -16,6 +16,7 @@ const account = {
   discord_username: "tester",
   discord_global_name: "Tester",
   discord_avatar_url: null,
+  publish_verified_parses: true,
 };
 
 describe("account contracts", () => {
@@ -24,6 +25,12 @@ describe("account contracts", () => {
     expect(parsed.discord_username).toBe("tester");
     expect(parsed.account_id).toBe(583104927614);
     expect(parsed.username).toBe("test-player");
+    expect(parsed.publish_verified_parses).toBe(true);
+  });
+
+  it("keeps legacy account sessions opted out until consent is explicit", () => {
+    const { publish_verified_parses: _preference, ...legacy } = account;
+    expect(parseAccount(legacy).publish_verified_parses).toBe(false);
   });
 
   it("validates a bounded browser session", () => {
