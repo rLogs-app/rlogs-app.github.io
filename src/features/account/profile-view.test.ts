@@ -497,6 +497,22 @@ describe("profile combat-stat snapshots", () => {
     expect(values["11440"]).toBe(4_825);
     expect(values["11330"]).toBe(5_933);
   });
+
+  it("materializes omitted protocol-default Block as an observed zero", () => {
+    const values = profileBaseCombatStatValues({
+      combat_stats: {
+        schema_version: 1,
+        snapshot_values: { "11320": 319_935 },
+      },
+    });
+
+    expect(values["11970"]).toBe(0);
+    const block = mainCombatStatFamilies(
+      resolveCombatStatFamilies(values, allTreesCatalog),
+      allTreesCatalog,
+    ).find((family) => family.name === "Block");
+    expect(block?.components[0]?.value).toBe(0);
+  });
 });
 
 describe("equipment quality presentation", () => {

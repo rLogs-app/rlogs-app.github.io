@@ -342,6 +342,9 @@ export function mainCombatStatFamilies(
 export function profileBaseCombatStatValues(body: Record<string, JsonValue>): JsonRecord {
   const combatStats = recordValue(body.combat_stats);
   const values = { ...(recordValue(combatStats?.snapshot_values) ?? {}) };
+  // BPSR omits scalar protocol-default values from an otherwise valid sheet.
+  // Block's exact omitted value is therefore zero, not an unknown observation.
+  if (!("11970" in values)) values["11970"] = 0;
   const seasonStrength = numericValue(body.season_strength);
   if (seasonStrength != null) values["11440"] = seasonStrength;
   return values;
@@ -406,24 +409,36 @@ function equipmentSection(body: JsonRecord): HTMLElement {
     if (qualityToken) card.dataset.quality = qualityToken;
     appendPresentationIcon(card, localized?.icon, localized?.name ?? slotName, "profile-item-icon");
     const copy = element("div", "profile-equipment-copy");
+    const itemName = localized?.name ?? `Unknown equipment ${displayValue(item.item_id)}`;
+    const itemNameNode = element("strong", "profile-equipment-name", itemName);
+    itemNameNode.title = itemName;
+    const facts = element("div", "profile-equipment-facts");
+    const itemLevel = resolveEquipmentItemLevel(item, localized);
+    const refinementLevel = numericValue(item.refinement_level);
+    const factValues = [
+      itemLevel == null ? "" : `Item level ${formatReadableNumber(itemLevel)}`,
+      qualityLabel(equipmentQuality),
+      refinementLevel == null ? "" : `Refinement +${formatReadableNumber(refinementLevel)}`,
+    ].filter(Boolean);
+    for (const fact of factValues) {
+      facts.append(element("span", "profile-equipment-fact", fact));
+    }
     copy.append(
       element("small", "profile-item-kicker", slotName),
-      element("strong", "", localized?.name ?? `Unknown equipment ${displayValue(item.item_id)}`),
-      element("small", "", joinFacts([
-        pair("Item level", resolveEquipmentItemLevel(item, localized)),
-        qualityLabel(equipmentQuality),
-        pair("Refinement +", item.refinement_level),
-      ])),
+      itemNameNode,
+      facts,
     );
-    card.append(copy);
     const enchantments = arrayValue(item.enchantments);
     if (equipmentAttributeList(item) || enchantments.length || setEffects.length) {
-      card.append(profileDetailButton(
+      const details = profileDetailButton(
         "View details",
         localized?.name ?? slotName,
         () => equipmentDetailPanel(item, setEffects, enchantments),
-      ));
+      );
+      details.classList.add("profile-equipment-detail-trigger");
+      copy.append(details);
     }
+    card.append(copy);
     grid.append(card);
   }
   section.append(items.length ? grid : empty("No equipment was present in the latest synced snapshot."));
