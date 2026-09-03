@@ -298,6 +298,160 @@ a.home-feed-row:focus-visible {
   font-size: 12px;
 }
 
+.community-photo-panel {
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.community-milestone-panel {
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.community-milestone-panel > .panel-heading {
+  padding: 22px;
+}
+
+.community-milestone-panel .home-feed {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 0;
+  border-top: 1px solid var(--line);
+}
+
+.milestone-feed-row:nth-child(odd) {
+  border-right: 1px solid var(--line);
+}
+
+.community-photo-panel > .panel-heading {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 22px;
+}
+
+.community-photo-panel > .panel-heading p:last-child {
+  max-width: 680px;
+  margin-bottom: 0;
+}
+
+.community-photo-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+}
+
+.community-photo-columns > section {
+  min-width: 0;
+  padding: 18px 20px 20px;
+}
+
+.community-photo-columns > section + section {
+  border-left: 1px solid var(--line);
+}
+
+.community-photo-columns h3 {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.community-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.community-photo-grid > .empty-state {
+  grid-column: 1 / -1;
+}
+
+.community-photo-card {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.community-photo-link {
+  display: block;
+  overflow: hidden;
+  background: #050a11;
+}
+
+.community-photo-link img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  transition: transform 160ms ease;
+}
+
+.community-photo-link:hover img,
+.community-photo-link:focus-visible img {
+  transform: scale(1.025);
+}
+
+.community-photo-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 11px;
+}
+
+.community-photo-meta > span {
+  min-width: 0;
+}
+
+.community-photo-meta strong,
+.community-photo-meta small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.community-photo-meta strong {
+  font-size: 13px;
+}
+
+.community-photo-meta small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.photo-like-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  align-items: center;
+  min-width: 48px;
+  min-height: 32px;
+  padding: 6px 9px;
+  color: var(--muted);
+  background: #09111d;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.photo-like-button:hover,
+.photo-like-button:focus-visible,
+.photo-like-button.is-liked {
+  color: #ff7188;
+  border-color: rgb(255 113 136 / 65%);
+}
+
+.photo-like-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .ranking-panel {
   overflow: hidden;
 }
@@ -4247,9 +4401,15 @@ footer p {
   }
 
   .home-activity-grid,
+  .community-photo-columns,
   .lab-grid,
   .optimizer-layout {
     grid-template-columns: 1fr;
+  }
+
+  .community-photo-columns > section + section {
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 
   .profile-stat-grid {
@@ -4310,6 +4470,15 @@ footer p {
   .build-chip,
   .header-download {
     display: none;
+  }
+
+  .community-photo-grid,
+  .community-milestone-panel .home-feed {
+    grid-template-columns: 1fr;
+  }
+
+  .milestone-feed-row:nth-child(odd) {
+    border-right: 0;
   }
 
   .section-heading {

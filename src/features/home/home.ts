@@ -7,8 +7,19 @@ import {
   isPublicProfileCatalog,
   type PublicProfileCatalog,
 } from "../../contracts/public-profiles";
+import {
+  isPublicPhotoCatalog,
+  type PublicPhotoCatalog,
+  type PublicPhotoCatalogEntry,
+} from "../../contracts/public-photos";
+import {
+  isPublicCommunityMilestoneCatalog,
+  type PublicCommunityMilestone,
+  type PublicCommunityMilestoneCatalog,
+} from "../../contracts/public-activity";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
+const sessionKey = "rlogs.web-session.v1";
 
 export interface SceneRanking {
   key: string;
@@ -21,16 +32,28 @@ export async function mountHome(): Promise<void> {
   const recent = required("home-recent-parses");
   const profiles = required("home-latest-profiles");
   const rankings = required("home-rankings");
+  const newestPhotos = required("home-newest-photos");
+  const popularPhotos = required("home-popular-photos");
+  const milestones = required("home-milestones");
   if (!apiBase) {
     setUnavailable("home-parse-status", recent, "Recent submissions are available on the published site.");
     setUnavailable("home-profile-status", profiles, "Recently seen players are available on the published site.");
     setUnavailable("home-ranking-status", rankings, "Scene rankings are available on the published site.");
+    setUnavailable("home-photo-status", newestPhotos, "Community photos are available on the published site.");
+    popularPhotos.innerHTML = '<p class="empty-state">Popular photos are available on the published site.</p>';
+    setUnavailable("home-milestone-status", milestones, "First-clear milestones are available on the published site.");
     return;
   }
 
-  const [parseResult, profileResult] = await Promise.allSettled([
+  const authorization = activeAccessToken();
+  const photoHeaders = new Headers({ Accept: "application/json" });
+  if (authorization) photoHeaders.set("Authorization", `Bearer ${authorization}`);
+  const [parseResult, profileResult, newestPhotoResult, popularPhotoResult, milestoneResult] = await Promise.allSettled([
     fetchTyped(`${apiBase}/v1/parses?limit=250`, isPublicParseCatalog),
     fetchTyped(`${apiBase}/v1/profiles`, isPublicProfileCatalog),
+    fetchTyped(`${apiBase}/v1/photos?sort=newest&limit=4`, isPublicPhotoCatalog, photoHeaders),
+    fetchTyped(`${apiBase}/v1/photos?sort=popular&limit=4`, isPublicPhotoCatalog, photoHeaders),
+    fetchTyped(`${apiBase}/v1/activity/milestones?limit=10`, isPublicCommunityMilestoneCatalog),
   ]);
 
   if (parseResult.status === "fulfilled") {
@@ -45,6 +68,24 @@ export async function mountHome(): Promise<void> {
     renderLatestProfiles(profileResult.value, profiles);
   } else {
     setUnavailable("home-profile-status", profiles, "Recently seen players are temporarily unavailable.");
+  }
+
+  if (newestPhotoResult.status === "fulfilled" && popularPhotoResult.status === "fulfilled") {
+    renderPhotoCatalog(newestPhotoResult.value, newestPhotos);
+    renderPhotoCatalog(popularPhotoResult.value, popularPhotos);
+    const status = required("home-photo-status");
+    status.textContent = `${newestPhotoResult.value.total_entries.toLocaleString()} photos`;
+    status.className = "status-chip success";
+    bindPhotoLikes();
+  } else {
+    setUnavailable("home-photo-status", newestPhotos, "Community photos are temporarily unavailable.");
+    popularPhotos.innerHTML = '<p class="empty-state">Popular photos are temporarily unavailable.</p>';
+  }
+
+  if (milestoneResult.status === "fulfilled") {
+    renderMilestones(milestoneResult.value, milestones);
+  } else {
+    setUnavailable("home-milestone-status", milestones, "First-clear milestones are temporarily unavailable.");
   }
 }
 
@@ -148,8 +189,134 @@ function stimenFloor(entry: PublicParseCatalogEntry): number {
   return entry.difficulty_tier ?? 0;
 }
 
-async function fetchTyped<T>(url: string, guard: (value: unknown) => value is T): Promise<T> {
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+function renderPhotoCatalog(catalog: PublicPhotoCatalog, target: HTMLElement): void {
+  target.innerHTML = catalog.entries.length
+    ? catalog.entries.map(photoCard).join("")
+    : '<p class="empty-state">No Photo Wall images have been published yet.</p>';
+}
+
+function photoCard(entry: PublicPhotoCatalogEntry): string {
+  const name = entry.display_name ?? `UID ${entry.character_id}`;
+  const identity = `${entry.profile_id}:${entry.photo_id}`;
+  return `<article class="community-photo-card"><a class="community-photo-link" href="/profiles/${encodeURIComponent(entry.character_id)}/" aria-label="Open ${escapeHtml(name)}'s profile"><img src="${escapeHtml(`${apiBase}${entry.image_path}`)}" alt="Photo Wall image from ${escapeHtml(name)}" loading="lazy" decoding="async" /></a><div class="community-photo-meta"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(relativeTime(entry.uploaded_unix_millis))}</small></span><button class="photo-like-button${entry.viewer_liked ? " is-liked" : ""}" type="button" data-photo-like="${escapeHtml(identity)}" data-profile-id="${escapeHtml(entry.profile_id)}" data-photo-id="${entry.photo_id}" aria-pressed="${entry.viewer_liked}" title="${entry.viewer_liked ? "Remove like" : "Like this photo"}"><span aria-hidden="true">♥</span><span data-like-count>${entry.like_count.toLocaleString()}</span></button></div></article>`;
+}
+
+function renderMilestones(
+  catalog: PublicCommunityMilestoneCatalog,
+  target: HTMLElement,
+): void {
+  const status = required("home-milestone-status");
+  status.textContent = catalog.total_entries
+    ? `${catalog.total_entries.toLocaleString()} first clears`
+    : "Waiting for a first clear";
+  status.className = catalog.total_entries ? "status-chip success" : "status-chip neutral";
+  target.innerHTML = catalog.entries.length
+    ? catalog.entries.map(milestoneRow).join("")
+    : '<p class="empty-state">Verified first-time M20 dungeon and Nightmare raid clears will appear here.</p>';
+}
+
+function milestoneRow(entry: PublicCommunityMilestone): string {
+  const player = entry.display_name ?? `UID ${entry.character_id}`;
+  const activity = entry.scene_name ?? `Scene ${entry.scene_id ?? "unknown"}`;
+  const achievement =
+    entry.kind === "master_twenty_dungeon"
+      ? `first M${entry.difficulty_tier ?? 20} clear`
+      : "first Nightmare clear";
+  return `<a class="home-feed-row milestone-feed-row" href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span><strong>${escapeHtml(player)}</strong><small>${escapeHtml(`${activity} · ${achievement}`)}</small></span><span><small>${escapeHtml(relativeTime(entry.completed_unix_millis))}</small><strong>${formatDuration(entry.total_run_time_micros)}</strong></span></a>`;
+}
+
+function bindPhotoLikes(): void {
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-photo-like]")) {
+    button.addEventListener("click", () => void togglePhotoLike(button));
+  }
+}
+
+async function togglePhotoLike(button: HTMLButtonElement): Promise<void> {
+  const token = activeAccessToken();
+  if (!token) {
+    window.location.assign("/account/");
+    return;
+  }
+  const profileId = button.dataset.profileId;
+  const photoId = Number(button.dataset.photoId);
+  if (!profileId || !Number.isSafeInteger(photoId) || photoId <= 0) return;
+  const liked = button.getAttribute("aria-pressed") === "true";
+  button.disabled = true;
+  try {
+    const response = await fetch(
+      `${apiBase}/v1/profiles/${encodeURIComponent(profileId)}/photo-wall/${photoId}/like`,
+      {
+        method: liked ? "DELETE" : "PUT",
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+      },
+    );
+    if (response.status === 401) {
+      localStorage.removeItem(sessionKey);
+      window.dispatchEvent(new Event("rlogs:session-changed"));
+      window.location.assign("/account/");
+      return;
+    }
+    if (!response.ok) throw new Error(`Like request failed (${response.status}).`);
+    const receipt = parseLikeReceipt(await response.json());
+    for (const match of document.querySelectorAll<HTMLButtonElement>(
+      `[data-photo-like="${CSS.escape(`${profileId}:${photoId}`)}"]`,
+    )) {
+      match.setAttribute("aria-pressed", String(receipt.liked));
+      match.classList.toggle("is-liked", receipt.liked);
+      match.title = receipt.liked ? "Remove like" : "Like this photo";
+      const count = match.querySelector<HTMLElement>("[data-like-count]");
+      if (count) count.textContent = receipt.like_count.toLocaleString();
+    }
+  } catch {
+    button.title = "Could not update this like. Try again.";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function parseLikeReceipt(value: unknown): { liked: boolean; like_count: number } {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("liked" in value) ||
+    typeof value.liked !== "boolean" ||
+    !("like_count" in value) ||
+    typeof value.like_count !== "number" ||
+    !Number.isSafeInteger(value.like_count) ||
+    value.like_count < 0
+  ) {
+    throw new Error("The server returned an unsupported like receipt.");
+  }
+  return { liked: value.liked, like_count: value.like_count };
+}
+
+function activeAccessToken(): string | null {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(sessionKey) ?? "null");
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "access_token" in value &&
+      typeof value.access_token === "string" &&
+      value.access_token.startsWith("rlw_") &&
+      "expires_unix_millis" in value &&
+      typeof value.expires_unix_millis === "number" &&
+      value.expires_unix_millis > Date.now()
+    ) {
+      return value.access_token;
+    }
+  } catch {
+    // A malformed session is treated as signed out.
+  }
+  return null;
+}
+
+async function fetchTyped<T>(
+  url: string,
+  guard: (value: unknown) => value is T,
+  headers: HeadersInit = { Accept: "application/json" },
+): Promise<T> {
+  const response = await fetch(url, { headers });
   if (!response.ok) throw new Error(`Request failed (${response.status}).`);
   const value: unknown = await response.json();
   if (!guard(value)) throw new Error("The server returned an unsupported public contract.");
