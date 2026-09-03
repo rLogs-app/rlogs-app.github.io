@@ -211,6 +211,10 @@ function createProfileDetailModal(characterName: string, characterId: string): P
         "profile-detail-modal-panel--talent",
         detail.classList.contains("profile-talent-panel"),
       );
+      panel.classList.toggle(
+        "profile-detail-modal-panel--attributes",
+        detail.classList.contains("profile-combat-attributes-detail"),
+      );
       content.replaceChildren(detail);
       host.hidden = false;
       document.body.classList.add("profile-modal-open");
@@ -266,20 +270,6 @@ const combatStatComponentOrder: CombatStatComponent[] = [
   "extra_percent",
 ];
 
-const mainCombatStatFamilyIds = [
-  11_320, // Max HP
-  11_330, // ATK
-  11_030, // Agility
-  11_040, // Endurance
-  11_440, // Illusion-Breaking Strength
-  11_710, // Crit %
-  11_930, // Haste %
-  11_780, // Luck %
-  11_940, // Mastery %
-  11_950, // Versatility %
-  11_970, // Block %
-] as const;
-
 export function resolveCombatStatFamilies(
   snapshotValues: Record<string, JsonValue>,
   catalog: ProfilePresentationCatalog,
@@ -329,15 +319,47 @@ export function resolveCombatStatFamilies(
 export function mainCombatStatFamilies(
   families: CombatStatFamilyView[],
   catalog: ProfilePresentationCatalog,
+  classId: number | null | undefined,
 ): CombatStatFamilyView[] {
   const byFamilyId = new Map(families.map((family) => [family.familyId, family]));
-  return mainCombatStatFamilyIds.map((familyId) =>
-    byFamilyId.get(familyId) ?? {
+  const mainAttributeFamilyId = classId == null
+    ? undefined
+    : catalog.class_main_attribute_family_ids[String(classId)];
+  const orderedFamilyIds = [
+    11_320, // Max HP
+    11_040, // Endurance
+    mainAttributeFamilyId, // Strength, Intellect, or Agility for the current class
+    11_330, // ATK
+    11_930, // Haste %
+    11_710, // Crit %
+    11_940, // Mastery %
+    11_780, // Luck %
+    11_950, // Versatility %
+    11_970, // Block %
+    11_440, // Current season strength
+  ] as const;
+  return orderedFamilyIds.map((familyId) => {
+    if (familyId == null) {
+      return { familyId: 0, name: "Main attribute", components: [] };
+    }
+    return byFamilyId.get(familyId) ?? {
       familyId,
       name: catalog.fight_attributes[String(familyId)]?.name ?? `Stat ${familyId}`,
       components: [],
-    }
-  );
+    };
+  });
+}
+
+export function observedBaseCombatStatFamilies(
+  families: CombatStatFamilyView[],
+): CombatStatFamilyView[] {
+  return families
+    .map((family) => ({
+      ...family,
+      components: family.components.filter((component) => component.component === "final"),
+    }))
+    .filter((family) => family.components.length > 0)
+    .sort((left, right) => left.name.localeCompare(right.name) || left.familyId - right.familyId);
 }
 
 export function profileBaseCombatStatValues(body: Record<string, JsonValue>): JsonRecord {
@@ -354,7 +376,7 @@ export function profileBaseCombatStatValues(body: Record<string, JsonValue>): Js
 function combatStatsSection(body: JsonRecord): HTMLElement {
   const snapshotValues = profileBaseCombatStatValues(body);
   const families = resolveCombatStatFamilies(snapshotValues, presentation);
-  const main = mainCombatStatFamilies(families, presentation);
+  const main = mainCombatStatFamilies(families, presentation, numericValue(body.class_id));
   const section = profileSection(
     "Character stats",
     "Raw starting totals from the latest live profile sync",
@@ -364,7 +386,15 @@ function combatStatsSection(body: JsonRecord): HTMLElement {
     "profile-observation-note",
     "These are exact base values sent for the local character. Temporary combat changes appear only in the rLogs Overlay.",
   ));
-  section.append(combatStatGrid(main));
+  const grid = combatStatGrid(main);
+  const attributes = profileDetailButton(
+    "View Attributes",
+    "Character attributes",
+    () => combatAttributesDetail(families),
+  );
+  attributes.classList.add("profile-combat-stat-action");
+  grid.append(attributes);
+  section.append(grid);
   return section;
 }
 
@@ -388,6 +418,36 @@ function combatStatGrid(families: CombatStatFamilyView[]): HTMLElement {
     grid.append(card);
   }
   return grid;
+}
+
+function combatAttributesDetail(families: CombatStatFamilyView[]): HTMLElement {
+  const detail = element("div", "profile-combat-attributes-detail");
+  detail.append(element(
+    "p",
+    "profile-detail-intro",
+    "All observed base attributes from the latest live profile sync. Temporary combat changes are excluded.",
+  ));
+  const observed = observedBaseCombatStatFamilies(families);
+  if (!observed.length) {
+    detail.append(element("p", "profile-empty-state", "No base attributes were observed in this profile sync."));
+    return detail;
+  }
+  const grid = element("div", "profile-combat-attributes-grid");
+  for (const family of observed) {
+    const final = family.components[0];
+    const row = element("article", "profile-combat-attribute-row");
+    row.append(
+      element("span", "profile-combat-attribute-name", family.name),
+      element(
+        "strong",
+        "profile-combat-attribute-value",
+        formatFightAttributeValue(final.value, final.numberType, final.formatType),
+      ),
+    );
+    grid.append(row);
+  }
+  detail.append(grid);
+  return detail;
 }
 
 function equipmentSection(body: JsonRecord): HTMLElement {

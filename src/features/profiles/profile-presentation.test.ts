@@ -205,6 +205,7 @@ describe("BPSR profile presentation catalog", () => {
     delete legacyCatalog.reputations;
     delete legacyCatalog.talent_tree_index;
     delete legacyCatalog.equipment_sets;
+    delete legacyCatalog.class_main_attribute_family_ids;
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.sigils).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.achievements).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.medals).toEqual({});
@@ -212,6 +213,7 @@ describe("BPSR profile presentation catalog", () => {
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.reputations).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.talent_tree_index).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.equipment_sets).toEqual({});
+    expect(normalizeProfilePresentationCatalog(legacyCatalog)?.class_main_attribute_family_ids).toEqual({});
     expect(normalizeProfilePresentationCatalog({ sigils: {} })).toBeUndefined();
   });
 });

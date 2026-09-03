@@ -127,12 +127,14 @@ export interface ProfilePresentationCatalog {
   source_buff_table_sha256?: string;
   source_auxiliary_action_presentation_sha256?: string;
   source_auxiliary_action_identity_proof_sha256?: string;
+  source_class_main_attribute_presentation_sha256?: string;
   equipment_slots: Record<string, string>;
   quality_names: Record<string, string>;
   role_imagine_tier_policy?: RoleImagineTierPolicy;
   equipment_attributes: Record<string, PresentationRecord>;
   equipment_sets: Record<string, EquipmentSetPresentation>;
   fight_attributes: Record<string, FightAttributePresentation>;
+  class_main_attribute_family_ids: Record<string, number>;
   items: Record<string, PresentationRecord>;
   sigils: Record<string, SigilLevelPresentation[]>;
   titles: Record<string, PresentationRecord>;
@@ -152,7 +154,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=23`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=24`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -214,6 +216,9 @@ export function normalizeProfilePresentationCatalog(
       : {},
     fight_attributes: isRecord(value.fight_attributes)
       ? (value.fight_attributes as ProfilePresentationCatalog["fight_attributes"])
+      : {},
+    class_main_attribute_family_ids: isRecord(value.class_main_attribute_family_ids)
+      ? (value.class_main_attribute_family_ids as ProfilePresentationCatalog["class_main_attribute_family_ids"])
       : {},
     equipment_sets: isRecord(value.equipment_sets)
       ? (value.equipment_sets as ProfilePresentationCatalog["equipment_sets"])

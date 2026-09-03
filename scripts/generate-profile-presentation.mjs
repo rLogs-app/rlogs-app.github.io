@@ -58,6 +58,16 @@ const fightAttributePresentationPath = path.join(
   "runtime/fight-attribute-presentation.v1.json",
 );
 const fightAttributePresentation = readJson(fightAttributePresentationPath);
+const classLocalizationPath = path.join(
+  gameDataRoot,
+  "runtime/class-localization.v1.json",
+);
+const classLocalization = readJson(classLocalizationPath);
+const classMainAttributePresentationPath = path.join(
+  gameDataRoot,
+  "runtime/class-main-attribute-presentation.v1.json",
+);
+const classMainAttributePresentation = readJson(classMainAttributePresentationPath);
 const auxiliaryActionPresentationPath = path.join(
   gameDataRoot,
   "runtime/auxiliary-action-presentation.v1.json",
@@ -134,6 +144,23 @@ if (
 ) {
   throw new Error("The canonical BPSR Fight Attribute presentation catalog is invalid or stale.");
 }
+const fightAttributePresentationSha256 = createHash("sha256")
+  .update(readFileSync(fightAttributePresentationPath))
+  .digest("hex");
+const classLocalizationSha256 = createHash("sha256")
+  .update(readFileSync(classLocalizationPath))
+  .digest("hex");
+if (
+  classMainAttributePresentation.schema_version !== 1
+  || classMainAttributePresentation.game_build !== String(sourceBuildId)
+  || classMainAttributePresentation.locale !== "en-US"
+  || classMainAttributePresentation.source_fight_attr_table_sha256 !== fightAttributeSourceSha256
+  || classMainAttributePresentation.source_fight_attribute_presentation_sha256 !== fightAttributePresentationSha256
+  || classMainAttributePresentation.source_class_localization_sha256 !== classLocalizationSha256
+  || !Array.isArray(classMainAttributePresentation.classes)
+) {
+  throw new Error("The class main-attribute presentation catalog is invalid or stale.");
+}
 const fightAttributeByMemberId = new Map();
 for (const row of Object.values(fightAttributesTable)) {
   for (const member of [
@@ -160,6 +187,23 @@ const fightAttributes = Object.fromEntries(
     displayable: attribute.displayable,
   }]),
 );
+const localizedClassNames = new Map(
+  (classLocalization.classes ?? []).map((entry) => [entry.class_id, entry.names?.["en-US"]]),
+);
+const classMainAttributeFamilyIds = {};
+for (const entry of classMainAttributePresentation.classes) {
+  const attribute = fightAttributes[String(entry.main_attribute_family_id)];
+  if (
+    !Number.isInteger(entry.class_id)
+    || !Number.isInteger(entry.main_attribute_family_id)
+    || localizedClassNames.get(entry.class_id) !== entry.class_name
+    || attribute?.component !== "final"
+    || attribute.name !== entry.main_attribute_name
+  ) {
+    throw new Error(`Invalid main-attribute mapping for class ${entry.class_id}.`);
+  }
+  classMainAttributeFamilyIds[String(entry.class_id)] = entry.main_attribute_family_id;
+}
 const equipmentAttributeRows = [
   ...Object.values(equipmentAttributesTable),
   ...Object.values(equipmentSchoolAttributesTable),
@@ -465,6 +509,14 @@ const indexedTalentNodeIds = new Set(Object.values(talentTreeIndex).flatMap((tre
   ...tree.foundation_node_ids,
   ...tree.specializations.flatMap((specialization) => specialization.node_ids),
 ]));
+const indexedProfessionIds = Object.keys(talentTreeIndex).sort((left, right) => Number(left) - Number(right));
+const mappedProfessionIds = Object.keys(classMainAttributeFamilyIds).sort((left, right) => Number(left) - Number(right));
+if (JSON.stringify(indexedProfessionIds) !== JSON.stringify(mappedProfessionIds)) {
+  throw new Error(
+    `Class main-attribute mappings do not match the complete talent professions: ` +
+    `${mappedProfessionIds.join(",")} versus ${indexedProfessionIds.join(",")}.`,
+  );
+}
 for (const [nodeId, node] of Object.entries(talentNodes)) {
   const talent = talents[String(node.talent_id)];
   if (!indexedTalentNodeIds.has(Number(nodeId))) {
@@ -664,6 +716,9 @@ const catalog = {
   source_auxiliary_action_identity_proof_sha256: createHash("sha256")
     .update(readFileSync(auxiliaryActionIdentityProofPath))
     .digest("hex"),
+  source_class_main_attribute_presentation_sha256: createHash("sha256")
+    .update(readFileSync(classMainAttributePresentationPath))
+    .digest("hex"),
   equipment_slots: {
     "200": "Weapon", "201": "Headwear", "202": "Armor", "203": "Gloves",
     "204": "Shoes", "205": "Earrings", "206": "Necklace", "207": "Ring",
@@ -687,6 +742,7 @@ const catalog = {
   equipment_attributes: equipmentAttributes,
   equipment_sets: equipmentSets,
   fight_attributes: fightAttributes,
+  class_main_attribute_family_ids: classMainAttributeFamilyIds,
   items,
   sigils,
   titles,

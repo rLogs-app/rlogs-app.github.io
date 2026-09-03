@@ -18,6 +18,7 @@ import {
   mainCombatStatFamilies,
   materializeEquipmentBuffDescription,
   masterDungeonRows,
+  observedBaseCombatStatFamilies,
   orderedMedalEntries,
   profileBaseCombatStatValues,
   profileCollectionSummary,
@@ -556,21 +557,21 @@ describe("profile combat-stat snapshots", () => {
       "11330": 5_817,
       "11970": 0,
     }, allTreesCatalog);
-    const main = mainCombatStatFamilies(observed, allTreesCatalog);
+    const main = mainCombatStatFamilies(observed, allTreesCatalog, 11);
 
     expect(main).toHaveLength(11);
     expect(main.map((family) => family.name)).toEqual([
       "Max HP",
-      "ATK",
-      "Agility",
       "Endurance",
-      "Illusion-Breaking Strength",
-      "Crit",
+      "Agility",
+      "ATK",
       "Haste",
-      "Luck",
+      "Crit",
       "Mastery",
+      "Luck",
       "Versatility",
       "Block",
+      "Illusion-Breaking Strength",
     ]);
     expect(main.find((family) => family.name === "Max HP")?.components[0]?.value).toBe(293_290);
     expect(main.find((family) => family.name === "Block")?.components[0]?.value).toBe(0);
@@ -602,8 +603,68 @@ describe("profile combat-stat snapshots", () => {
     const block = mainCombatStatFamilies(
       resolveCombatStatFamilies(values, allTreesCatalog),
       allTreesCatalog,
+      11,
     ).find((family) => family.name === "Block");
     expect(block?.components[0]?.value).toBe(0);
+  });
+
+  it("selects the game-defined main attribute for every complete class", () => {
+    const families = resolveCombatStatFamilies({
+      "11010": 100,
+      "11020": 200,
+      "11030": 300,
+    }, allTreesCatalog);
+    const expected = new Map([
+      [1, "Agility"],
+      [2, "Intellect"],
+      [3, "Strength"],
+      [4, "Strength"],
+      [5, "Intellect"],
+      [9, "Strength"],
+      [11, "Agility"],
+      [12, "Strength"],
+      [13, "Intellect"],
+    ]);
+
+    expect(allTreesCatalog.class_main_attribute_family_ids).toEqual({
+      "1": 11030,
+      "2": 11020,
+      "3": 11010,
+      "4": 11010,
+      "5": 11020,
+      "9": 11010,
+      "11": 11030,
+      "12": 11010,
+      "13": 11020,
+    });
+    for (const [classId, name] of expected) {
+      expect(mainCombatStatFamilies(families, allTreesCatalog, classId)[2]?.name).toBe(name);
+    }
+    expect(mainCombatStatFamilies(families, allTreesCatalog, 999)[2]).toMatchObject({
+      familyId: 0,
+      name: "Main attribute",
+      components: [],
+    });
+  });
+
+  it("lists only observed final base totals in the attributes view, including zero", () => {
+    const families = resolveCombatStatFamilies({
+      "11320": 319_935,
+      "11321": 310_000,
+      "11970": 0,
+      "11972": 200,
+    }, allTreesCatalog);
+
+    expect(observedBaseCombatStatFamilies(families)).toEqual([
+      expect.objectContaining({
+        name: "Block",
+        components: [expect.objectContaining({ component: "final", value: 0 })],
+      }),
+      expect.objectContaining({
+        name: "Max HP",
+        components: [expect.objectContaining({ component: "final", value: 319_935 })],
+      }),
+    ]);
   });
 });
 

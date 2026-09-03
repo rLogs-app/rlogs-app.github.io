@@ -2993,6 +2993,10 @@ footer {
   overflow: hidden;
 }
 
+.profile-detail-modal-panel--attributes {
+  width: min(920px, 100%);
+}
+
 .profile-detail-modal-panel--talent .profile-detail-modal-content {
   overflow: hidden;
 }
@@ -3232,7 +3236,7 @@ footer {
 
 .profile-combat-stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 12px;
 }
@@ -3265,6 +3269,53 @@ footer {
   color: var(--text);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.profile-combat-stat-action {
+  min-height: 68px;
+  margin: 0;
+  padding: 12px;
+  border-color: rgb(73 120 155 / 82%);
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.profile-combat-attributes-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.profile-combat-attributes-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.profile-combat-attribute-row {
+  display: flex;
+  min-width: 0;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(4 10 18 / 62%);
+}
+
+.profile-combat-attribute-name {
+  min-width: 0;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.profile-combat-attribute-value {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .profile-combat-stat-breakdown {
@@ -4866,6 +4917,24 @@ footer p {
   .profile-detail-modal-content .profile-combat-stat-grid,
   .profile-detail-modal-content .profile-medal-list {
     grid-template-columns: 1fr;
+  }
+
+  .profile-detail-modal-panel--attributes .profile-detail-modal-content {
+    padding: 10px;
+  }
+
+  .profile-combat-attributes-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .profile-combat-attribute-row {
+    min-height: 54px;
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 8px 9px;
   }
 
   .account-sync-steps {
