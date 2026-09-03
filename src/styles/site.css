@@ -666,11 +666,21 @@ h3 {
 
 .parse-detail-modal {
   position: fixed;
-  inset: 0;
+  inset: auto;
+  top: var(--rlogs-visual-viewport-top, 0px);
+  left: var(--rlogs-visual-viewport-left, 0px);
   z-index: 1000;
   display: grid;
+  box-sizing: border-box;
+  width: var(--rlogs-visual-viewport-width, 100vw);
+  height: var(--rlogs-visual-viewport-height, 100dvh);
   place-items: center;
-  padding: clamp(10px, 2vw, 28px);
+  padding:
+    max(clamp(10px, 2vw, 28px), env(safe-area-inset-top, 0px))
+    max(clamp(10px, 2vw, 28px), env(safe-area-inset-right, 0px))
+    max(clamp(10px, 2vw, 28px), env(safe-area-inset-bottom, 0px))
+    max(clamp(10px, 2vw, 28px), env(safe-area-inset-left, 0px));
+  overflow: hidden;
   background: rgb(2 5 10 / 78%);
   backdrop-filter: blur(10px);
 }
@@ -678,7 +688,7 @@ h3 {
 .parse-detail-modal-panel {
   position: relative;
   width: min(1480px, 100%);
-  max-height: calc(100vh - clamp(20px, 4vw, 56px));
+  max-height: 100%;
   overflow: auto;
   border: 1px solid var(--line-bright);
   border-radius: 18px;
@@ -2793,18 +2803,28 @@ footer {
 
 .profile-detail-modal {
   position: fixed;
-  inset: 0;
+  inset: auto;
+  top: var(--rlogs-visual-viewport-top, 0px);
+  left: var(--rlogs-visual-viewport-left, 0px);
   z-index: 1100;
   display: grid;
+  box-sizing: border-box;
+  width: var(--rlogs-visual-viewport-width, 100vw);
+  height: var(--rlogs-visual-viewport-height, 100dvh);
   place-items: center;
-  padding: clamp(10px, 2vw, 28px);
+  padding:
+    max(clamp(10px, 2vw, 28px), env(safe-area-inset-top, 0px))
+    max(clamp(10px, 2vw, 28px), env(safe-area-inset-right, 0px))
+    max(clamp(10px, 2vw, 28px), env(safe-area-inset-bottom, 0px))
+    max(clamp(10px, 2vw, 28px), env(safe-area-inset-left, 0px));
+  overflow: hidden;
   background: rgb(2 5 10 / 82%);
   backdrop-filter: blur(10px);
 }
 
 .profile-detail-modal-panel {
   width: min(1180px, 100%);
-  max-height: calc(100vh - clamp(20px, 4vw, 56px));
+  max-height: 100%;
   overflow: auto;
   border: 1px solid var(--line-bright);
   border-radius: 18px;
@@ -3804,9 +3824,16 @@ footer {
 }
 
 @media (max-width: 760px) {
+  .profile-detail-modal-panel--talent {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+  }
+
   .profile-detail-modal-panel--talent .profile-detail-modal-content {
     box-sizing: border-box;
-    height: calc(100dvh - 66px);
+    min-height: 0;
+    height: auto;
   }
 
   .profile-talent-panel,
@@ -4513,12 +4540,19 @@ footer p {
     padding: 14px;
   }
 
+  .parse-detail-modal,
   .profile-detail-modal {
-    padding: 6px;
+    align-items: start;
+    padding:
+      max(6px, env(safe-area-inset-top, 0px))
+      max(6px, env(safe-area-inset-right, 0px))
+      max(6px, env(safe-area-inset-bottom, 0px))
+      max(6px, env(safe-area-inset-left, 0px));
   }
 
+  .parse-detail-modal-panel,
   .profile-detail-modal-panel {
-    max-height: calc(100vh - 12px);
+    max-height: 100%;
     border-radius: 12px;
   }
 
@@ -4532,8 +4566,8 @@ footer p {
   }
 
   .profile-detail-modal-panel--equipment {
-    width: calc(100vw - 12px);
-    max-height: calc(100dvh - 12px);
+    width: 100%;
+    max-height: 100%;
   }
 
   .profile-detail-modal-panel--equipment .profile-detail-modal-heading {

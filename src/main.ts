@@ -1,6 +1,8 @@
 import "./styles/site.css";
+import { mountModalViewport } from "./modal-viewport";
 import { mountSiteNavigation } from "./site-navigation";
 
+mountModalViewport();
 const page = mountSiteNavigation();
 
 if (page === "home") {
