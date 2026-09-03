@@ -3289,6 +3289,11 @@ footer {
   font-size: 12px;
 }
 
+.profile-item-card .profile-equipment-fact {
+  padding-inline: 4px;
+  font-size: 9px;
+}
+
 .profile-item-icon {
   width: 100%;
   aspect-ratio: 1;
