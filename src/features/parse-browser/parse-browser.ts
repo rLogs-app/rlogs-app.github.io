@@ -534,12 +534,14 @@ function renderSkillCard(
   actorIndex: number,
   presentation?: ParsePresentationCatalog,
 ): string {
-  const abilities = [...(actor.abilities ?? [])].filter((ability) => ability.damage > 0).sort((left, right) => right.damage - left.damage);
+  const allAbilities = [...(actor.abilities ?? [])];
+  const castContext = skillCastContext(allAbilities);
+  const abilities = allAbilities.filter((ability) => ability.damage > 0).sort((left, right) => right.damage - left.damage);
   const total = abilities.reduce((sum, ability) => sum + ability.damage, 0);
   const visible = abilities.slice(0, 7).map((ability) => ({
     name: localizedActionName(presentation, ability.ability_id, ability.presentation_name),
     damage: ability.damage,
-    casts: ability.casts,
+    castLabel: skillCastLabel(ability, castContext),
     hits: ability.hits,
     criticalHits: ability.critical_hits,
     isOther: false,
@@ -549,7 +551,7 @@ function renderSkillCard(
     visible.push({
       name: `Other (${other.length})`,
       damage: other.reduce((sum, ability) => sum + ability.damage, 0),
-      casts: other.reduce((sum, ability) => sum + ability.casts, 0),
+      castLabel: groupedSkillCastLabel(other, castContext),
       hits: other.reduce((sum, ability) => sum + ability.hits, 0),
       criticalHits: other.reduce((sum, ability) => sum + ability.critical_hits, 0),
       isOther: true,
@@ -567,10 +569,10 @@ function renderSkillCard(
       const criticalRate = ability.hits > 0 ? (ability.criticalHits / ability.hits) * 100 : 0;
       if (ability.isOther) {
         const actorName = participantName(actor);
-        const details = renderOtherSkillDetails(actor, other, total, presentation);
-        return `<li class="parse-skill-other-row"><button class="parse-skill-other-trigger" type="button" data-skill-other-trigger aria-haspopup="dialog" aria-label="View ${other.length} other skill details for ${escapeHtml(actorName)}"><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${ability.casts.toLocaleString()} casts · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span><b aria-hidden="true">›</b></button><template data-skill-other-content>${details}</template></li>`;
+        const details = renderOtherSkillDetails(actor, other, total, castContext, presentation);
+        return `<li class="parse-skill-other-row"><button class="parse-skill-other-trigger" type="button" data-skill-other-trigger aria-haspopup="dialog" aria-label="View ${other.length} other skill details for ${escapeHtml(actorName)}"><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${ability.castLabel} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span><b aria-hidden="true">›</b></button><template data-skill-other-content>${details}</template></li>`;
       }
-      return `<li><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${ability.casts.toLocaleString()} casts · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
+      return `<li><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${ability.castLabel} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
     })
     .join("");
   return `<details class="parse-skill-card"${actorIndex === 0 ? " open" : ""}><summary><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span><span>${formatNumber(actor.damage)} damage</span></summary><div class="parse-skill-content"><div class="parse-skill-pie" style="--skill-pie:conic-gradient(${slices.join(",")})" role="img" aria-label="Skill damage shares for ${escapeHtml(participantName(actor))}"><span>${abilities.length}<small>skills</small></span></div><ol>${rows}</ol></div></details>`;
@@ -580,6 +582,7 @@ function renderOtherSkillDetails(
   actor: AnalysisParticipant,
   abilities: NonNullable<AnalysisParticipant["abilities"]>,
   totalDamage: number,
+  castContext: SkillCastContext,
   presentation?: ParsePresentationCatalog,
 ): string {
   const groupedDamage = abilities.reduce((sum, ability) => sum + ability.damage, 0);
@@ -588,9 +591,64 @@ function renderOtherSkillDetails(
     const percent = totalDamage > 0 ? (ability.damage / totalDamage) * 100 : 0;
     const criticalRate = ability.hits > 0 ? (ability.critical_hits / ability.hits) * 100 : 0;
     const name = localizedActionName(presentation, ability.ability_id, ability.presentation_name);
-    return `<li><span class="parse-skill-drilldown-rank">${index + 8}</span><span><strong>${escapeHtml(name)}</strong><small>${ability.casts.toLocaleString()} casts · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
+    return `<li><span class="parse-skill-drilldown-rank">${index + 8}</span><span><strong>${escapeHtml(name)}</strong><small>${skillCastLabel(ability, castContext)} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
   }).join("");
   return `<article class="parse-skill-drilldown"><header><p class="eyebrow">Complete skill contribution</p><h3>Other skills · ${escapeHtml(participantName(actor))}</h3><p>${abilities.length.toLocaleString()} skills grouped in the compact chart</p></header><div class="parse-skill-drilldown-summary"><span><small>Grouped damage</small><strong>${formatNumber(groupedDamage)}</strong></span><span><small>Player share</small><strong>${groupedPercent.toFixed(1)}%</strong></span></div><ol class="parse-skill-drilldown-list">${rows}</ol></article>`;
+}
+
+interface SkillCastContext {
+  observed: boolean;
+  groupTotals: Map<string, number>;
+}
+
+function skillCastContext(
+  abilities: NonNullable<AnalysisParticipant["abilities"]>,
+): SkillCastContext {
+  const groupTotals = new Map<string, number>();
+  for (const ability of abilities) {
+    const groupId = ability.presentation_recount_group_id;
+    if (!groupId || ability.casts <= 0) continue;
+    groupTotals.set(groupId, (groupTotals.get(groupId) ?? 0) + ability.casts);
+  }
+  return {
+    observed: abilities.some((ability) => ability.casts > 0),
+    groupTotals,
+  };
+}
+
+function skillCastCount(
+  ability: NonNullable<AnalysisParticipant["abilities"]>[number],
+  context: SkillCastContext,
+): number {
+  const groupId = ability.presentation_recount_group_id;
+  return groupId ? (context.groupTotals.get(groupId) ?? 0) : ability.casts;
+}
+
+function skillCastLabel(
+  ability: NonNullable<AnalysisParticipant["abilities"]>[number],
+  context: SkillCastContext,
+): string {
+  return context.observed
+    ? `${skillCastCount(ability, context).toLocaleString()} casts`
+    : "Casts not observed";
+}
+
+function groupedSkillCastLabel(
+  abilities: NonNullable<AnalysisParticipant["abilities"]>,
+  context: SkillCastContext,
+): string {
+  if (!context.observed) return "Casts not observed";
+  const seen = new Set<string>();
+  let casts = 0;
+  for (const ability of abilities) {
+    const key = ability.presentation_recount_group_id
+      ? `group:${ability.presentation_recount_group_id}`
+      : `ability:${ability.ability_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    casts += skillCastCount(ability, context);
+  }
+  return `${casts.toLocaleString()} casts`;
 }
 
 function renderRdpsCalculations(

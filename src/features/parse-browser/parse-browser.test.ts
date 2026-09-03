@@ -76,11 +76,29 @@ describe("parse search", () => {
           presentation_name: "Falcon Strike",
           presentation_kind: "skill",
           icon_asset_path: "/assets/skills/falcon-strike.webp",
-          casts: 2,
+          presentation_recount_group_id: "falcon-strike",
+          presentation_recount_group_name: "Falcon Strike",
+          casts: 0,
           hits: 4,
           critical_hits: 1,
           damage: 600,
           effective_damage: 600,
+          healing: 0,
+          effective_healing: 0,
+          shielding: 0,
+        },
+        {
+          ability_id: "2233",
+          presentation_name: "Falcon Strike",
+          presentation_kind: "skill",
+          icon_asset_path: "/assets/skills/falcon-strike.webp",
+          presentation_recount_group_id: "falcon-strike",
+          presentation_recount_group_name: "Falcon Strike",
+          casts: 5,
+          hits: 0,
+          critical_hits: 0,
+          damage: 0,
+          effective_damage: 0,
           healing: 0,
           effective_healing: 0,
           shielding: 0,
@@ -298,6 +316,7 @@ describe("parse search", () => {
     expect(html).toContain("Run timeline");
     expect(html).toContain("Skill contribution");
     expect(html).toContain("Falcon Strike");
+    expect(html).toContain("5 casts · 4 hits");
     expect(html).toContain("Falcon Lightning Strike");
     expect(html).toContain("Other (2)");
     expect(html).toContain("data-skill-other-trigger");
@@ -312,5 +331,13 @@ describe("parse search", () => {
     expect(html).toContain("Marksman / Falconry");
     expect(html).toContain("Stormblade / Moonstrike");
     expect(html).toContain("Between encounters");
+
+    const legacyReport = structuredClone(report);
+    for (const ability of legacyReport.runs[0]!.participants[0]!.abilities ?? []) {
+      ability.casts = 0;
+    }
+    const legacyHtml = renderReport(legacyReport, 0, null, null);
+    expect(legacyHtml).toContain("Casts not observed · 4 hits");
+    expect(legacyHtml).not.toContain("0 casts · 4 hits");
   });
 });
