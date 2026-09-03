@@ -104,7 +104,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
 
   const progressionGroup = profileSectionGroup(
     "Combat progression",
-    "Season, Master Score, and activity records derived from verified profile observations.",
+    "Season, Master Score, and useful dungeon records derived from verified profile observations.",
   );
   progressionGroup.append(progressSection(body));
 
@@ -116,7 +116,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   const collectionPrimary = element("div", "profile-section-column");
   const collectionSecondary = element("div", "profile-section-column");
   collectionPrimary.append(collectionsSection(body));
-  collectionSecondary.append(achievementSection(body));
+  collectionSecondary.append(casualProgressSection(body), achievementSection(body));
   collectionSections.append(collectionPrimary, collectionSecondary);
   collectionGroup.append(collectionSections);
 
@@ -138,6 +138,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     "activity_progress",
     "combat_professions",
     "life_professions",
+    "reputations",
   ]);
   for (const [key, value] of Object.entries(body)) {
     if (!represented.has(key)) appendFact(facts, title(key), compactValue(value));
@@ -1789,6 +1790,146 @@ function achievementProgress(
   return `Progress ${progress.toLocaleString()} / ${target.toLocaleString()}`;
 }
 
+export interface LifeProfessionView {
+  professionId: number;
+  name: string;
+  icon?: string;
+  level?: number;
+  experience?: number;
+  specializationUpgrades: number;
+}
+
+export interface ReputationView {
+  reputationId: number;
+  name: string;
+  icon?: string;
+  description?: string;
+  level?: number;
+  experience?: number;
+}
+
+export function lifeProfessionViews(
+  values: JsonValue[],
+  catalog: ProfilePresentationCatalog,
+): LifeProfessionView[] {
+  return values.flatMap((value) => {
+    const profession = recordValue(value);
+    const professionId = numericValue(profession?.profession_id);
+    if (!profession || professionId == null) return [];
+    const localized = catalog.life_professions[String(professionId)];
+    const icon = safePresentationImageUrl(localized?.icon);
+    const level = numericValue(profession.level);
+    const experience = numericValue(profession.experience);
+    const specializationUpgrades = Object.values(recordValue(profession.specialization_levels) ?? {})
+      .reduce<number>((total, level) => total + Math.max(0, numericValue(level) ?? 0), 0);
+    return [{
+      professionId,
+      name: localized?.name ?? "Unlocalized life profession",
+      ...(icon ? { icon } : {}),
+      ...(level != null ? { level } : {}),
+      ...(experience != null ? { experience } : {}),
+      specializationUpgrades,
+    }];
+  }).sort((left, right) =>
+    (numericValue(catalog.life_professions[String(left.professionId)]?.sort) ?? left.professionId)
+      - (numericValue(catalog.life_professions[String(right.professionId)]?.sort) ?? right.professionId));
+}
+
+export function reputationViews(
+  values: JsonValue[],
+  catalog: ProfilePresentationCatalog,
+): ReputationView[] {
+  return values.flatMap((value) => {
+    const reputation = recordValue(value);
+    const reputationId = numericValue(reputation?.reputation_id);
+    if (!reputation || reputationId == null) return [];
+    const localized = catalog.reputations[String(reputationId)];
+    const icon = safePresentationImageUrl(localized?.icon);
+    const description = cleanGameText(localized?.description);
+    const level = numericValue(reputation.level);
+    const experience = numericValue(reputation.experience);
+    return [{
+      reputationId,
+      name: localized?.name ?? "Regional reputation",
+      ...(icon ? { icon } : {}),
+      ...(description ? { description } : {}),
+      ...(level != null ? { level } : {}),
+      ...(experience != null ? { experience } : {}),
+    }];
+  }).sort((left, right) => left.reputationId - right.reputationId);
+}
+
+function casualProgressSection(body: JsonRecord): HTMLElement {
+  const professions = lifeProfessionViews(arrayValue(body.life_professions), presentation);
+  const reputations = reputationViews(arrayValue(body.reputations), presentation);
+  const section = profileSection(
+    "Life skills & reputation",
+    "Optional progression recorded directly from the live character profile.",
+  );
+  const actions = element("div", "profile-development-actions");
+  if (professions.length) {
+    const highestLevel = Math.max(...professions.map((profession) => profession.level ?? 0));
+    actions.append(profileDetailButton(
+      `Life professions · ${professions.length} tracked · highest Lv. ${highestLevel}`,
+      "Life professions",
+      () => lifeProfessionList(professions),
+    ));
+  }
+  if (reputations.length) {
+    const first = reputations[0];
+    const label = reputations.length === 1 && first
+      ? `${first.name}${first.level == null ? "" : ` · Lv. ${first.level}`}`
+      : `Regional reputations · ${reputations.length} tracked`;
+    actions.append(profileDetailButton(label, "Regional reputation", () => reputationList(reputations)));
+  }
+  section.append(actions.childElementCount
+    ? actions
+    : empty("No life-profession or regional-reputation progress was observed."));
+  return section;
+}
+
+function lifeProfessionList(professions: LifeProfessionView[]): HTMLElement {
+  const list = element("div", "profile-development-list");
+  for (const profession of professions) {
+    const row = element("article", "profile-development-row");
+    appendPresentationIcon(row, profession.icon, profession.name, "profile-development-icon");
+    if (!profession.icon) row.classList.add("has-no-icon");
+    const copy = element("span");
+    copy.append(
+      element("strong", "", profession.name),
+      element("small", "", joinFacts([
+        profession.level == null ? "Level not observed" : `Level ${profession.level}`,
+        profession.experience == null ? "" : `${profession.experience.toLocaleString()} current XP`,
+        `${profession.specializationUpgrades.toLocaleString()} specialization upgrades`,
+      ])),
+    );
+    row.append(copy);
+    list.append(row);
+  }
+  return list;
+}
+
+function reputationList(reputations: ReputationView[]): HTMLElement {
+  const list = element("div", "profile-development-list");
+  for (const reputation of reputations) {
+    const row = element("article", "profile-development-row");
+    appendPresentationIcon(row, reputation.icon, reputation.name, "profile-development-icon");
+    if (!reputation.icon) row.classList.add("has-no-icon");
+    const copy = element("span");
+    copy.append(
+      element("strong", "", reputation.name),
+      element("small", "", joinFacts([
+        reputation.level == null ? "Level not observed" : `Level ${reputation.level}`,
+        reputation.experience == null ? "" : `${reputation.experience.toLocaleString()} current XP`,
+      ])),
+    );
+    if (reputation.description) copy.append(element("span", "", reputation.description));
+    row.append(copy);
+    list.append(row);
+  }
+  return list;
+}
+
 function cleanAchievementCategory(value: string | null | undefined): string {
   if (!value || value.length > 64 || /<br\s*\/?>/iu.test(value)) return "";
   return value;
@@ -1817,23 +1958,13 @@ export interface ProfileProgressSummary {
 
 export function profileProgressSummary(body: JsonRecord): ProfileProgressSummary {
   const activity = recordValue(body.activity_progress);
-  const weekly = recordValue(activity?.weekly_tower);
   const season = recordValue(body.season);
   const masterDungeons = arrayValue(activity?.master_mode_dungeons);
-  const masterDungeonCount = resolvedMasterDungeonCount(
-    masterDungeons,
-    numericValue(season?.season_id),
-  );
   const metrics: Array<[string, JsonValue | number | undefined]> = [
     ["Season", season?.season_id],
     ["Season level", season?.level],
     ["Master score", resolvedMasterScore(body)],
-    ["Weekly tower floor", weekly?.maximum_floor_id],
     ["Challenge dungeons", arrayValue(activity?.challenge_dungeons).length],
-    ["Master-mode dungeons", masterDungeonCount],
-    ["Combat professions", arrayValue(body.combat_professions).length],
-    ["Life professions", arrayValue(body.life_professions).length],
-    ["Reputations", arrayValue(body.reputations).length],
   ];
   return { rows: compactMetricRows(metrics), masterDungeons };
 }

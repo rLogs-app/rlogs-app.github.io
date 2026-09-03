@@ -14,6 +14,7 @@ import {
   equipmentQualityToken,
   formatFightAttributeValue,
   interpolateEquipmentAttributeValue,
+  lifeProfessionViews,
   mainCombatStatFamilies,
   materializeEquipmentBuffDescription,
   masterDungeonRows,
@@ -23,6 +24,7 @@ import {
   photoWallDisplayEntries,
   photoWallIdentityCount,
   profileProgressSummary,
+  reputationViews,
   resolveCombatStatFamilies,
   resolveCombatActionPresentation,
   resolveActiveEquipmentSetEffects,
@@ -84,13 +86,40 @@ describe("profile progression summary", () => {
 
     expect(summary.rows.map((row) => row.map(({ label }) => label))).toEqual([
       ["Season", "Season level"],
-      ["Master score", "Weekly tower floor"],
-      ["Challenge dungeons", "Master-mode dungeons"],
-      ["Combat professions", "Life professions"],
-      ["Reputations"],
+      ["Master score", "Challenge dungeons"],
     ]);
     expect(summary.rows[0]?.map(({ value }) => value)).toEqual(["3", "100"]);
-    expect(summary.rows[3]?.map(({ value }) => value)).toEqual(["9", "9"]);
+    expect(summary.rows[1]?.map(({ value }) => value)).toEqual(["3,779", "0"]);
+  });
+});
+
+describe("casual progression details", () => {
+  it("uses exact-build profession names and exposes levels without raw specialization IDs", () => {
+    expect(lifeProfessionViews([{
+      profession_id: 202,
+      level: 60,
+      experience: 12_345,
+      specialization_levels: { "3001": 1, "3002": 2 },
+    }], allTreesCatalog)).toEqual([expect.objectContaining({
+      professionId: 202,
+      name: "Alchemy",
+      level: 60,
+      experience: 12_345,
+      specializationUpgrades: 3,
+    })]);
+  });
+
+  it("identifies the observed regional reputation instead of showing a record count", () => {
+    expect(reputationViews([{
+      reputation_id: 2,
+      level: 9,
+      experience: 10_000,
+    }], allTreesCatalog)).toEqual([expect.objectContaining({
+      reputationId: 2,
+      name: "Bahamar Region Reputation",
+      level: 9,
+      experience: 10_000,
+    })]);
   });
 });
 

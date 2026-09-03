@@ -34,6 +34,11 @@ const talentTreeTable = readJson(talentTreeTablePath);
 const dungeonsTable = readJson(path.join(tableRoot, "DungeonsTable.json"));
 const achievementsTablePath = path.join(tableRoot, "AchievementDateTable.json");
 const achievementsTable = readJson(achievementsTablePath);
+const lifeProfessionsTablePath = path.join(tableRoot, "LifeProfessionTable.json");
+const lifeProfessionsTable = readJson(lifeProfessionsTablePath);
+const reputationsTablePath = path.join(tableRoot, "ScenicSpotReputation.json");
+const reputationsTable = readJson(reputationsTablePath);
+const mallTable = readJson(path.join(tableRoot, "MallTable.json"));
 const medalsTablePath = path.join(tableRoot, "MedalTable.json");
 const medalsTable = readJson(medalsTablePath);
 const moduleEffectsTable = readJson(path.join(tableRoot, "ModEffectTable.json"));
@@ -606,6 +611,37 @@ const localizedModuleEffects = Object.fromEntries(Object.entries(moduleEffects).
   levels: (moduleEffectLevels.get(id) ?? []).sort((left, right) => left.level - right.level),
 }]));
 
+const lifeProfessions = Object.fromEntries(
+  Object.values(lifeProfessionsTable)
+    .filter((row) => Number.isInteger(row.ProId) && row.ProId > 0 && typeof row.Name === "string")
+    .sort((left, right) => (left.Sort ?? left.ProId) - (right.Sort ?? right.ProId))
+    .map((row) => [String(row.ProId), {
+      name: row.Name,
+      description: cleanBuffDescription(row.Des),
+      type: Number.isInteger(row.Type) ? row.Type : null,
+      sort: Number.isInteger(row.Sort) ? row.Sort : null,
+      icon: copyNamedIcon(row.Icon, "life-professions"),
+    }]),
+);
+
+const reputations = Object.fromEntries(
+  Object.values(reputationsTable)
+    .filter((row) => Number.isInteger(row.Id) && row.Id > 0)
+    .map((row) => {
+      const storeCurrencyId = mallTable[String(row.ReputationStore)]?.CurrencyDisplay?.[0];
+      const itemId = Number.isInteger(row.Item) && row.Item > 0 ? row.Item : storeCurrencyId;
+      const item = Number.isInteger(itemId) ? itemsTable[String(itemId)] : undefined;
+      const name = typeof item?.Name === "string"
+        ? item.Name.replace(/\s+EXP$/iu, "")
+        : "Regional reputation";
+      return [String(row.Id), {
+        name,
+        description: typeof item?.Description === "string" ? cleanBuffDescription(item.Description) : null,
+        icon: copyNamedIcon(item?.Icon, "reputations"),
+      }];
+    }),
+);
+
 const catalog = {
   schema_version: 3,
   locale: "en-US",
@@ -613,6 +649,8 @@ const catalog = {
   source: "Exact-build BPSR Global Steam client tables and reviewed rLogs game-data catalogs",
   source_item_table_sha256: createHash("sha256").update(readFileSync(itemsTablePath)).digest("hex"),
   source_achievement_table_sha256: createHash("sha256").update(readFileSync(achievementsTablePath)).digest("hex"),
+  source_life_profession_table_sha256: createHash("sha256").update(readFileSync(lifeProfessionsTablePath)).digest("hex"),
+  source_reputation_table_sha256: createHash("sha256").update(readFileSync(reputationsTablePath)).digest("hex"),
   source_medal_table_sha256: createHash("sha256").update(readFileSync(medalsTablePath)).digest("hex"),
   source_talent_table_sha256: createHash("sha256").update(readFileSync(talentTablePath)).digest("hex"),
   source_talent_tree_table_sha256: createHash("sha256").update(readFileSync(talentTreeTablePath)).digest("hex"),
@@ -662,13 +700,15 @@ const catalog = {
   imagines,
   modules,
   module_effects: localizedModuleEffects,
+  life_professions: lifeProfessions,
+  reputations,
 };
 
 const output = path.join(websiteRoot, "public/data/bpsr/profile-presentation.en-US.v1.json");
 mkdirSync(path.dirname(output), { recursive: true });
 writeFileSync(output, `${JSON.stringify(catalog)}\n`);
 console.log(`wrote ${output}`);
-console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes across ${Object.keys(talentTreeIndex).length} professions and ${Object.values(talentTreeIndex).reduce((sum, tree) => sum + tree.specializations.length, 0)} specializations, ${Object.keys(dungeons).length} dungeons, ${Object.keys(achievements).length} achievements, ${Object.keys(medals).length} medals, ${Object.keys(imagines).length} imagines; all sigil, visible-medal, and talent-tree completeness gates passed`);
+console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes across ${Object.keys(talentTreeIndex).length} professions and ${Object.values(talentTreeIndex).reduce((sum, tree) => sum + tree.specializations.length, 0)} specializations, ${Object.keys(dungeons).length} dungeons, ${Object.keys(achievements).length} achievements, ${Object.keys(medals).length} medals, ${Object.keys(imagines).length} imagines, ${Object.keys(lifeProfessions).length} life professions, ${Object.keys(reputations).length} regional reputations; all sigil, visible-medal, and talent-tree completeness gates passed`);
 
 function cleanAttributeDescription(value) {
   if (typeof value !== "string") return undefined;

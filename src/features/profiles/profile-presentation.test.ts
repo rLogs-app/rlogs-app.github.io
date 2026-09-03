@@ -56,6 +56,21 @@ describe("BPSR profile presentation catalog", () => {
     expect(catalog.achievements["101010101"]?.season_id).toBe(1);
   });
 
+  it("publishes exact-build life-profession and regional-reputation names", () => {
+    expect(catalog.source_life_profession_table_sha256).toBe(
+      "0873c16d7fb5487737c9c3f9fb043fd0ba440125df2b31aedbbe2f9ad6a8f271",
+    );
+    expect(catalog.source_reputation_table_sha256).toBe(
+      "c3976c1077b4883fe630ca5e45eb345ff576ffe2a16ebfaf2fa87badfdd0e524",
+    );
+    expect(Object.keys(catalog.life_professions)).toHaveLength(9);
+    expect(catalog.life_professions["202"]?.name).toBe("Alchemy");
+    expect(catalog.reputations).toEqual(expect.objectContaining({
+      "1": expect.objectContaining({ name: "Asteria Reputation" }),
+      "2": expect.objectContaining({ name: "Bahamar Region Reputation" }),
+    }));
+  });
+
   it("covers every reviewed sigil family and exact level with an image", () => {
     expect(Object.keys(catalog.sigils)).toHaveLength(107);
     expect(Object.values(catalog.sigils).flat()).toHaveLength(321);
@@ -186,11 +201,15 @@ describe("BPSR profile presentation catalog", () => {
     delete legacyCatalog.sigils;
     delete legacyCatalog.achievements;
     delete legacyCatalog.medals;
+    delete legacyCatalog.life_professions;
+    delete legacyCatalog.reputations;
     delete legacyCatalog.talent_tree_index;
     delete legacyCatalog.equipment_sets;
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.sigils).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.achievements).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.medals).toEqual({});
+    expect(normalizeProfilePresentationCatalog(legacyCatalog)?.life_professions).toEqual({});
+    expect(normalizeProfilePresentationCatalog(legacyCatalog)?.reputations).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.talent_tree_index).toEqual({});
     expect(normalizeProfilePresentationCatalog(legacyCatalog)?.equipment_sets).toEqual({});
     expect(normalizeProfilePresentationCatalog({ sigils: {} })).toBeUndefined();

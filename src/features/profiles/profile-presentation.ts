@@ -31,6 +31,8 @@ export interface PresentationRecord {
   season_id?: number | null;
   achievement_level?: number | null;
   skill_type?: number | null;
+  type?: number | null;
+  sort?: number | null;
   action_kind?: "role_skill" | "role_imagine" | null;
   replacement_imagine_skill_id?: number | null;
   archive_guide_id?: number | null;
@@ -114,6 +116,8 @@ export interface ProfilePresentationCatalog {
   source?: string;
   source_item_table_sha256?: string;
   source_achievement_table_sha256?: string;
+  source_life_profession_table_sha256?: string;
+  source_reputation_table_sha256?: string;
   source_medal_table_sha256?: string;
   source_talent_table_sha256?: string;
   source_talent_tree_table_sha256?: string;
@@ -142,11 +146,13 @@ export interface ProfilePresentationCatalog {
   imagines: Record<string, PresentationRecord>;
   modules: Record<string, PresentationRecord>;
   module_effects: Record<string, PresentationRecord>;
+  life_professions: Record<string, PresentationRecord>;
+  reputations: Record<string, PresentationRecord>;
 }
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=22`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=23`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -199,6 +205,12 @@ export function normalizeProfilePresentationCatalog(
       : {},
     medals: isRecord(value.medals)
       ? (value.medals as ProfilePresentationCatalog["medals"])
+      : {},
+    life_professions: isRecord(value.life_professions)
+      ? (value.life_professions as ProfilePresentationCatalog["life_professions"])
+      : {},
+    reputations: isRecord(value.reputations)
+      ? (value.reputations as ProfilePresentationCatalog["reputations"])
       : {},
     fight_attributes: isRecord(value.fight_attributes)
       ? (value.fight_attributes as ProfilePresentationCatalog["fight_attributes"])
