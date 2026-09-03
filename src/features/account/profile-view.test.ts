@@ -39,6 +39,7 @@ import {
   resolvedMasterDungeonCount,
   resolveTalentTreeLayout,
   skillProgressFacts,
+  summarizeEquippedModuleLinks,
   talentPresentationFacts,
 } from "./profile-view";
 import type { ProfilePresentationCatalog } from "../profiles/profile-presentation";
@@ -693,6 +694,42 @@ describe("equipment quality presentation", () => {
     ]);
     expect(equipmentQualityToken(6)).toBe("");
     expect(equipmentQualityToken(undefined)).toBe("");
+  });
+});
+
+describe("equipped module link summary", () => {
+  it("adds the final total and combines matching effects across equipped modules", () => {
+    const catalog = {
+      module_effects: {
+        "2104": { name: "DMG Stack", icon: "/dmg-stack.png" },
+        "1111": { name: "Agility Boost", icon: "/agility.png" },
+      },
+    } as unknown as ProfilePresentationCatalog;
+    const inventory = [
+      {
+        instance_id: "one",
+        parts: [
+          { part_id: 2104, initial_link_points: 10 },
+          { part_id: 1111, initial_link_points: 4 },
+        ],
+      },
+      {
+        instance_id: "two",
+        parts: [
+          { part_id: 2104, initial_link_points: 7 },
+          { part_id: 1111, initial_link_points: 3 },
+        ],
+      },
+      { instance_id: "not-equipped", parts: [{ part_id: 2104, initial_link_points: 99 }] },
+    ];
+
+    expect(summarizeEquippedModuleLinks(inventory, { "1": "one", "2": "two" }, catalog)).toEqual({
+      totalLink: 24,
+      effects: [
+        { partId: 2104, name: "DMG Stack", icon: "/dmg-stack.png", link: 17 },
+        { partId: 1111, name: "Agility Boost", icon: "/agility.png", link: 7 },
+      ],
+    });
   });
 });
 

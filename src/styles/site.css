@@ -3651,6 +3651,63 @@ footer {
   min-width: 0;
 }
 
+.profile-module-link-summary {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgb(74 222 231 / 42%);
+  border-radius: 8px;
+  background: rgb(74 222 231 / 7%);
+}
+
+.profile-module-link-summary-heading {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.profile-module-link-summary-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.profile-module-link-summary-heading strong {
+  color: var(--accent);
+  font-size: 20px;
+}
+
+.profile-module-link-summary-heading small {
+  color: var(--muted);
+  text-align: right;
+}
+
+.profile-module-link-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.profile-module-link-effect {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  min-width: min(210px, 100%);
+  padding: 5px 8px;
+  border: 1px solid rgb(32 49 73 / 82%);
+  border-radius: 999px;
+  background: rgb(5 11 19 / 62%);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.profile-module-link-effect strong {
+  color: var(--text);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .profile-module-part {
   color: var(--muted);
   font-size: 11px;

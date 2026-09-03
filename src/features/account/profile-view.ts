@@ -4,6 +4,7 @@ import {
   loadProfilePresentation,
   type ProfilePresentationCatalog,
 } from "../profiles/profile-presentation";
+import { optimizerProfileHref } from "../module-optimizer/optimizer-profile-route";
 
 type JsonRecord = Record<string, JsonValue>;
 let presentation: ProfilePresentationCatalog;
@@ -98,7 +99,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     combatStatsSection(body),
     imagineSection(arrayValue(body.owned_imagines), arrayValue(body.battle_imagine_skills)),
     equipmentSection(body),
-    moduleSection(inventory, equippedSlots),
+    moduleSection(inventory, equippedSlots, profile.entry.profile_id),
   );
   combatGroup.append(combatSections, skillsSection(body));
 
@@ -688,7 +689,65 @@ export function battleImagineDisplayName(value: JsonValue | undefined): string {
   return value.replace(/^Battle Imagine\s*[-–—:]\s*/i, "").trim();
 }
 
-function moduleSection(inventory: JsonValue[], slots: JsonRecord | undefined): HTMLElement {
+export interface EquippedModuleLinkEffectSummary {
+  partId: number;
+  name: string;
+  icon?: string | null;
+  link: number;
+}
+
+export interface EquippedModuleLinkSummary {
+  totalLink: number;
+  effects: EquippedModuleLinkEffectSummary[];
+}
+
+export function summarizeEquippedModuleLinks(
+  inventory: JsonValue[],
+  slots: JsonRecord | undefined,
+  catalog: ProfilePresentationCatalog,
+): EquippedModuleLinkSummary {
+  const byInstance = new Map(
+    inventory
+      .map(recordValue)
+      .filter((value): value is JsonRecord => Boolean(value))
+      .map((value) => [String(value.instance_id), value]),
+  );
+  const effects = new Map<number, EquippedModuleLinkEffectSummary>();
+  let totalLink = 0;
+  for (const instanceId of Object.values(slots ?? {})) {
+    const module = byInstance.get(String(instanceId));
+    for (const partValue of arrayValue(module?.parts)) {
+      const part = recordValue(partValue);
+      const partId = numericValue(part?.part_id);
+      const link = Math.max(0, numericValue(part?.initial_link_points) ?? 0);
+      totalLink += link;
+      if (partId == null) continue;
+      const localized = catalog.module_effects[String(partId)];
+      const existing = effects.get(partId);
+      if (existing) {
+        existing.link += link;
+      } else {
+        effects.set(partId, {
+          partId,
+          name: localized?.name ?? `Effect ${partId}`,
+          icon: localized?.icon,
+          link,
+        });
+      }
+    }
+  }
+  return {
+    totalLink,
+    effects: [...effects.values()].sort((left, right) =>
+      right.link - left.link || left.name.localeCompare(right.name)),
+  };
+}
+
+function moduleSection(
+  inventory: JsonValue[],
+  slots: JsonRecord | undefined,
+  profileId: string,
+): HTMLElement {
   const equipped = slots ? Object.entries(slots) : [];
   const section = profileSection("Module loadout", `${inventory.length} owned · ${equipped.length} equipped`);
   const byInstance = new Map(
@@ -697,6 +756,32 @@ function moduleSection(inventory: JsonValue[], slots: JsonRecord | undefined): H
       .filter((value): value is JsonRecord => Boolean(value))
       .map((value) => [String(value.instance_id), value]),
   );
+  const linkSummary = summarizeEquippedModuleLinks(inventory, slots, presentation);
+  if (equipped.length) {
+    const summary = element("div", "profile-module-link-summary");
+    const summaryHeading = element("div", "profile-module-link-summary-heading");
+    const summaryTitle = element("div");
+    summaryTitle.append(
+      element("span", "profile-item-kicker", "Equipped link totals"),
+      element("strong", "", `${linkSummary.totalLink.toLocaleString()} Link`),
+    );
+    summaryHeading.append(summaryTitle, element("small", "", `Across ${equipped.length} equipped modules`));
+    summary.append(summaryHeading);
+    if (linkSummary.effects.length) {
+      const effectList = element("div", "profile-module-link-effects");
+      for (const effect of linkSummary.effects) {
+        const chip = element("span", "profile-module-link-effect");
+        appendPresentationIcon(chip, effect.icon, effect.name, "profile-module-part-icon");
+        chip.append(
+          element("span", "", effect.name),
+          element("strong", "", `${effect.link.toLocaleString()} Link`),
+        );
+        effectList.append(chip);
+      }
+      summary.append(effectList);
+    }
+    section.append(summary);
+  }
   const list = element("div", "profile-compact-list");
   for (const [slot, instanceId] of equipped) {
     const module = byInstance.get(String(instanceId));
@@ -739,7 +824,7 @@ function moduleSection(inventory: JsonValue[], slots: JsonRecord | undefined): H
   }
   section.append(equipped.length ? list : empty("No equipped modules were present in the latest snapshot."));
   const link = element("a", "profile-section-link", "Open this inventory in Module Optimizer →");
-  link.href = "/optimizer/";
+  link.href = optimizerProfileHref(profileId);
   section.append(link);
   return section;
 }

@@ -21,6 +21,7 @@ import {
   type ProfilePresentationCatalog,
 } from "../profiles/profile-presentation";
 import { moduleCardModel, sortModuleInventory } from "./optimizer-presentation";
+import { requestedOptimizerProfile } from "./optimizer-profile-route";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 const sessionKey = "rlogs.web-session.v1";
@@ -139,8 +140,8 @@ async function loadSyncedInventory(): Promise<void> {
   const picker = requiredElement<HTMLSelectElement>("optimizer-profile-select");
   const pickerLabel = picker.closest<HTMLLabelElement>(".optimizer-profile-picker");
   const session = activeSession();
-  const requestedProfile = new URLSearchParams(location.search).get("profile");
-  if (import.meta.env.DEV && requestedProfile) {
+  const requestedProfile = requestedOptimizerProfile(location.search);
+  if (requestedProfile) {
     signIn.hidden = true;
     if (pickerLabel) pickerLabel.hidden = true;
     await loadPublishedInventory(requestedProfile);
@@ -189,7 +190,7 @@ async function loadSyncedInventory(): Promise<void> {
 }
 
 async function loadPublishedInventory(profileId: string): Promise<void> {
-  setInventoryStatus(`Loading published UID ${profileId} module inventory...`);
+  setInventoryStatus("Loading this profile's published module inventory...");
   try {
     const published = await loadPublishedProfile(profileId);
     const input = extractOptimizerInput(published.envelope);
@@ -207,7 +208,7 @@ async function loadPublishedInventory(profileId: string): Promise<void> {
   } catch (error) {
     requiredElement("optimizer-inventory-preview").hidden = true;
     setInventoryStatus(errorMessage(error), true);
-    setRunStatus(`Could not load the UID ${profileId} inventory.`, true);
+    setRunStatus("Could not load this profile's published inventory.", true);
   }
 }
 
