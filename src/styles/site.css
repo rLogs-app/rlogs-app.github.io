@@ -2937,6 +2937,12 @@ footer {
   line-height: 1.1;
 }
 
+.profile-combat-stat-card--unobserved .profile-combat-stat-value {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .profile-combat-stat-name {
   min-width: 0;
   color: var(--text);

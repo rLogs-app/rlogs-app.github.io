@@ -14,9 +14,11 @@ import {
   equipmentQualityToken,
   formatFightAttributeValue,
   interpolateEquipmentAttributeValue,
+  mainCombatStatFamilies,
   materializeEquipmentBuffDescription,
   masterDungeonRows,
   orderedMedalEntries,
+  profileBaseCombatStatValues,
   photoWallDisplayEntries,
   photoWallIdentityCount,
   resolveCombatStatFamilies,
@@ -454,6 +456,46 @@ describe("profile combat-stat snapshots", () => {
       expect(Number.isSafeInteger(attribute.family_id)).toBe(true);
       expect(allowed.has(attribute.component ?? "")).toBe(true);
     }
+  });
+
+  it("keeps every in-game main stat visible when a base snapshot is sparse", () => {
+    const observed = resolveCombatStatFamilies({
+      "11320": 293_290,
+      "11330": 5_817,
+      "11970": 0,
+    }, allTreesCatalog);
+    const main = mainCombatStatFamilies(observed, allTreesCatalog);
+
+    expect(main).toHaveLength(11);
+    expect(main.map((family) => family.name)).toEqual([
+      "Max HP",
+      "ATK",
+      "Agility",
+      "Endurance",
+      "Illusion-Breaking Strength",
+      "Crit",
+      "Haste",
+      "Luck",
+      "Mastery",
+      "Versatility",
+      "Block",
+    ]);
+    expect(main.find((family) => family.name === "Max HP")?.components[0]?.value).toBe(293_290);
+    expect(main.find((family) => family.name === "Block")?.components[0]?.value).toBe(0);
+    expect(main.find((family) => family.name === "Endurance")?.components).toEqual([]);
+  });
+
+  it("uses the raw season-strength field for the matching sheet total", () => {
+    const values = profileBaseCombatStatValues({
+      season_strength: 4_825,
+      combat_stats: {
+        schema_version: 1,
+        snapshot_values: { "11440": 4_525, "11330": 5_933 },
+      },
+    });
+
+    expect(values["11440"]).toBe(4_825);
+    expect(values["11330"]).toBe(5_933);
   });
 });
 

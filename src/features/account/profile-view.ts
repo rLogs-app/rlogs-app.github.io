@@ -265,6 +265,20 @@ const combatStatComponentOrder: CombatStatComponent[] = [
   "extra_percent",
 ];
 
+const mainCombatStatFamilyIds = [
+  11_320, // Max HP
+  11_330, // ATK
+  11_030, // Agility
+  11_040, // Endurance
+  11_440, // Illusion-Breaking Strength
+  11_710, // Crit %
+  11_930, // Haste %
+  11_780, // Luck %
+  11_940, // Mastery %
+  11_950, // Versatility %
+  11_970, // Block %
+] as const;
+
 export function resolveCombatStatFamilies(
   snapshotValues: Record<string, JsonValue>,
   catalog: ProfilePresentationCatalog,
@@ -311,113 +325,65 @@ export function resolveCombatStatFamilies(
     .sort((left, right) => left.name.localeCompare(right.name) || left.familyId - right.familyId);
 }
 
-function combatStatsSection(body: JsonRecord): HTMLElement {
+export function mainCombatStatFamilies(
+  families: CombatStatFamilyView[],
+  catalog: ProfilePresentationCatalog,
+): CombatStatFamilyView[] {
+  const byFamilyId = new Map(families.map((family) => [family.familyId, family]));
+  return mainCombatStatFamilyIds.map((familyId) =>
+    byFamilyId.get(familyId) ?? {
+      familyId,
+      name: catalog.fight_attributes[String(familyId)]?.name ?? `Stat ${familyId}`,
+      components: [],
+    }
+  );
+}
+
+export function profileBaseCombatStatValues(body: Record<string, JsonValue>): JsonRecord {
   const combatStats = recordValue(body.combat_stats);
-  const snapshotValues = recordValue(combatStats?.snapshot_values) ?? {};
+  const values = { ...(recordValue(combatStats?.snapshot_values) ?? {}) };
+  const seasonStrength = numericValue(body.season_strength);
+  if (seasonStrength != null) values["11440"] = seasonStrength;
+  return values;
+}
+
+function combatStatsSection(body: JsonRecord): HTMLElement {
+  const snapshotValues = profileBaseCombatStatValues(body);
   const families = resolveCombatStatFamilies(snapshotValues, presentation);
+  const main = mainCombatStatFamilies(families, presentation);
   const section = profileSection(
     "Character stats",
-    `${families.length.toLocaleString()} localized stat families · newest complete snapshot`,
-  );
-  if (!families.length) {
-    section.append(empty("The latest synced profile did not include a complete character-stat snapshot yet."));
-    return section;
-  }
-
-  const nonzero = families.filter((family) =>
-    family.components.some((component) => component.value !== 0)
-  );
-  const zero = families.filter((family) =>
-    family.components.every((component) => component.value === 0)
+    "Raw starting totals from the latest live profile sync",
   );
   section.append(element(
     "small",
     "profile-observation-note",
-    "Profile values come from the newest complete character snapshot. Temporary combat buffs and deltas are shown only in the live Stats overlay.",
+    "These are exact base values sent for the local character. Temporary combat changes appear only in the rLogs Overlay.",
   ));
-  const mainFamilyIds = [
-    11_320, // Max HP
-    11_330, // ATK
-    11_030, // Agility
-    11_040, // Endurance
-    11_440, // Illusion-Breaking Strength
-    11_710, // Crit %
-    11_930, // Haste %
-    11_780, // Luck %
-    11_940, // Mastery %
-    11_950, // Versatility %
-    11_970, // Block %
-  ];
-  const byFamilyId = new Map(families.map((family) => [family.familyId, family]));
-  const main = mainFamilyIds
-    .map((familyId) => byFamilyId.get(familyId))
-    .filter((family): family is CombatStatFamilyView => family != null);
-  if (main.length) section.append(combatStatGrid(main, false));
-  section.append(profileDetailButton(
-    `View all ${families.length.toLocaleString()} observed stats`,
-    "Character stats",
-    () => {
-      const detail = element("div", "profile-detail-stack");
-      detail.append(
-        element("p", "profile-detail-intro", "Current nonzero values and their exact packet components."),
-        combatStatGrid(nonzero, true),
-      );
-      if (zero.length) {
-        detail.append(
-          element("h3", "profile-detail-subheading", `${zero.length.toLocaleString()} observed zero-value stats`),
-          combatStatGrid(zero, true),
-        );
-      }
-      return detail;
-    },
-  ));
+  section.append(combatStatGrid(main));
   return section;
 }
 
-function combatStatGrid(
-  families: CombatStatFamilyView[],
-  includeBreakdowns: boolean,
-): HTMLElement {
+function combatStatGrid(families: CombatStatFamilyView[]): HTMLElement {
   const grid = element("div", "profile-combat-stat-grid");
   for (const family of families) {
     const final = family.components.find((component) => component.component === "final") ??
       family.components[0];
-    if (!final) continue;
     const card = element("article", "profile-combat-stat-card");
+    if (!final) card.classList.add("profile-combat-stat-card--unobserved");
     card.append(
-      element("strong", "profile-combat-stat-value", formatFightAttributeValue(
-        final.value,
-        final.numberType,
-        final.formatType,
-      )),
+      element(
+        "strong",
+        "profile-combat-stat-value",
+        final
+          ? formatFightAttributeValue(final.value, final.numberType, final.formatType)
+          : "Not observed",
+      ),
       element("span", "profile-combat-stat-name", family.name),
     );
-    if (includeBreakdowns && family.components.length > 1) {
-      const breakdown = element("div", "profile-combat-stat-breakdown");
-      const rows = element("div", "profile-compact-list");
-      for (const component of family.components) {
-        rows.append(compactRow(
-          combatStatComponentLabel(component.component),
-          formatSignedFightAttributeValue(component.value, component.numberType, component.formatType),
-        ));
-      }
-      breakdown.append(element("small", "profile-detail-label", "Breakdown"), rows);
-      card.append(breakdown);
-    }
     grid.append(card);
   }
   return grid;
-}
-
-function combatStatComponentLabel(component: CombatStatComponent): string {
-  return ({
-    final: "Final",
-    total: "Total",
-    add: "Additive",
-    extra_add: "Extra additive",
-    percent: "Percent",
-    extra_percent: "Extra percent",
-  } satisfies Record<CombatStatComponent, string>)[component];
 }
 
 function equipmentSection(body: JsonRecord): HTMLElement {
