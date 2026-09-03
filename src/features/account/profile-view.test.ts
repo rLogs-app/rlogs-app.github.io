@@ -21,6 +21,7 @@ import {
   profileBaseCombatStatValues,
   photoWallDisplayEntries,
   photoWallIdentityCount,
+  profileProgressSummary,
   resolveCombatStatFamilies,
   resolveCombatActionPresentation,
   resolveActiveEquipmentSetEffects,
@@ -62,6 +63,33 @@ describe("Battle Imagine ownership presentation", () => {
     expect(battleImagineRarityLabel(5)).toBe("SSR");
     expect(battleImagineRarityLabel(2)).toBe("");
     expect(battleImagineRarityLabel(undefined)).toBe("");
+  });
+});
+
+describe("profile progression summary", () => {
+  it("pairs related compact metrics into two-column rows", () => {
+    const summary = profileProgressSummary({
+      season: { season_id: 3, level: 100 },
+      master_score: 3_779,
+      activity_progress: {
+        weekly_tower: { maximum_floor_id: 60 },
+        challenge_dungeons: [],
+        master_mode_dungeons: [],
+      },
+      combat_professions: Array.from({ length: 9 }, () => null),
+      life_professions: Array.from({ length: 9 }, () => null),
+      reputations: [null],
+    });
+
+    expect(summary.rows.map((row) => row.map(({ label }) => label))).toEqual([
+      ["Season", "Season level"],
+      ["Master score", "Weekly tower floor"],
+      ["Challenge dungeons", "Master-mode dungeons"],
+      ["Combat professions", "Life professions"],
+      ["Reputations"],
+    ]);
+    expect(summary.rows[0]?.map(({ value }) => value)).toEqual(["3", "100"]);
+    expect(summary.rows[3]?.map(({ value }) => value)).toEqual(["9", "9"]);
   });
 });
 

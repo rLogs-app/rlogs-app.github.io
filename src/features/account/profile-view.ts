@@ -1790,32 +1790,67 @@ function cleanAchievementCategory(value: string | null | undefined): string {
 }
 
 function progressSection(body: JsonRecord): HTMLElement {
+  const summary = profileProgressSummary(body);
+  const section = profileSection("Progression & activities", "Latest observed progress");
+  section.classList.add("profile-progress-section");
+  const facts = element("dl", "profile-progress-grid");
+  for (const row of summary.rows) {
+    const rowElement = element("div", "profile-progress-row");
+    for (const metric of row) {
+      const item = element("div", "profile-progress-metric");
+      item.append(
+        element("dt", "", metric.label),
+        element("dd", "", metric.value),
+      );
+      rowElement.append(item);
+    }
+    facts.append(rowElement);
+  }
+  section.append(facts);
+  if (summary.masterDungeons.length) {
+    section.append(masterDungeonBreakdown(summary.masterDungeons));
+  }
+  return section;
+}
+
+export interface ProfileProgressMetric {
+  label: string;
+  value: string;
+}
+
+export interface ProfileProgressSummary {
+  rows: ProfileProgressMetric[][];
+  masterDungeons: JsonValue[];
+}
+
+export function profileProgressSummary(body: JsonRecord): ProfileProgressSummary {
   const activity = recordValue(body.activity_progress);
   const weekly = recordValue(activity?.weekly_tower);
-  const combatProfessions = arrayValue(body.combat_professions);
-  const lifeProfessions = arrayValue(body.life_professions);
   const season = recordValue(body.season);
   const masterDungeons = arrayValue(activity?.master_mode_dungeons);
   const masterDungeonCount = resolvedMasterDungeonCount(
     masterDungeons,
     numericValue(season?.season_id),
   );
-  const section = profileSection("Progression & activities", "Latest observed progress");
-  const facts = element("dl", "profile-facts");
-  for (const [label, value] of [
+  const metrics = [
     ["Season", season?.season_id],
     ["Season level", season?.level],
     ["Master score", resolvedMasterScore(body)],
-    ["Weekly tower highest floor", weekly?.maximum_floor_id],
+    ["Weekly tower floor", weekly?.maximum_floor_id],
     ["Challenge dungeons", arrayValue(activity?.challenge_dungeons).length],
     ["Master-mode dungeons", masterDungeonCount],
-    ["Combat professions", combatProfessions.length],
-    ["Life professions", lifeProfessions.length],
+    ["Combat professions", arrayValue(body.combat_professions).length],
+    ["Life professions", arrayValue(body.life_professions).length],
     ["Reputations", arrayValue(body.reputations).length],
-  ] as Array<[string, JsonValue | number | undefined]>) appendFact(facts, label, displayValue(value));
-  section.append(facts);
-  if (masterDungeons.length) section.append(masterDungeonBreakdown(masterDungeons));
-  return section;
+  ].map(([label, value]) => ({
+    label: String(label),
+    value: displayValue(value),
+  }));
+  const rows: ProfileProgressMetric[][] = [];
+  for (let index = 0; index < metrics.length; index += 2) {
+    rows.push(metrics.slice(index, index + 2));
+  }
+  return { rows, masterDungeons };
 }
 
 function masterDungeonBreakdown(values: JsonValue[]): HTMLElement {

@@ -3975,7 +3975,59 @@ footer {
 .master-score-seasons {
   display: grid;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 12px;
+}
+
+.profile-progress-section .profile-data-heading {
+  margin-bottom: 10px;
+}
+
+.profile-progress-grid {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid rgb(32 49 73 / 62%);
+}
+
+.profile-progress-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.profile-progress-metric {
+  display: grid;
+  min-width: 0;
+  min-height: 50px;
+  gap: 3px;
+  align-content: center;
+  padding: 7px 10px;
+  border-bottom: 1px solid rgb(32 49 73 / 62%);
+}
+
+.profile-progress-metric:first-child {
+  border-right: 1px solid rgb(32 49 73 / 62%);
+}
+
+.profile-progress-metric dt,
+.profile-progress-metric dd {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.profile-progress-metric dt {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.profile-progress-metric dd {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .achievement-groups {
