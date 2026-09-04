@@ -95,6 +95,8 @@ export async function loadPublishedProfileLoadout(
   if (!Number.isSafeInteger(projectId) || projectId <= 0) {
     throw new Error("The selected loadout ID is invalid.");
   }
+  const currentProject = currentProjectId(profile.envelope);
+  if (currentProject === projectId) return profile.envelope;
   if (configuredApi && profile.entry.profile_id.startsWith("prf_")) {
     const response = await fetch(
       `${configuredApi}/v1/profiles/${encodeURIComponent(profile.entry.profile_id)}/loadouts/${projectId}`,
@@ -117,8 +119,6 @@ export async function loadPublishedProfileLoadout(
     }
     return validation.envelope;
   }
-  const currentProject = currentProjectId(profile.envelope);
-  if (currentProject === projectId) return profile.envelope;
   throw new Error("That saved loadout has not been published yet.");
 }
 
