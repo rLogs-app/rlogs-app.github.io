@@ -16,6 +16,33 @@ export interface ModuleCardModel {
   }>;
 }
 
+export interface LoadoutLinkSummary {
+  id: number;
+  name: string;
+  icon?: string | null;
+  link: number;
+}
+
+export function loadoutLinkSummary(
+  modules: readonly ModuleCandidate[],
+  catalog: ProfilePresentationCatalog,
+): LoadoutLinkSummary[] {
+  const totals = new Map<number, LoadoutLinkSummary>();
+  for (const module of modules) {
+    for (const effect of moduleCardModel(module, catalog).effects) {
+      const existing = totals.get(effect.id);
+      totals.set(effect.id, {
+        id: effect.id,
+        name: effect.name,
+        icon: effect.icon,
+        link: (existing?.link ?? 0) + effect.link,
+      });
+    }
+  }
+  return [...totals.values()].sort((left, right) =>
+    right.link - left.link || left.name.localeCompare(right.name));
+}
+
 export function moduleCardModel(
   module: ModuleCandidate,
   catalog: ProfilePresentationCatalog,

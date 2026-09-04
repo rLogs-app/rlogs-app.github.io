@@ -23,7 +23,11 @@ import {
   loadProfilePresentation,
   type ProfilePresentationCatalog,
 } from "../profiles/profile-presentation";
-import { moduleCardModel, sortModuleInventory } from "./optimizer-presentation";
+import {
+  loadoutLinkSummary,
+  moduleCardModel,
+  sortModuleInventory,
+} from "./optimizer-presentation";
 import {
   requestedOptimizerLoadout,
   requestedOptimizerProfile,
@@ -408,17 +412,10 @@ function attributeRow(attribute: AttributeCatalogEntry): HTMLElement {
 
 function renderResult(result: OptimizeResponse, durationMs: number): void {
   const current = result.current_setup;
-  const top = result.solutions[0];
-  const currentIsComparable =
-    current?.instance_ids.length === result.search.combination_size;
-  const actualDelta =
-    currentIsComparable && current && top ? top.score - current.score : undefined;
   const metrics: Array<[string, string]> = [
-    [current ? formatNumber(current.score) : "—", "current power"],
-    [top ? formatNumber(top.score) : "—", "best power"],
-    [actualDelta == null ? "—" : formatSigned(actualDelta), "improvement"],
-    [top ? formatNumber(top.ranking_score) : "—", "priority fit"],
     [formatNumber(result.search.candidate_module_count), "eligible modules"],
+    [formatNumber(result.search.evaluated_states), "sets checked"],
+    [result.search.exact ? "Exact" : "Guided", "search mode"],
     [`${durationMs.toFixed(0)} ms`, "search time"],
   ];
   requiredElement("optimizer-metrics").replaceChildren(
@@ -434,9 +431,9 @@ function renderResult(result: OptimizeResponse, durationMs: number): void {
     (solution) => solutionSignature(solution) !== currentSignature,
   );
   const rows = recommendations.map((solution, index) =>
-    solutionCard(solution, `Recommendation ${index + 1}`, false, current?.score),
+    solutionCard(solution, `Recommendation ${index + 1}`),
   );
-  if (current) rows.unshift(solutionCard(current, "Currently equipped", true, current.score));
+  if (current) rows.unshift(solutionCard(current, "Currently equipped", true));
   requiredElement("optimizer-result-rows").replaceChildren(...rows);
 
   requiredElement("optimizer-footnote").textContent =
@@ -455,7 +452,6 @@ function solutionCard(
   solution: ModuleSolution,
   label: string,
   current = false,
-  currentScore?: number,
 ): HTMLElement {
   const card = element("article", current ? "optimizer-solution-card is-current" : "optimizer-solution-card");
   const heading = element("header", "optimizer-solution-heading");
@@ -464,43 +460,14 @@ function solutionCard(
     element("span", current ? "optimizer-solution-kicker is-current" : "optimizer-solution-kicker", current ? "Your loadout" : "Suggested loadout"),
     element("h4", "", label),
   );
-  const score = element("div", "optimizer-solution-score");
-  score.append(
-    element("strong", "", formatNumber(solution.score)),
-    element("span", "", "Actual module power"),
-  );
-  if (!current && currentScore != null) {
-    score.append(element("small", "", `${formatSigned(solution.score - currentScore)} vs current`));
-  }
-  heading.append(identity, score);
+  heading.append(identity);
 
+  const attributes = optimizerLinkSummary(solution.modules);
   const modules = element("div", "optimizer-solution-modules");
   for (const module of solution.modules) {
     modules.append(moduleCard(module, currentInstanceIds.indexOf(module.instance_id) + 1 || undefined, true));
   }
-  const attributes = element("div", "optimizer-solution-attributes");
-  for (const attribute of solution.breakdown.attributes.filter((entry) => entry.total > 0)) {
-      const entry = catalog?.attributes.find(
-        (candidate) => candidate.id === attribute.attribute_id,
-      );
-      const localized = presentation?.module_effects[String(attribute.attribute_id)];
-      const suffix =
-        attribute.multiplier === 2
-          ? " · Priority"
-          : attribute.multiplier === 0
-            ? " · Excluded from ranking"
-            : "";
-      const chip = element("span", "optimizer-result-effect");
-      appendOptimizerIcon(chip, localized?.icon ?? entry?.icon, localized?.name ?? entry?.name ?? "Module effect", "optimizer-result-effect-icon");
-      chip.append(element("span", "", `${localized?.name ?? entry?.name ?? "Unknown effect"} · ${attribute.total} Link${suffix}`));
-      attributes.append(chip);
-  }
-  const footer = element("div", "optimizer-solution-footer");
-  footer.append(
-    element("span", "", `${solution.breakdown.total_link_points} total Link`),
-    element("span", "", `Priority fit ${formatNumber(solution.ranking_score)}`),
-  );
-  card.append(heading, modules, attributes, footer);
+  card.append(heading, attributes, modules);
   return card;
 }
 
@@ -513,12 +480,34 @@ function renderInventoryPreview(): void {
   const equipped = currentInstanceIds
     .map((instanceId) => inventory.find((module) => module.instance_id === instanceId))
     .filter((module): module is ModuleCandidate => module != null);
+  const summary = requiredElement("optimizer-equipped-summary");
+  summary.replaceWith(optimizerLinkSummary(equipped, "optimizer-equipped-summary"));
   requiredElement("optimizer-equipped-cards").replaceChildren(
     ...equipped.map((module) => moduleCard(module, equippedById.get(module.instance_id))),
   );
   requiredElement("optimizer-equipped-empty").hidden = equipped.length > 0;
   inventoryVisibleLimit = 80;
   if (requiredElement<HTMLDetailsElement>("optimizer-inventory-browser").open) renderInventoryBrowser();
+}
+
+function optimizerLinkSummary(
+  modules: readonly ModuleCandidate[],
+  id?: string,
+): HTMLElement {
+  const root = element("div", "optimizer-loadout-link-summary");
+  if (id) root.id = id;
+  if (!presentation || modules.length === 0) {
+    root.hidden = true;
+    return root;
+  }
+  root.append(element("span", "optimizer-link-summary-label", "Combined links"));
+  for (const effect of loadoutLinkSummary(modules, presentation)) {
+    const chip = element("span", "optimizer-result-effect");
+    appendOptimizerIcon(chip, effect.icon, effect.name, "optimizer-result-effect-icon");
+    chip.append(element("span", "", `${effect.name} · ${effect.link} Link`));
+    root.append(chip);
+  }
+  return root;
 }
 
 function renderInventoryBrowser(): void {
@@ -733,10 +722,6 @@ function formatNumber(value: number): string {
 
 function formatBigInt(value: bigint): string {
   return value.toLocaleString("en-US");
-}
-
-function formatSigned(value: number): string {
-  return `${value >= 0 ? "+" : ""}${formatNumber(value)}`;
 }
 
 function errorMessage(error: unknown): string {

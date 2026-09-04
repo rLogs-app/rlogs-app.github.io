@@ -2300,6 +2300,32 @@ footer {
   font-weight: 800;
 }
 
+.optimizer-loadout-link-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+}
+
+#optimizer-equipped-summary {
+  padding: 7px 8px;
+  margin: -4px 0 10px;
+  border: 1px solid rgb(88 226 234 / 20%);
+  border-radius: 8px;
+  background: rgb(88 226 234 / 4%);
+}
+
+.optimizer-link-summary-label {
+  margin-right: 2px;
+  color: var(--muted);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .optimizer-module-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
@@ -2587,27 +2613,6 @@ footer {
   color: var(--accent);
 }
 
-.optimizer-solution-score {
-  display: grid;
-  justify-items: end;
-}
-
-.optimizer-solution-score strong {
-  color: var(--accent);
-  font-size: 20px;
-}
-
-.optimizer-solution-score span,
-.optimizer-solution-score small {
-  color: var(--muted);
-  font-size: 8px;
-}
-
-.optimizer-solution-score small {
-  color: var(--success);
-  font-weight: 800;
-}
-
 .optimizer-solution-modules {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -2619,11 +2624,10 @@ footer {
   box-shadow: none;
 }
 
-.optimizer-solution-attributes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 12px 12px;
+.optimizer-solution-card > .optimizer-loadout-link-summary {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgb(39 61 85 / 70%);
+  background: rgb(6 13 22 / 34%);
 }
 
 .optimizer-result-effect {
@@ -2635,18 +2639,6 @@ footer {
 .optimizer-result-effect-icon {
   width: 18px;
   height: 18px;
-}
-
-.optimizer-solution-footer {
-  display: flex;
-  gap: 16px;
-  justify-content: flex-end;
-  padding: 9px 13px;
-  color: var(--muted);
-  border-top: 1px solid rgb(39 61 85 / 70%);
-  background: rgb(6 13 22 / 65%);
-  font-size: 8px;
-  font-weight: 700;
 }
 
 .account-token-output {

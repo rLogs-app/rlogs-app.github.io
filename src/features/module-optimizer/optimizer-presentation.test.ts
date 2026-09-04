@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProfilePresentationCatalog } from "../profiles/profile-presentation";
-import { moduleCardModel, sortModuleInventory } from "./optimizer-presentation";
+import {
+  loadoutLinkSummary,
+  moduleCardModel,
+  sortModuleInventory,
+} from "./optimizer-presentation";
 
 const catalog = {
   quality_names: { "4": "Epic" },
@@ -46,5 +50,28 @@ describe("module optimizer presentation", () => {
     ];
     expect(sortModuleInventory(modules, catalog, new Set(["equipped"])).map((module) => module.instance_id))
       .toEqual(["equipped", "high", "low"]);
+  });
+
+  it("shows finalized effect Link sums for the whole loadout", () => {
+    expect(loadoutLinkSummary([
+      {
+        instance_id: "one",
+        config_id: 5_500_103,
+        quality: 4,
+        parts: [
+          { part_id: 2_104, initial_link_points: 10 },
+          { part_id: 1_111, initial_link_points: 3 },
+        ],
+      },
+      {
+        instance_id: "two",
+        config_id: 5_500_103,
+        quality: 4,
+        parts: [{ part_id: 1_111, initial_link_points: 5 }],
+      },
+    ], catalog)).toEqual([
+      { id: 2_104, name: "DMG Stack", icon: "/dmg-stack.png", link: 10 },
+      { id: 1_111, name: "Agility Boost", icon: "/agility.png", link: 8 },
+    ]);
   });
 });

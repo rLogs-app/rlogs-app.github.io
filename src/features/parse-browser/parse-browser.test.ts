@@ -10,6 +10,7 @@ import {
   activityLabel,
   filterSearch,
   humanizeAttributionComponent,
+  otherSkillDetailsHtml,
   ownedSkillParticipants,
   renderReport,
 } from "./parse-browser";
@@ -30,6 +31,16 @@ const parse: PublicParseCatalogEntry = {
 };
 
 describe("parse search", () => {
+  it("resolves grouped Other skill content from a nested click target", () => {
+    const template = { innerHTML: "  <article>Grouped details</article>  " };
+    const row = { closest: () => null, querySelector: () => template };
+    const button = { closest: (selector: string) => selector === ".parse-skill-other-row" ? row : null };
+    const nestedTarget = { closest: () => button };
+
+    expect(otherSkillDetailsHtml({ contains: (node) => node === button }, nestedTarget))
+      .toBe("<article>Grouped details</article>");
+  });
+
   it("moves only fully proven Encore output to the exact support provider", () => {
     const actors = [
       {

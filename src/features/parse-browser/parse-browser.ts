@@ -59,6 +59,7 @@ export async function mountParseBrowser(): Promise<void> {
     hostClass: "parse-skill-detail-modal",
     panelClass: "parse-skill-detail-modal-panel",
   });
+  bindOtherSkillDetails(detailHost, skillDetail);
   const detail = createParseDetailModal(detailHost, () => {
     skillDetail.close();
     const url = new URL(location.href);
@@ -175,7 +176,6 @@ export async function mountParseBrowser(): Promise<void> {
         }
       }
       detail.show(renderReport(report, runIndex, reconciliation, reconciliationError, presentation));
-      bindOtherSkillDetails(detailHost, skillDetail);
       history.replaceState(
         null,
         "",
@@ -187,14 +187,39 @@ export async function mountParseBrowser(): Promise<void> {
   }
 }
 
-function bindOtherSkillDetails(root: ParentNode, modal: ReturnType<typeof createParseDetailModal>): void {
-  root.querySelectorAll<HTMLButtonElement>("[data-skill-other-trigger]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const template = button.parentElement?.querySelector<HTMLTemplateElement>("template[data-skill-other-content]");
-      const html = template?.innerHTML.trim();
-      if (html) modal.show(html);
-    });
+export function bindOtherSkillDetails(
+  root: HTMLElement,
+  modal: Pick<ReturnType<typeof createParseDetailModal>, "show">,
+): void {
+  root.addEventListener("click", (event) => {
+    const html = otherSkillDetailsHtml(root, event.target);
+    if (!html) return;
+    event.preventDefault();
+    event.stopPropagation();
+    modal.show(html);
   });
+}
+
+interface ClosestQueryTarget {
+  closest(selector: string): ClosestQueryTarget | null;
+  querySelector?(selector: string): { innerHTML?: string } | null;
+}
+
+export function otherSkillDetailsHtml(
+  root: { contains(node: unknown): boolean },
+  target: unknown,
+): string | null {
+  if (
+    typeof target !== "object" ||
+    target === null ||
+    !("closest" in target) ||
+    typeof target.closest !== "function"
+  ) return null;
+  const button = (target as ClosestQueryTarget).closest("[data-skill-other-trigger]");
+  if (!button || !root.contains(button)) return null;
+  const row = button.closest(".parse-skill-other-row");
+  const template = row?.querySelector?.("template[data-skill-other-content]");
+  return template?.innerHTML?.trim() || null;
 }
 
 async function fetchCatalog(query = ""): Promise<PublicParseCatalog> {
