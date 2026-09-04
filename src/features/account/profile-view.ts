@@ -1,5 +1,8 @@
 import type { JsonValue } from "../../contracts/website-payload";
-import type { PublishedProfile } from "../profiles/published-profile-loader";
+import {
+  loadPublishedProfileLoadout,
+  type PublishedProfile,
+} from "../profiles/published-profile-loader";
 import {
   loadProfilePresentation,
   type ProfilePresentationCatalog,
@@ -36,6 +39,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     identity.append(image);
   }
   const identityCopy = element("div");
+  const buildIdentity = resolvedBuildIdentity(body);
   identityCopy.append(
     element("p", "eyebrow", "Synced character"),
     element("h2", "", characterName),
@@ -44,6 +48,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
       "identity-id",
       `UID ${profile.entry.character_id} · ${[profile.entry.region, profile.entry.realm ?? profile.entry.world].filter(Boolean).join(" · ")}`,
     ),
+    element("p", "character-profile-build", buildIdentity),
   );
   identity.append(identityCopy);
   heading.append(identity, element("span", "profile-last-seen", `Last seen ${relativeTime(profile.entry.source_updated_unix_millis ?? profile.entry.source_created_unix_millis ?? Date.now())}`));
@@ -62,9 +67,11 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     portraitPanel.append(portrait);
     showcase.append(portraitPanel);
   }
+  const showcaseDetails = element("div", "profile-showcase-details");
   const photoWall = photoWallSection(body);
   photoWall.classList.add("profile-showcase-photo-wall");
-  showcase.append(photoWall);
+  showcaseDetails.append(photoWall, loadoutSelector(profile, body, root));
+  showcase.append(showcaseDetails);
   if (!halfBodyImageUrl) showcase.classList.add("is-photo-only");
   root.append(showcase);
 
@@ -99,7 +106,12 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     combatStatsSection(body),
     imagineSection(arrayValue(body.owned_imagines), arrayValue(body.battle_imagine_skills)),
     equipmentSection(body),
-    moduleSection(inventory, equippedSlots, profile.entry.profile_id),
+    moduleSection(
+      inventory,
+      equippedSlots,
+      profile.entry.profile_id,
+      positiveIntegerValue(body.current_profession_project_id),
+    ),
   );
   combatGroup.append(combatSections, skillsSection(body));
 
@@ -155,6 +167,132 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   ));
   root.append(extraGroup);
   return root;
+}
+
+function loadoutSelector(
+  profile: PublishedProfile,
+  body: JsonRecord,
+  root: HTMLElement,
+): HTMLElement {
+  const section = element("section", "profile-loadout-selector");
+  const heading = element("div", "profile-loadout-selector-heading");
+  heading.append(
+    element("div", "", "Saved loadouts"),
+    element("small", "", "Select a build to update stats, equipment, skills, and modules."),
+  );
+  section.append(heading);
+  const activeProjectId = positiveIntegerValue(body.current_profession_project_id);
+  const choices = profile.loadouts.length
+    ? profile.loadouts
+    : activeProjectId == null
+      ? []
+      : [{
+        project_id: activeProjectId,
+        updated_unix_millis: Date.now(),
+        source_client_build: "published-snapshot",
+        module_inventory_count: arrayValue(recordValue(body.modules)?.inventory).length,
+        equipped_module_count: Object.keys(recordValue(recordValue(body.modules)?.equipped_slots) ?? {}).length,
+      }];
+  if (!choices.length) {
+    section.append(empty("No saved loadout identity was included in this snapshot."));
+    return section;
+  }
+  const list = element("div", "profile-loadout-list");
+  const status = element("p", "profile-loadout-status");
+  for (const choice of choices) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "profile-loadout-choice";
+    button.classList.toggle("is-active", choice.project_id === activeProjectId);
+    button.setAttribute("aria-pressed", String(choice.project_id === activeProjectId));
+    const choiceBody = choice.project_id === activeProjectId ? body : undefined;
+    const className = classDisplayName(choice.class_id ?? numericValue(choiceBody?.class_id));
+    const specName = choiceBody == null
+      ? specializationDisplayName(choice.specialization_id)
+      : resolvedSpecializationName(choiceBody);
+    button.append(
+      element("strong", "", `Loadout ${choice.project_id}`),
+      element("span", "", [className, specName].filter(Boolean).join(" · ") || "Saved character build"),
+      element(
+        "small",
+        "",
+        `${choice.module_inventory_count.toLocaleString()} modules · ${choice.equipped_module_count} equipped`,
+      ),
+    );
+    button.addEventListener("click", async () => {
+      if (choice.project_id === activeProjectId) return;
+      for (const control of list.querySelectorAll<HTMLButtonElement>("button")) control.disabled = true;
+      status.textContent = `Loading Loadout ${choice.project_id}…`;
+      try {
+        const envelope = await loadPublishedProfileLoadout(profile, choice.project_id);
+        const replacement = await renderSyncedCharacterProfile({ ...profile, envelope });
+        root.replaceWith(replacement);
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : "That loadout could not be loaded.";
+        status.classList.add("is-error");
+        for (const control of list.querySelectorAll<HTMLButtonElement>("button")) control.disabled = false;
+      }
+    });
+    list.append(button);
+  }
+  section.append(list, status);
+  return section;
+}
+
+function resolvedBuildIdentity(body: JsonRecord): string {
+  const className = classDisplayName(numericValue(body.class_id));
+  const specializationName = resolvedSpecializationName(body);
+  return [className, specializationName].filter(Boolean).join(" / ") || "Class and specialization not observed";
+}
+
+function resolvedSpecializationName(body: JsonRecord): string | undefined {
+  return resolveTalentTreeLayout(body, presentation)?.specializationName
+    ?? specializationDisplayName(numericValue(body.specialization_id));
+}
+
+function specializationDisplayName(specializationId: number | null | undefined): string | undefined {
+  if (specializationId == null) return undefined;
+  return ({
+    101: "Iaido Slash Spec",
+    102: "Moonstrike Spec",
+    104: "Icicle Spec",
+    105: "Frostbeam Spec",
+    107: "Vanguard Spec",
+    108: "Skyward Spec",
+    110: "Smite Spec",
+    111: "Lifebind Spec",
+    113: "Earthfort Spec",
+    114: "Block Spec",
+    116: "Wildpack Spec",
+    117: "Falconry Spec",
+    119: "Dissonance Spec",
+    120: "Concerto Spec",
+    122: "Recovery Spec",
+    123: "Shield Spec",
+    125: "Hand Cannon",
+    126: "Hand Cannon",
+    128: "Formless Spec",
+    129: "Crimson Spec",
+  } as Record<number, string>)[specializationId];
+}
+
+function classDisplayName(classId: number | null | undefined): string | undefined {
+  if (classId == null) return undefined;
+  return ({
+    1: "Stormblade",
+    2: "Frost Mage",
+    3: "Twin Striker",
+    4: "Wind Knight",
+    5: "Verdant Oracle",
+    8: "Thunder Flash - Hand Cannon",
+    9: "Heavy Guardian",
+    10: "Ritual Dance of Shadowspirits",
+    11: "Marksman",
+    12: "Shield Knight",
+    13: "Beat Performer",
+    14: "Lucy",
+    15: "Natsu",
+  } as Record<number, string>)[classId] ?? `Class ${classId}`;
 }
 
 function createProfileDetailModal(characterName: string, characterId: string): ProfileDetailModal {
@@ -747,6 +885,7 @@ function moduleSection(
   inventory: JsonValue[],
   slots: JsonRecord | undefined,
   profileId: string,
+  projectId?: number,
 ): HTMLElement {
   const equipped = slots ? Object.entries(slots) : [];
   const section = profileSection("Module loadout", `${inventory.length} owned · ${equipped.length} equipped`);
@@ -823,8 +962,8 @@ function moduleSection(
     list.append(row);
   }
   section.append(equipped.length ? list : empty("No equipped modules were present in the latest snapshot."));
-  const link = element("a", "profile-section-link", "Open this inventory in Module Optimizer →");
-  link.href = optimizerProfileHref(profileId);
+  const link = element("a", "profile-section-link", "Open this loadout in Module Optimizer →");
+  link.href = optimizerProfileHref(profileId, projectId);
   section.append(link);
   return section;
 }
@@ -2703,6 +2842,11 @@ function stringValue(value: JsonValue | undefined): string | undefined {
 
 function numericValue(value: JsonValue | undefined): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function positiveIntegerValue(value: JsonValue | undefined): number | undefined {
+  const number = numericValue(value);
+  return number != null && Number.isSafeInteger(number) && number > 0 ? number : undefined;
 }
 
 function safePresentationImageUrl(value: string | null | undefined): string | undefined {

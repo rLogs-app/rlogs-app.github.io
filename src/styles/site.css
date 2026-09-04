@@ -2836,6 +2836,95 @@ footer {
   align-self: start;
 }
 
+.profile-showcase-details {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.character-profile-build {
+  margin-top: 5px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.profile-loadout-selector {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line-bright);
+  border-radius: 12px;
+  background: rgb(5 11 19 / 64%);
+}
+
+.profile-loadout-selector-heading {
+  display: flex;
+  gap: 8px 16px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.profile-loadout-selector-heading > div {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.profile-loadout-selector-heading small,
+.profile-loadout-choice span,
+.profile-loadout-choice small,
+.profile-loadout-status {
+  color: var(--muted);
+}
+
+.profile-loadout-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.profile-loadout-choice {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  background: rgb(11 21 34 / 82%);
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-loadout-choice:hover,
+.profile-loadout-choice:focus-visible,
+.profile-loadout-choice.is-active {
+  border-color: var(--accent);
+  background: rgb(92 225 230 / 10%);
+}
+
+.profile-loadout-choice:disabled {
+  cursor: progress;
+  opacity: 0.66;
+}
+
+.profile-loadout-choice strong,
+.profile-loadout-choice span,
+.profile-loadout-choice small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-loadout-status {
+  min-height: 1.2em;
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.profile-loadout-status.is-error {
+  color: var(--danger);
+}
+
 .profile-last-seen {
   flex: 0 0 auto;
   color: var(--accent);
@@ -5026,6 +5115,15 @@ footer p {
   .profile-showcase {
     grid-template-columns: 1fr;
     padding: 10px;
+  }
+
+  .profile-loadout-selector-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .profile-loadout-list {
+    grid-template-columns: 1fr;
   }
 
   .character-half-body-picture {

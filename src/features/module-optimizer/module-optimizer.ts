@@ -15,13 +15,19 @@ import type {
   OptimizeResponse,
   SearchMode,
 } from "./optimizer-types";
-import { loadPublishedProfile } from "../profiles/published-profile-loader";
+import {
+  loadPublishedProfile,
+  loadPublishedProfileLoadout,
+} from "../profiles/published-profile-loader";
 import {
   loadProfilePresentation,
   type ProfilePresentationCatalog,
 } from "../profiles/profile-presentation";
 import { moduleCardModel, sortModuleInventory } from "./optimizer-presentation";
-import { requestedOptimizerProfile } from "./optimizer-profile-route";
+import {
+  requestedOptimizerLoadout,
+  requestedOptimizerProfile,
+} from "./optimizer-profile-route";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 const sessionKey = "rlogs.web-session.v1";
@@ -141,10 +147,11 @@ async function loadSyncedInventory(): Promise<void> {
   const pickerLabel = picker.closest<HTMLLabelElement>(".optimizer-profile-picker");
   const session = activeSession();
   const requestedProfile = requestedOptimizerProfile(location.search);
+  const requestedLoadout = requestedOptimizerLoadout(location.search);
   if (requestedProfile) {
     signIn.hidden = true;
     if (pickerLabel) pickerLabel.hidden = true;
-    await loadPublishedInventory(requestedProfile);
+    await loadPublishedInventory(requestedProfile, requestedLoadout);
     return;
   }
   if (!apiBase || !session) {
@@ -189,18 +196,21 @@ async function loadSyncedInventory(): Promise<void> {
   await loadPublishedInventory(picker.value);
 }
 
-async function loadPublishedInventory(profileId: string): Promise<void> {
+async function loadPublishedInventory(profileId: string, projectId?: number): Promise<void> {
   setInventoryStatus("Loading this profile's published module inventory...");
   try {
     const published = await loadPublishedProfile(profileId);
-    const input = extractOptimizerInput(published.envelope);
+    const envelope = projectId == null
+      ? published.envelope
+      : await loadPublishedProfileLoadout(published, projectId);
+    const input = extractOptimizerInput(envelope);
     inventory = input.modules;
     currentInstanceIds = input.currentInstanceIds;
     renderInventoryPreview();
     setCombinationSizeForCurrentSetup();
     updateExactSearchAvailability();
     setInventoryStatus(
-      `${published.entry.label} loaded: ${formatNumber(inventory.length)} modules and ` +
+      `${published.entry.label}${projectId == null ? "" : ` · Loadout ${projectId}`} loaded: ${formatNumber(inventory.length)} modules and ` +
         `${currentInstanceIds.length} equipped modules.`,
     );
     setRunStatus("Choose attribute priorities, then optimize.");

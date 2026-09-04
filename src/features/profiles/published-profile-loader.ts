@@ -16,6 +16,17 @@ let indexRequest: Promise<PublishedProfileIndex> | undefined;
 export interface PublishedProfile {
   entry: PublishedProfileEntry;
   envelope: WebsitePayloadEnvelope;
+  loadouts: PublishedProfileLoadoutSummary[];
+}
+
+export interface PublishedProfileLoadoutSummary {
+  project_id: number;
+  updated_unix_millis: number;
+  source_client_build: string;
+  class_id?: number;
+  specialization_id?: number;
+  module_inventory_count: number;
+  equipped_module_count: number;
 }
 
 export function loadPublishedProfileIndex(): Promise<PublishedProfileIndex> {
@@ -70,7 +81,45 @@ export async function loadPublishedProfile(
   }
   verifyManifestMatchesEnvelope(entry, result.envelope);
 
-  return { entry, envelope: result.envelope };
+  return {
+    entry,
+    envelope: result.envelope,
+    loadouts: currentEnvelopeLoadout(result.envelope),
+  };
+}
+
+export async function loadPublishedProfileLoadout(
+  profile: PublishedProfile,
+  projectId: number,
+): Promise<WebsitePayloadEnvelope> {
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+    throw new Error("The selected loadout ID is invalid.");
+  }
+  if (configuredApi && profile.entry.profile_id.startsWith("prf_")) {
+    const response = await fetch(
+      `${configuredApi}/v1/profiles/${encodeURIComponent(profile.entry.profile_id)}/loadouts/${projectId}`,
+    );
+    if (!response.ok) {
+      throw new Error(`Published loadout request failed with HTTP ${response.status}.`);
+    }
+    const value: unknown = await response.json();
+    if (
+      !isRecord(value) ||
+      value.schema_version !== 1 ||
+      value.profile_id !== profile.entry.profile_id ||
+      value.project_id !== projectId
+    ) {
+      throw new Error("Published loadout response is invalid.");
+    }
+    const validation = validateWebsitePayload(value.envelope);
+    if (!validation.envelope) {
+      throw new Error(`Published loadout failed validation: ${validation.errors.join(" ")}`);
+    }
+    return validation.envelope;
+  }
+  const currentProject = currentProjectId(profile.envelope);
+  if (currentProject === projectId) return profile.envelope;
+  throw new Error("That saved loadout has not been published yet.");
 }
 
 async function loadSubmittedProfile(profileId: string): Promise<PublishedProfile> {
@@ -119,7 +168,62 @@ async function loadSubmittedProfile(profileId: string): Promise<PublishedProfile
     source_client_build: clientBuild,
   };
   verifyManifestMatchesEnvelope(entry, envelope);
-  return { entry, envelope };
+  return { entry, envelope, loadouts: loadoutSummaries(value, envelope) };
+}
+
+function loadoutSummaries(
+  value: Record<string, unknown>,
+  envelope: WebsitePayloadEnvelope,
+): PublishedProfileLoadoutSummary[] {
+  const summaries = Array.isArray(value.loadouts)
+    ? value.loadouts.flatMap((candidate) => {
+      if (!isRecord(candidate)) return [];
+      const projectId = candidate.project_id;
+      const updated = candidate.updated_unix_millis;
+      const sourceBuild = candidate.source_client_build;
+      const inventoryCount = candidate.module_inventory_count;
+      const equippedCount = candidate.equipped_module_count;
+      if (
+        typeof projectId !== "number" || !Number.isSafeInteger(projectId) || projectId <= 0 ||
+        typeof updated !== "number" || !Number.isSafeInteger(updated) || updated <= 0 ||
+        typeof sourceBuild !== "string" || sourceBuild.length === 0 ||
+        typeof inventoryCount !== "number" || !Number.isSafeInteger(inventoryCount) || inventoryCount < 0 ||
+        typeof equippedCount !== "number" || !Number.isSafeInteger(equippedCount) || equippedCount < 0
+      ) return [];
+      return [{
+        project_id: projectId,
+        updated_unix_millis: updated,
+        source_client_build: sourceBuild,
+        ...(optionalIntegerField(candidate, "class_id") == null ? {} : { class_id: optionalIntegerField(candidate, "class_id") }),
+        ...(optionalIntegerField(candidate, "specialization_id") == null ? {} : { specialization_id: optionalIntegerField(candidate, "specialization_id") }),
+        module_inventory_count: inventoryCount,
+        equipped_module_count: equippedCount,
+      } satisfies PublishedProfileLoadoutSummary];
+    })
+    : [];
+  return summaries.length ? summaries.sort((left, right) => left.project_id - right.project_id) : currentEnvelopeLoadout(envelope);
+}
+
+function currentEnvelopeLoadout(envelope: WebsitePayloadEnvelope): PublishedProfileLoadoutSummary[] {
+  const projectId = currentProjectId(envelope);
+  if (projectId == null) return [];
+  const modules = isRecord(envelope.body.modules) ? envelope.body.modules : undefined;
+  const inventory = Array.isArray(modules?.inventory) ? modules.inventory : [];
+  const slots = isRecord(modules?.equipped_slots) ? modules.equipped_slots : {};
+  return [{
+    project_id: projectId,
+    updated_unix_millis: Date.now(),
+    source_client_build: "published-snapshot",
+    ...(optionalIntegerField(envelope.body, "class_id") == null ? {} : { class_id: optionalIntegerField(envelope.body, "class_id") }),
+    ...(optionalIntegerField(envelope.body, "specialization_id") == null ? {} : { specialization_id: optionalIntegerField(envelope.body, "specialization_id") }),
+    module_inventory_count: inventory.length,
+    equipped_module_count: Object.keys(slots).length,
+  }];
+}
+
+function currentProjectId(envelope: WebsitePayloadEnvelope): number | undefined {
+  const value = envelope.body.current_profession_project_id;
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
 async function fetchProfileIndex(): Promise<PublishedProfileIndex> {
@@ -193,6 +297,14 @@ function optionalTextField(
     throw new Error(`Submitted profile ${key} is invalid.`);
   }
   return field;
+}
+
+function optionalIntegerField(
+  value: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const field = value[key];
+  return typeof field === "number" && Number.isSafeInteger(field) ? field : undefined;
 }
 
 function positiveIntegerField(value: Record<string, unknown>, key: string): number {
