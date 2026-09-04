@@ -570,10 +570,11 @@ const encoreDamageActionIds = new Set(["230401", "230501"]);
  * Encore damage is emitted on the recipient's wire actor, while the exact
  * status-source lifecycle proves which external healer generated it. Keep the
  * immutable raw participant totals intact everywhere else, but present a
- * semantic skill-ownership view here. A move is allowed only when complete
- * influence rows cover the entire raw Encore action total; missing or
- * overlapping-provider evidence therefore remains on the recipient rather
- * than being guessed.
+ * semantic skill-ownership view here. The overall effect can remain partial
+ * while its standalone generated-damage component is exact. A move is allowed
+ * only when exact component rows cover the entire raw Encore action total;
+ * missing or overlapping-provider evidence therefore remains on the recipient
+ * rather than being guessed.
  */
 export function ownedSkillParticipants(
   participants: AnalysisParticipant[],
@@ -592,16 +593,28 @@ export function ownedSkillParticipants(
   for (const influence of influences) {
     if (
       influence.effect_id !== encoreEffectId ||
-      !influence.complete_effect ||
       !influence.damage_context_complete ||
       influence.provider_actor_id === influence.recipient_actor_id ||
       !influence.affected_ability_id ||
-      !encoreDamageActionIds.has(influence.affected_ability_id)
+      !encoreDamageActionIds.has(influence.affected_ability_id) ||
+      !influence.attribution_component ||
+      humanizeAttributionComponent(influence.attribution_component).toLowerCase() !==
+        "encore standalone generated damage"
     ) continue;
     const amount = influence.attributed_rdps == null
       ? null
       : parseInteger(influence.attributed_rdps);
-    if (amount == null || amount <= 0n) continue;
+    const observed = parseInteger(influence.observed_damage);
+    const exactDelta = influence.exact_integer_delta == null
+      ? null
+      : parseInteger(influence.exact_integer_delta);
+    if (
+      amount == null ||
+      amount <= 0n ||
+      observed !== amount ||
+      exactDelta !== amount ||
+      influence.exact_rational_deltas.length > 0
+    ) continue;
     const key = `${influence.recipient_actor_id}\0${influence.affected_ability_id}`;
     const providers = movements.get(key) ?? new Map();
     const previous = providers.get(influence.provider_actor_id) ?? {
@@ -632,7 +645,17 @@ export function ownedSkillParticipants(
     const ability = recipient?.abilities?.find((candidate) => candidate.ability_id === actionId);
     if (!ability) continue;
     const moved = [...providers.values()].reduce((sum, value) => sum + value.damage, 0n);
-    if (!Number.isSafeInteger(ability.damage) || moved !== BigInt(ability.damage)) continue;
+    if (
+      !Number.isSafeInteger(ability.damage) ||
+      moved !== BigInt(ability.damage) ||
+      [...providers.keys()].some((providerId) => !byActor.has(providerId))
+    ) continue;
+    if (providers.size === 1) {
+      const [providerId, value] = [...providers.entries()][0]!;
+      if (value.criticalHits === null && value.events === ability.hits) {
+        providers.set(providerId, { ...value, criticalHits: ability.critical_hits });
+      }
+    }
     recipient!.abilities = recipient!.abilities!.filter((candidate) => candidate !== ability);
     for (const [providerId, value] of providers) {
       if (!byActor.has(providerId)) continue;
@@ -745,7 +768,10 @@ function renderOtherSkillDetails(
     const percent = totalDamage > 0 ? (ability.damage / totalDamage) * 100 : 0;
     const criticalRate = ability.hits > 0 ? (ability.critical_hits / ability.hits) * 100 : 0;
     const name = localizedActionName(presentation, ability.ability_id, ability.presentation_name);
-    return `<li><span class="parse-skill-drilldown-rank">${index + 8}</span><span><strong>${escapeHtml(name)}</strong><small>${skillCastLabel(ability, castContext)} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
+    const observation = ability.presentation_kind === "support-generated-damage"
+      ? `${ability.hits.toLocaleString()} generated hits · provider proven`
+      : `${skillCastLabel(ability, castContext)} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit`;
+    return `<li><span class="parse-skill-drilldown-rank">${index + 8}</span><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(observation)}</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
   }).join("");
   return `<article class="parse-skill-drilldown"><header><p class="eyebrow">Complete skill contribution</p><h3>Other skills · ${escapeHtml(participantName(actor))}</h3><p>${abilities.length.toLocaleString()} skills grouped in the compact chart</p></header><div class="parse-skill-drilldown-summary"><span><small>Grouped damage</small><strong>${formatNumber(groupedDamage)}</strong></span><span><small>Player share</small><strong>${groupedPercent.toFixed(1)}%</strong></span></div><ol class="parse-skill-drilldown-list">${rows}</ol></article>`;
 }

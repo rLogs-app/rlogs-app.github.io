@@ -71,10 +71,11 @@ describe("parse search", () => {
       action: string,
       amount: string,
       events: number,
-      criticalHits: number,
+      criticalHits: number | null,
     ) => ({
-      effect_id: "55333", attribution_component: "Encore standalone generated damage",
-      complete_effect: true, provider_actor_id: provider, recipient_actor_id: "damage",
+      effect_id: "55333",
+      attribution_component: "Encore (55333) standalone generated damage (actions 230401/230501)",
+      complete_effect: false, provider_actor_id: provider, recipient_actor_id: "damage",
       affected_ability_id: action, target_actor_id: "boss", first_observed_micros: 1,
       last_observed_micros: 2, damage_event_count: events,
       critical_hit_count: criticalHits, observed_damage: amount,
@@ -84,8 +85,8 @@ describe("parse search", () => {
     const projected = ownedSkillParticipants(
       actors,
       [
-        influence("healer-a", "230401", "100", 2, 1),
-        influence("healer-b", "230501", "200", 3, 2),
+        influence("healer-a", "230401", "100", 2, null),
+        influence("healer-b", "230501", "200", 3, null),
       ],
       [{ effect_id: "55333", presentation_name: "Encore", presentation_kind: "status", icon_asset_path: null }],
     );
@@ -97,6 +98,27 @@ describe("parse search", () => {
     expect(projected.find((actor) => actor.actor_id === "healer-b")?.abilities?.[0]).toMatchObject({
       presentation_name: "Encore", damage: 200, hits: 3, critical_hits: 2,
     });
+  });
+
+  it("keeps Encore on the wire recipient when the component or provider is not exact", () => {
+    const actor = {
+      actor_id: "damage", character_id: "3", display_name: "Damage", actor_kind: "player",
+      class_id: 11, class_name: "Marksman", specialization_id: 2,
+      specialization_name: "Falconry", damage: 100, dps: 10, encounter_dps: 10,
+      hps: 0, tps: 0, rdps: null, deaths: 0,
+      abilities: [{ ability_id: "230401", presentation_name: "Encore", presentation_kind: null, icon_asset_path: null, casts: 0, hits: 2, critical_hits: 1, damage: 100, effective_damage: 100, healing: 0, effective_healing: 0, shielding: 0 }],
+    };
+    const unsafeInfluence = {
+      effect_id: "55333", attribution_component: "Encore unresolved damage",
+      complete_effect: false, provider_actor_id: "missing-healer", recipient_actor_id: "damage",
+      affected_ability_id: "230401", target_actor_id: "boss", first_observed_micros: 1,
+      last_observed_micros: 2, damage_event_count: 2, critical_hit_count: null,
+      observed_damage: "100", exact_integer_delta: "100", exact_rational_deltas: [],
+      attributed_rdps: "100", damage_context_complete: true,
+    };
+
+    const projected = ownedSkillParticipants([actor], [unsafeInfluence], []);
+    expect(projected[0]?.abilities).toEqual(actor.abilities);
   });
 
   it("does not move a partially proven Encore action", () => {
