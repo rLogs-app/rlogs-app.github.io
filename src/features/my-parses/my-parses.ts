@@ -8,7 +8,11 @@ import {
   type PublicRunReconciliation,
   validateRunGroupId,
 } from "../../contracts/public-parse";
-import { renderCatalogEntry, renderReport } from "../parse-browser/parse-browser";
+import {
+  bindOtherSkillDetails,
+  renderCatalogEntry,
+  renderReport,
+} from "../parse-browser/parse-browser";
 import { createParseDetailModal } from "../parse-browser/parse-detail-modal";
 import { loadParsePresentation } from "../parse-browser/parse-presentation";
 
@@ -26,7 +30,20 @@ export async function mountMyParses(): Promise<void> {
   const browser = required<HTMLElement>("#my-parse-browser");
   const search = required<HTMLInputElement>("#my-parse-search");
   const list = required<HTMLElement>("#my-parse-list");
-  const detail = createParseDetailModal(required<HTMLElement>("#my-parse-detail"));
+  const detailHost = required<HTMLElement>("#my-parse-detail");
+  document.querySelector("#my-parse-skill-detail")?.remove();
+  const skillDetailHost = document.createElement("div");
+  skillDetailHost.id = "my-parse-skill-detail";
+  document.body.append(skillDetailHost);
+  const skillDetail = createParseDetailModal(skillDetailHost, () => undefined, {
+    ariaLabel: "Other skill details",
+    closeAriaLabel: "Close other skill details",
+    bodyClass: "parse-skill-modal-open",
+    hostClass: "parse-skill-detail-modal",
+    panelClass: "parse-skill-detail-modal-panel",
+  });
+  bindMyParseSkillDetails(detailHost, skillDetail);
+  const detail = createParseDetailModal(detailHost, () => skillDetail.close());
   const presentationRequest = loadParsePresentation().catch(() => undefined);
   const session = activeSession();
 
@@ -185,6 +202,13 @@ export async function mountMyParses(): Promise<void> {
       status.className = "status-chip danger";
     }
   }
+}
+
+export function bindMyParseSkillDetails(
+  root: HTMLElement,
+  modal: Pick<ReturnType<typeof createParseDetailModal>, "show">,
+): void {
+  bindOtherSkillDetails(root, modal);
 }
 
 async function fetchCatalog(session: WebSession, offset = 0): Promise<MyParseCatalog> {

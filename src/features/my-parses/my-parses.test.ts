@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { MyParseCatalogEntry } from "../../contracts/public-parse";
-import { filterMyParses, renderMyParseEntry } from "./my-parses";
+import {
+  bindMyParseSkillDetails,
+  filterMyParses,
+  renderMyParseEntry,
+} from "./my-parses";
 
 const entry: MyParseCatalogEntry = {
   report_id: `rpt_${"ab".repeat(16)}`,
@@ -28,6 +32,29 @@ const entry: MyParseCatalogEntry = {
 };
 
 describe("My Parses", () => {
+  it("opens grouped Other skill details from authenticated parse reports", () => {
+    let click: ((event: Event) => void) | undefined;
+    const details = "<article>All remaining skills</article>";
+    const template = { innerHTML: details };
+    const row = { closest: () => null, querySelector: () => template };
+    const button = { closest: (selector: string) => selector === ".parse-skill-other-row" ? row : null };
+    const nestedTarget = { closest: () => button };
+    const root = {
+      addEventListener: (_type: string, listener: (event: Event) => void) => { click = listener; },
+      contains: (node: unknown) => node === button,
+    } as unknown as HTMLElement;
+    let shown = "";
+
+    bindMyParseSkillDetails(root, { show: (html) => { shown = html; } });
+    click?.({
+      target: nestedTarget,
+      preventDefault: () => undefined,
+      stopPropagation: () => undefined,
+    } as unknown as Event);
+
+    expect(shown).toBe(details);
+  });
+
   it("searches verified membership, scene, and visibility", () => {
     expect(filterMyParses([entry], "3296036 unlisted floor 54")).toEqual([entry]);
     expect(filterMyParses([entry], "private")).toEqual([]);
