@@ -178,7 +178,7 @@ function loadoutSelector(
   const heading = element("div", "profile-loadout-selector-heading");
   heading.append(
     element("div", "", "Saved loadouts"),
-    element("small", "", "Select a build to update stats, equipment, skills, and modules."),
+    element("small", "", "All in-game names sync together. Select an observed build to update its details."),
   );
   section.append(heading);
   const activeProjectId = positiveIntegerValue(body.current_profession_project_id);
@@ -188,6 +188,7 @@ function loadoutSelector(
       ? []
       : [{
         project_id: activeProjectId,
+        snapshot_available: true,
         updated_unix_millis: Date.now(),
         source_client_build: "published-snapshot",
         module_inventory_count: arrayValue(recordValue(body.modules)?.inventory).length,
@@ -204,25 +205,32 @@ function loadoutSelector(
     button.type = "button";
     button.className = "profile-loadout-choice";
     button.classList.toggle("is-active", choice.project_id === activeProjectId);
+    button.classList.toggle("is-directory-only", !choice.snapshot_available);
     button.setAttribute("aria-pressed", String(choice.project_id === activeProjectId));
     const choiceBody = choice.project_id === activeProjectId ? body : undefined;
-    const className = classDisplayName(choice.class_id ?? numericValue(choiceBody?.class_id));
+    const className = classDisplayName(choice.class_id ?? choice.profession_id ?? numericValue(choiceBody?.class_id));
     const specName = choiceBody == null
       ? specializationDisplayName(choice.specialization_id)
       : resolvedSpecializationName(choiceBody);
     button.append(
-      element("strong", "", `Loadout ${choice.project_id}`),
+      element("strong", "", choice.project_name ?? `Loadout ${choice.project_id}`),
       element("span", "", [className, specName].filter(Boolean).join(" · ") || "Saved character build"),
       element(
         "small",
         "",
-        `${choice.module_inventory_count.toLocaleString()} modules · ${choice.equipped_module_count} equipped`,
+        choice.snapshot_available
+          ? `${choice.module_inventory_count.toLocaleString()} modules · ${choice.equipped_module_count} equipped`
+          : `Loadout ${choice.project_id} · details not observed yet`,
       ),
     );
+    if (!choice.snapshot_available) {
+      button.disabled = true;
+      button.title = "The name is synced. Equip this loadout once to publish its stats, equipment, skills, and modules.";
+    }
     button.addEventListener("click", async () => {
       if (choice.project_id === activeProjectId) return;
       for (const control of list.querySelectorAll<HTMLButtonElement>("button")) control.disabled = true;
-      status.textContent = `Loading Loadout ${choice.project_id}…`;
+      status.textContent = `Loading ${choice.project_name ?? `Loadout ${choice.project_id}`}…`;
       try {
         const envelope = await loadPublishedProfileLoadout(profile, choice.project_id);
         const replacement = await renderSyncedCharacterProfile({ ...profile, envelope });

@@ -21,6 +21,9 @@ export interface PublishedProfile {
 
 export interface PublishedProfileLoadoutSummary {
   project_id: number;
+  project_name?: string;
+  profession_id?: number;
+  snapshot_available: boolean;
   updated_unix_millis: number;
   source_client_build: string;
   class_id?: number;
@@ -192,6 +195,9 @@ function loadoutSummaries(
       ) return [];
       return [{
         project_id: projectId,
+        ...(optionalTextField(candidate, "project_name") == null ? {} : { project_name: optionalTextField(candidate, "project_name") }),
+        ...(optionalIntegerField(candidate, "profession_id") == null ? {} : { profession_id: optionalIntegerField(candidate, "profession_id") }),
+        snapshot_available: typeof candidate.snapshot_available === "boolean" ? candidate.snapshot_available : true,
         updated_unix_millis: updated,
         source_client_build: sourceBuild,
         ...(optionalIntegerField(candidate, "class_id") == null ? {} : { class_id: optionalIntegerField(candidate, "class_id") }),
@@ -206,12 +212,34 @@ function loadoutSummaries(
 
 function currentEnvelopeLoadout(envelope: WebsitePayloadEnvelope): PublishedProfileLoadoutSummary[] {
   const projectId = currentProjectId(envelope);
-  if (projectId == null) return [];
   const modules = isRecord(envelope.body.modules) ? envelope.body.modules : undefined;
   const inventory = Array.isArray(modules?.inventory) ? modules.inventory : [];
   const slots = isRecord(modules?.equipped_slots) ? modules.equipped_slots : {};
+  const directory = Array.isArray(envelope.body.profession_projects)
+    ? envelope.body.profession_projects.flatMap((candidate) => {
+      if (!isRecord(candidate)) return [];
+      const candidateId = optionalIntegerField(candidate, "project_id");
+      if (candidateId == null || candidateId <= 0) return [];
+      const isCurrent = candidateId === projectId;
+      return [{
+        project_id: candidateId,
+        ...(optionalTextField(candidate, "project_name") == null ? {} : { project_name: optionalTextField(candidate, "project_name") }),
+        ...(optionalIntegerField(candidate, "profession_id") == null ? {} : { profession_id: optionalIntegerField(candidate, "profession_id") }),
+        snapshot_available: isCurrent,
+        updated_unix_millis: Date.now(),
+        source_client_build: "published-snapshot",
+        ...(isCurrent && optionalIntegerField(envelope.body, "class_id") != null ? { class_id: optionalIntegerField(envelope.body, "class_id") } : {}),
+        ...(isCurrent && optionalIntegerField(envelope.body, "specialization_id") != null ? { specialization_id: optionalIntegerField(envelope.body, "specialization_id") } : {}),
+        module_inventory_count: isCurrent ? inventory.length : 0,
+        equipped_module_count: isCurrent ? Object.keys(slots).length : 0,
+      } satisfies PublishedProfileLoadoutSummary];
+    })
+    : [];
+  if (directory.length) return directory.sort((left, right) => left.project_id - right.project_id);
+  if (projectId == null) return [];
   return [{
     project_id: projectId,
+    snapshot_available: true,
     updated_unix_millis: Date.now(),
     source_client_build: "published-snapshot",
     ...(optionalIntegerField(envelope.body, "class_id") == null ? {} : { class_id: optionalIntegerField(envelope.body, "class_id") }),
