@@ -593,6 +593,26 @@ describe("profile combat-stat snapshots", () => {
     expect(values["11330"]).toBe(5_933);
   });
 
+  it("uses the raw MATK family for Intelligence classes in the uniform ATK slot", () => {
+    const families = resolveCombatStatFamilies({
+      "11020": 7_134,
+      "11330": 5,
+      "11340": 5_678,
+    }, allTreesCatalog);
+    const main = mainCombatStatFamilies(families, allTreesCatalog, 13);
+
+    expect(main[2]).toMatchObject({ familyId: 11_020, name: "Intellect" });
+    expect(main[3]).toMatchObject({
+      familyId: 11_340,
+      name: "ATK",
+      components: [expect.objectContaining({ component: "final", value: 5_678 })],
+    });
+    expect(observedBaseCombatStatFamilies(families)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ familyId: 11_330, name: "ATK" }),
+      expect.objectContaining({ familyId: 11_340, name: "MATK" }),
+    ]));
+  });
+
   it("materializes omitted protocol-default Block as an observed zero", () => {
     const values = profileBaseCombatStatValues({
       combat_stats: {

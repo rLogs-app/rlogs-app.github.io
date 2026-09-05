@@ -472,11 +472,14 @@ export function mainCombatStatFamilies(
   const mainAttributeFamilyId = classId == null
     ? undefined
     : catalog.class_main_attribute_family_ids[String(classId)];
+  const attackFamilyId = mainAttributeFamilyId === 11_020
+    ? 11_340 // Intelligence classes use the packet's final MATK family.
+    : 11_330; // Strength and Agility classes use the final physical ATK family.
   const orderedFamilyIds = [
     11_320, // Max HP
     11_040, // Endurance
     mainAttributeFamilyId, // Strength, Intellect, or Agility for the current class
-    11_330, // ATK
+    attackFamilyId, // Class-appropriate raw ATK/MATK packet family
     11_930, // Haste %
     11_710, // Crit %
     11_940, // Mastery %
@@ -489,11 +492,14 @@ export function mainCombatStatFamilies(
     if (familyId == null) {
       return { familyId: 0, name: "Main attribute", components: [] };
     }
-    return byFamilyId.get(familyId) ?? {
+    const family = byFamilyId.get(familyId) ?? {
       familyId,
       name: catalog.fight_attributes[String(familyId)]?.name ?? `Stat ${familyId}`,
       components: [],
     };
+    // The compact cross-class layout calls this slot ATK. The Attributes
+    // detail keeps the catalog's exact ATK or MATK name.
+    return familyId === attackFamilyId ? { ...family, name: "ATK" } : family;
   });
 }
 
