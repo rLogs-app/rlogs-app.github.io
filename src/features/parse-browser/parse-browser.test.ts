@@ -13,6 +13,8 @@ import {
   otherSkillDetailsHtml,
   ownedSkillParticipants,
   renderReport,
+  sortPartyParticipants,
+  timelineDamageAtSecond,
 } from "./parse-browser";
 
 const parse: PublicParseCatalogEntry = {
@@ -152,6 +154,34 @@ describe("parse search", () => {
 
   it("can search exact report IDs", () => {
     expect(filterSearch([parse], parse.report_id)).toEqual([parse]);
+  });
+
+  it("defaults party ordering to aDPS and resolves death markers onto the damage line", () => {
+    const participant = (actorId: string, adps: number) => ({
+      actor_id: actorId,
+      character_id: actorId,
+      display_name: actorId,
+      actor_kind: "player",
+      class_id: null,
+      class_name: null,
+      specialization_id: null,
+      specialization_name: null,
+      damage: adps * 10,
+      dps: adps / 2,
+      encounter_dps: adps,
+      hps: 0,
+      tps: 0,
+      rdps: null,
+      deaths: 0,
+      abilities: [],
+      series: [],
+    });
+    expect(sortPartyParticipants([participant("low", 10), participant("high", 30)]).map((actor) => actor.actor_id))
+      .toEqual(["high", "low"]);
+    expect(timelineDamageAtSecond([
+      { second: 8, damage: 250, effective_healing: 0, damage_taken: 0 },
+      { second: 8, damage: 50, effective_healing: 0, damage_taken: 0 },
+    ], 8)).toBe(300);
   });
 
   it("renders server-backed timeline, skill, rDPS, and evidence analysis", () => {
@@ -435,6 +465,14 @@ describe("parse search", () => {
     expect(html).toContain("Marksman / Falconry");
     expect(html).toContain("Stormblade / Moonstrike");
     expect(html).toContain("Between encounters");
+    expect(html).toContain(`Run ID</small><code>${runGroupId}`);
+    expect(html).toContain(`Report ID</small><code>${reportId}`);
+    expect(html).toContain('data-party-sort="adps" aria-sort="descending"');
+    expect(html).toContain('data-party-sort="effectiveHealing"');
+    expect(html).toContain('data-party-sort="damageTaken"');
+    expect(html).toContain('data-timeline-toggle="11"');
+    expect(html).toContain('data-timeline-actor="11"');
+    expect(html).toContain("parse-death-marker");
 
     const legacyReport = structuredClone(report);
     for (const ability of legacyReport.runs[0]!.participants[0]!.abilities ?? []) {

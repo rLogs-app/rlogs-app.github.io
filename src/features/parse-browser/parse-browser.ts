@@ -60,6 +60,7 @@ export async function mountParseBrowser(): Promise<void> {
     panelClass: "parse-skill-detail-modal-panel",
   });
   bindOtherSkillDetails(detailHost, skillDetail);
+  bindParseReportInteractions(detailHost);
   const detail = createParseDetailModal(detailHost, () => {
     skillDetail.close();
     const url = new URL(location.href);
@@ -200,6 +201,48 @@ export function bindOtherSkillDetails(
   });
 }
 
+export function bindParseReportInteractions(root: HTMLElement): void {
+  root.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+
+    const timelineToggle = event.target.closest<HTMLButtonElement>("[data-timeline-toggle]");
+    if (timelineToggle && root.contains(timelineToggle)) {
+      const actorId = timelineToggle.dataset.timelineToggle;
+      if (!actorId) return;
+      const shown = timelineToggle.getAttribute("aria-pressed") !== "false";
+      timelineToggle.setAttribute("aria-pressed", String(!shown));
+      timelineToggle.closest(".parse-timeline-panel")
+        ?.querySelectorAll<SVGElement>("[data-timeline-actor]")
+        .forEach((element) => {
+          if (element.dataset.timelineActor === actorId) element.classList.toggle("is-hidden", shown);
+        });
+      return;
+    }
+
+    const sortButton = event.target.closest<HTMLButtonElement>("[data-party-sort]");
+    if (!sortButton || !root.contains(sortButton)) return;
+    const table = sortButton.closest<HTMLElement>("[data-parse-party-table]");
+    const rows = table?.querySelector<HTMLElement>("[data-party-rows]");
+    const metric = sortButton.dataset.partySort as PartySortMetric | undefined;
+    if (!table || !rows || !metric || !partySortMetrics.includes(metric)) return;
+    const currentlyActive = sortButton.getAttribute("aria-sort");
+    const direction = currentlyActive === "descending" ? "ascending" : "descending";
+    const multiplier = direction === "ascending" ? 1 : -1;
+    const sorted = [...rows.querySelectorAll<HTMLElement>("[data-party-row]")]
+      .sort((left, right) => {
+        const leftValue = Number(left.dataset[partyMetricDatasetKey(metric)] ?? "-1");
+        const rightValue = Number(right.dataset[partyMetricDatasetKey(metric)] ?? "-1");
+        return (leftValue - rightValue) * multiplier;
+      });
+    sorted.forEach((row) => rows.append(row));
+    table.querySelectorAll<HTMLButtonElement>("[data-party-sort]").forEach((button) => {
+      button.setAttribute("aria-sort", button === sortButton ? direction : "none");
+    });
+    table.dataset.partySort = metric;
+    table.dataset.partySortDirection = direction;
+  });
+}
+
 interface ClosestQueryTarget {
   closest(selector: string): ClosestQueryTarget | null;
   querySelector?(selector: string): { innerHTML?: string } | null;
@@ -300,6 +343,10 @@ export function renderReport(
       <h3>${escapeHtml(run.scene_name ?? run.activity_id ?? `Scene ${run.scene_id ?? "?"}`)}</h3>
       <p>${escapeHtml(formatDifficulty(run))} / ${escapeHtml(title(run.terminal_state))}</p></div>
       ${renderReplayStatus(reconciliation, reconciled)}</div>
+    <div class="parse-run-identity" aria-label="Run identifiers">
+      <span><small>Run ID</small><code>${escapeHtml(run.run_group_id ?? `${report.report_id}:${run.run_index}`)}</code></span>
+      <span><small>Report ID</small><code>${escapeHtml(report.report_id)}</code></span>
+    </div>
     <div class="parse-metrics">
       ${metric("Run", formatDuration(run.total_run_time_micros))}
       ${metric("Game", formatDuration(run.game_time_micros))}
@@ -311,9 +358,7 @@ export function renderReport(
     </div>
     ${renderReconciliationProof(reconciliation, reconciliationError, reconciled)}
     ${renderSwiftVortexCandidateAudit(reconciliation)}
-    <div class="parse-party"><div class="parse-party-head"><strong>Party</strong><small>${run.participants.length} combatants / rDPS ${escapeHtml(run.rdps_status)}</small></div>
-      ${participants.map((actor) => renderParticipant(actor, run.active_combat_micros, reconciled)).join("")}
-    </div>
+    ${renderPartyTable(participants, run.active_combat_micros, reconciled, run.rdps_status)}
     ${renderCombatLoadoutPhases(run, participants, presentation)}
     ${renderRunTimeline(run, participants)}
     ${renderSkillContributions(participants, skillInfluences, skillEffects, presentation)}
@@ -323,31 +368,115 @@ export function renderReport(
   </article>`;
 }
 
-function renderParticipant(
-  actor: PublicRun["participants"][number] | PublicReconciledParticipant,
+const partySortMetrics = [
+  "adps", "edps", "damage", "rdps", "rdmg", "given", "received", "hps", "healing",
+  "effectiveHealing", "tps", "damageTaken", "shielding", "casts", "hits", "critRate", "deaths",
+] as const;
+type PartySortMetric = (typeof partySortMetrics)[number];
+
+const partyMetricLabels: Record<PartySortMetric, string> = {
+  adps: "aDPS",
+  edps: "eDPS",
+  damage: "Damage",
+  rdps: "rDPS",
+  rdmg: "rDMG",
+  given: "Given",
+  received: "Received",
+  hps: "HPS",
+  healing: "Healing",
+  effectiveHealing: "Effective healing",
+  tps: "TPS",
+  damageTaken: "Damage taken",
+  shielding: "Shielding",
+  casts: "Casts",
+  hits: "Hits",
+  critRate: "Crit %",
+  deaths: "Deaths",
+};
+
+function partyMetricDatasetKey(metric: PartySortMetric): string {
+  return `sort${metric[0]!.toUpperCase()}${metric.slice(1)}`;
+}
+
+function partyMetricValue(
+  actor: AnalysisParticipant,
+  metric: PartySortMetric,
+  activeCombatMicros: number,
+): number | null {
+  const abilities = actor.abilities ?? [];
+  switch (metric) {
+    case "adps": return actor.encounter_dps;
+    case "edps": return actor.dps;
+    case "damage": return actor.damage;
+    case "rdps": return "rdps_damage" in actor
+      ? (actor.rdps_damage == null ? null : damageRate(actor.rdps_damage, activeCombatMicros))
+      : actor.rdps;
+    case "rdmg": return "rdps_damage" in actor ? actor.rdps_damage : null;
+    case "given": return "contribution_given" in actor ? actor.contribution_given : null;
+    case "received": return "contribution_received" in actor ? actor.contribution_received : null;
+    case "hps": return actor.hps;
+    case "healing": return abilities.reduce((sum, ability) => sum + ability.healing, 0);
+    case "effectiveHealing": return abilities.reduce((sum, ability) => sum + ability.effective_healing, 0);
+    case "tps": return actor.tps;
+    case "damageTaken": return (actor.series ?? []).reduce((sum, point) => sum + point.damage_taken, 0);
+    case "shielding": return abilities.reduce((sum, ability) => sum + ability.shielding, 0);
+    case "casts": return abilities.reduce((sum, ability) => sum + ability.casts, 0);
+    case "hits": return abilities.reduce((sum, ability) => sum + ability.hits, 0);
+    case "critRate": {
+      const hits = abilities.reduce((sum, ability) => sum + ability.hits, 0);
+      const criticalHits = abilities.reduce((sum, ability) => sum + ability.critical_hits, 0);
+      return hits > 0 ? criticalHits / hits : null;
+    }
+    case "deaths": return actor.deaths;
+  }
+}
+
+function formatPartyMetric(metric: PartySortMetric, value: number): string {
+  return metric === "critRate" ? `${formatNumber(value * 100)}%` : formatNumber(value);
+}
+
+export function sortPartyParticipants<T extends AnalysisParticipant>(
+  participants: T[],
+  metric: PartySortMetric = "adps",
+  direction: "ascending" | "descending" = "descending",
+  activeCombatMicros = 0,
+): T[] {
+  const multiplier = direction === "ascending" ? 1 : -1;
+  return [...participants].sort((left, right) => {
+    const leftValue = partyMetricValue(left, metric, activeCombatMicros) ?? -1;
+    const rightValue = partyMetricValue(right, metric, activeCombatMicros) ?? -1;
+    return (leftValue - rightValue) * multiplier;
+  });
+}
+
+function renderPartyTable(
+  participants: AnalysisParticipant[],
   activeCombatMicros: number,
   reconciled: boolean,
+  rdpsStatus: string,
 ): string {
-  if (reconciled && "rdps_damage" in actor) {
-    const rdps = actor.rdps_damage == null ? null : damageRate(actor.rdps_damage, activeCombatMicros);
-    return `<div class="parse-party-row reconciled"><span><strong>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</strong>
-      <small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span>
-      <span><small>Damage</small><strong>${formatNumber(actor.damage)}</strong></span>
-      <span><small>eDPS</small><strong>${formatNumber(actor.dps)}</strong></span>
-      <span><small>aDPS</small><strong>${formatNumber(actor.encounter_dps)}</strong></span>
-      <span><small>rDMG</small><strong>${actor.rdps_damage == null ? "-" : formatNumber(actor.rdps_damage)}${actor.rdps_incomplete ? "*" : ""}</strong></span>
-      <span><small>rDPS</small><strong>${rdps == null ? "-" : formatNumber(rdps)}${actor.rdps_incomplete ? "*" : ""}</strong></span>
-      <span><small>Given</small><strong>${actor.contribution_given == null ? "-" : formatNumber(actor.contribution_given)}</strong></span>
-      <span><small>Received</small><strong>${actor.contribution_received == null ? "-" : formatNumber(actor.contribution_received)}</strong></span>
-      <span><small>Deaths</small><strong>${actor.deaths}</strong></span></div>`;
-  }
-  return `<div class="parse-party-row"><span><strong>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</strong>
-    <small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span>
-    <span><small>Damage</small><strong>${formatNumber(actor.damage)}</strong></span>
-    <span><small>eDPS</small><strong>${formatNumber(actor.dps)}</strong></span>
-    <span><small>aDPS</small><strong>${formatNumber(actor.encounter_dps)}</strong></span>
-    <span><small>rDPS</small><strong>${actor.rdps == null ? "-" : formatNumber(actor.rdps)}</strong></span>
-    <span><small>Deaths</small><strong>${actor.deaths}</strong></span></div>`;
+  const ordered = sortPartyParticipants(participants, "adps", "descending", activeCombatMicros);
+  const maxima = Object.fromEntries(partySortMetrics.map((metric) => [
+    metric,
+    Math.max(0, ...ordered.map((actor) => partyMetricValue(actor, metric, activeCombatMicros) ?? 0)),
+  ])) as Record<PartySortMetric, number>;
+  const headers = partySortMetrics.map((metric) => `<button type="button" data-party-sort="${metric}" aria-sort="${metric === "adps" ? "descending" : "none"}">${escapeHtml(partyMetricLabels[metric])}</button>`).join("");
+  const rows = ordered.map((actor, index) => {
+    const color = chartColors[index % chartColors.length];
+    const data = partySortMetrics.map((metric) => `data-${partyMetricDatasetKey(metric).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}="${partyMetricValue(actor, metric, activeCombatMicros) ?? -1}"`).join(" ");
+    const cells = partySortMetrics.map((metric) => {
+      const value = partyMetricValue(actor, metric, activeCombatMicros);
+      const width = value == null || maxima[metric] <= 0 ? 0 : Math.max(0, value / maxima[metric]) * 100;
+      const incomplete = metric === "rdps" && "rdps_incomplete" in actor && actor.rdps_incomplete ? "*" : "";
+      return `<span class="parse-party-metric" style="--metric-fill:${width.toFixed(2)}%;--series-color:${color}"><strong>${value == null ? "—" : formatPartyMetric(metric, value)}${incomplete}</strong></span>`;
+    }).join("");
+    return `<div class="parse-party-row" data-party-row ${data}><span class="parse-party-player"><i style="--series-color:${color}"></i><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span></span>${cells}</div>`;
+  }).join("");
+  return `<section class="parse-party" data-parse-party-table data-party-sort="adps" data-party-sort-direction="descending">
+    <div class="parse-party-head"><span><strong>Party</strong><small>${participants.length} combatants · rDPS ${escapeHtml(rdpsStatus)}${reconciled ? " · reconciled" : ""}</small></span><small>Click any metric to sort · bars compare that metric across the party</small></div>
+    <div class="parse-party-columns"><span>Player</span>${headers}</div>
+    <div data-party-rows>${rows}</div>
+  </section>`;
 }
 
 function renderReplayStatus(
@@ -501,13 +630,19 @@ function renderRunTimeline(run: PublicRun, participants: AnalysisParticipant[]):
       const color = chartColors[index % chartColors.length];
       const path = damageSeriesPath(actor.series ?? [], durationSeconds, x, y);
       const deaths = (actor.death_seconds ?? [])
-        .map((second) => `<circle cx="${x(second).toFixed(2)}" cy="${(top + 10).toFixed(2)}" r="5" fill="${color}" class="parse-death-marker"><title>${escapeHtml(`${participantName(actor)} died at ${formatSeconds(second)}`)}</title></circle>`)
+        .map((second) => {
+          const centerX = x(second);
+          const centerY = y(timelineDamageAtSecond(actor.series ?? [], second));
+          const size = 5;
+          const diamond = `M ${centerX.toFixed(2)} ${(centerY - size).toFixed(2)} L ${(centerX + size).toFixed(2)} ${centerY.toFixed(2)} L ${centerX.toFixed(2)} ${(centerY + size).toFixed(2)} L ${(centerX - size).toFixed(2)} ${centerY.toFixed(2)} Z`;
+          return `<path d="${diamond}" fill="${color}" class="parse-death-marker"><title>${escapeHtml(`${participantName(actor)} died at ${formatSeconds(second)}`)}</title></path>`;
+        })
         .join("");
-      return `<path d="${path}" fill="none" stroke="${color}" class="parse-timeline-path"><title>${escapeHtml(participantName(actor))} damage per second</title></path>${deaths}`;
+      return `<g data-timeline-actor="${escapeHtml(actor.actor_id)}"><path d="${path}" fill="none" stroke="${color}" class="parse-timeline-path"><title>${escapeHtml(participantName(actor))} damage per second</title></path>${deaths}</g>`;
     })
     .join("");
   const legend = actors
-    .map((actor, index) => `<span><i style="--series-color:${chartColors[index % chartColors.length]}"></i>${escapeHtml(participantName(actor))}</span>`)
+    .map((actor, index) => `<button type="button" data-timeline-toggle="${escapeHtml(actor.actor_id)}" aria-pressed="true"><i style="--series-color:${chartColors[index % chartColors.length]}"></i>${escapeHtml(participantName(actor))}</button>`)
     .join("");
 
   return `<section class="parse-analysis-panel parse-timeline-panel">
@@ -517,6 +652,17 @@ function renderRunTimeline(run: PublicRun, participants: AnalysisParticipant[]):
     </svg></div>
     <div class="parse-chart-legend">${legend}</div>
   </section>`;
+}
+
+export function timelineDamageAtSecond(
+  points: NonNullable<PublicParticipant["series"]>,
+  second: number,
+): number {
+  const targetSecond = Math.floor(second);
+  return points.reduce(
+    (sum, point) => Math.floor(point.second) === targetSecond ? sum + point.damage : sum,
+    0,
+  );
 }
 
 function damageSeriesPath(
