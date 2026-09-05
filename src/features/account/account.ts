@@ -1,5 +1,9 @@
 import { renderSyncedCharacterProfile } from "./profile-view";
 import { loadPublishedProfile } from "../profiles/published-profile-loader";
+import {
+  setSiteDeveloperModePreference,
+  siteDeveloperModePreference,
+} from "../../site-developer-mode";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 const sessionKey = "rlogs.web-session.v1";
@@ -13,6 +17,7 @@ interface AccountView {
   discord_global_name: string | null;
   discord_avatar_url: string | null;
   publish_verified_parses: boolean;
+  developer: boolean;
 }
 
 interface WebSession {
@@ -412,6 +417,7 @@ async function renderSignedIn(
   });
   actions.append(generate, signOut);
   const linkedProfiles = await renderClaimedProfileLinks(session);
+  const developerMode = account.developer ? buildDeveloperModeCard() : null;
   const connection = document.createElement("section");
   connection.className = "account-connection account-settings-card";
   connection.append(
@@ -427,9 +433,41 @@ async function renderSignedIn(
     publicIdentity,
     usernameForm,
     parsePublicationForm,
+    ...(developerMode ? [developerMode] : []),
     linkedProfiles,
     connection,
   );
+}
+
+function buildDeveloperModeCard(): HTMLElement {
+  const section = document.createElement("section");
+  section.className = "account-publication-form account-settings-card";
+  const label = document.createElement("label");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = siteDeveloperModePreference();
+  label.append(input, element("span", "", "Enable website developer mode on this browser"));
+  const status = element("span", "account-inline-status");
+  status.setAttribute("role", "status");
+  const apply = (): void => {
+    setSiteDeveloperModePreference(input.checked);
+    status.textContent = input.checked
+      ? "Enabled · unfinished website tools may be shown"
+      : "Disabled · only released website features are shown";
+  };
+  input.addEventListener("change", apply);
+  section.append(
+    element("p", "eyebrow", "Developer access"),
+    label,
+    element(
+      "small",
+      "",
+      "The server authorizes this account. This local preference cannot grant developer access to another account.",
+    ),
+    status,
+  );
+  apply();
+  return section;
 }
 
 function profileSyncGuide(signedIn: boolean): HTMLElement {
@@ -624,13 +662,15 @@ export function parseAccount(value: unknown): AccountView {
       (typeof value.username === "string" && /^[a-z0-9][a-z0-9_-]{1,22}[a-z0-9]$/u.test(value.username))) ||
     !isNullableString(value.discord_global_name) ||
     !isNullableString(value.discord_avatar_url) ||
-    !(value.publish_verified_parses === undefined || typeof value.publish_verified_parses === "boolean")
+    !(value.publish_verified_parses === undefined || typeof value.publish_verified_parses === "boolean") ||
+    !(value.developer === undefined || typeof value.developer === "boolean")
   ) {
     throw new Error("The account response is invalid.");
   }
   return {
     ...value,
     publish_verified_parses: value.publish_verified_parses === true,
+    developer: value.developer === true,
   } as unknown as AccountView;
 }
 
