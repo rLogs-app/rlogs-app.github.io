@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -14,6 +14,13 @@ const catalog = JSON.parse(
     "utf8",
   ),
 ) as ProfilePresentationCatalog;
+
+function publishedAssetExists(assetPath: string): boolean {
+  if (!assetPath.startsWith("/assets/")) return false;
+  return existsSync(
+    fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url)),
+  );
+}
 
 describe("BPSR profile presentation catalog", () => {
   it("is generated from the exact current-build game table instead of a parser snapshot", () => {
@@ -218,6 +225,7 @@ describe("BPSR profile presentation catalog", () => {
     );
     expect(equipment.length).toBeGreaterThan(4_000);
     expect(equipment.every((item) => item.icon?.startsWith("/assets/bpsr/profile/items/"))).toBe(true);
+    expect(equipment.every((item) => item.icon != null && publishedAssetExists(item.icon))).toBe(true);
 
     const publicProfileEquipmentIds = [
       2000628, 2011455, 2021458, 2031440, 2041461, 2051403,
@@ -230,6 +238,14 @@ describe("BPSR profile presentation catalog", () => {
         /^\/assets\/bpsr\/profile\/items\//,
       );
     }
+  });
+
+  it("never publishes a profile skill icon path without its asset", () => {
+    const skillIconPaths = Object.values(catalog.skills)
+      .flatMap((skill) => skill.icon == null ? [] : [skill.icon]);
+
+    expect(skillIconPaths.length).toBeGreaterThan(300);
+    expect(skillIconPaths.every(publishedAssetExists)).toBe(true);
   });
 
   it("resolves all exact Final Sigil levels and rolled attribute values", () => {
