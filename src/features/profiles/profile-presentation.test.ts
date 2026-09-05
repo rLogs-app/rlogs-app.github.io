@@ -112,6 +112,31 @@ describe("BPSR profile presentation catalog", () => {
     expect(catalog.source_auxiliary_action_identity_proof_sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it("publishes player-facing actions for every current class family", () => {
+    const representativeSkills = new Map([
+      [1201, "Raincall Surge"],
+      [1401, "Windborne Grace"],
+      [1501, "Vines' Embrace"],
+      [1601, "Blazing Swing"],
+      [1701, "Judgment Cut"],
+      [1901, "Halberd's Edge"],
+      [2201, "Bullseye"],
+      [2301, "Resonant Strings"],
+      [2401, "Blade of Justice"],
+    ]);
+
+    for (const [skillId, expectedName] of representativeSkills) {
+      expect(catalog.skills[String(skillId)], expectedName).toEqual(expect.objectContaining({
+        name: expectedName,
+        icon: expect.stringMatching(/^\/assets\/bpsr\/profile\/skills\//),
+      }));
+    }
+
+    for (const skillId of [1401, 1418, 1420, 1424, 1425, 1426, 1431]) {
+      expect(catalog.skills[String(skillId)]?.name, `Wind Knight skill ${skillId}`).not.toMatch(/^Unknown skill/);
+    }
+  });
+
   it("uses the exact current Will Wish SSR pools instead of treating every orange Imagine as SSR", () => {
     const ssrSkillIds = Object.entries(catalog.imagines)
       .filter(([, imagine]) => imagine.rarity === "SSR")
@@ -182,6 +207,29 @@ describe("BPSR profile presentation catalog", () => {
       name: "2-Piece Set",
       required_pieces: 2,
     });
+  });
+
+  it("ships an icon for every exact-build equipment record", () => {
+    const equipment = Object.values(catalog.items).filter((item) =>
+      typeof item.type === "number"
+      && item.type >= 200
+      && item.type <= 210
+      && item.equipment_level != null
+    );
+    expect(equipment.length).toBeGreaterThan(4_000);
+    expect(equipment.every((item) => item.icon?.startsWith("/assets/bpsr/profile/items/"))).toBe(true);
+
+    const publicProfileEquipmentIds = [
+      2000628, 2011455, 2021458, 2031440, 2041461, 2051403,
+      2061409, 2071403, 2081440, 2091458, 2101406,
+      2001518, 2011342, 2021342, 2031457, 2041457, 2051432,
+      2061325, 2071330, 2081435, 2091460, 2101335,
+    ];
+    for (const itemId of publicProfileEquipmentIds) {
+      expect(catalog.items[String(itemId)]?.icon, `equipment ${itemId}`).toMatch(
+        /^\/assets\/bpsr\/profile\/items\//,
+      );
+    }
   });
 
   it("resolves all exact Final Sigil levels and rolled attribute values", () => {

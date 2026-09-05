@@ -114,6 +114,16 @@ const items = Object.fromEntries(
       icon: copyNamedIcon(item.Icon, "items"),
     }]),
 );
+const missingEquipmentIcons = Object.values(itemsTable)
+  .filter((item) => item.Type >= 200 && item.Type <= 210 && equipmentTable[String(item.Id)])
+  .filter((item) => typeof item.Icon === "string" && item.Icon)
+  .filter((item) => !items[String(item.Id)]?.icon)
+  .map((item) => `${item.Id}:${item.Icon}`);
+if (missingEquipmentIcons.length) {
+  throw new Error(
+    `Missing ${missingEquipmentIcons.length} current-build equipment icons: ${missingEquipmentIcons.join(", ")}`,
+  );
+}
 const equipmentSets = Object.fromEntries(
   Object.values(equipmentSuitTable)
     .filter((row) => Number.isInteger(row.Id) && Number.isInteger(row.SuitId) && Number.isInteger(row.LimitNum))
@@ -374,7 +384,12 @@ for (const action of auxiliaryActionPresentation.skills) {
 }
 const skills = Object.fromEntries(
   Object.values(skillsTable)
-    .filter((skill) => skill.Id >= 2_000 && skill.Id < 4_000 && skill.Name)
+    // Playable class kits occupy the 12xx-24xx families. The higher range
+    // contains the role/Imagine actions that were already presented here.
+    // Keep both so a valid packet-observed action never falls through to the
+    // site's "Unknown skill" placeholder merely because its class predates
+    // the auxiliary-action ID range.
+    .filter((skill) => skill.Id >= 1_200 && skill.Id < 4_000 && skill.Name)
     .map((skill) => [String(skill.Id), {
       name: skill.Name,
       icon: copyNamedIcon(skill.Icon, "skills"),
@@ -764,7 +779,7 @@ const output = path.join(websiteRoot, "public/data/bpsr/profile-presentation.en-
 mkdirSync(path.dirname(output), { recursive: true });
 writeFileSync(output, `${JSON.stringify(catalog)}\n`);
 console.log(`wrote ${output}`);
-console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes across ${Object.keys(talentTreeIndex).length} professions and ${Object.values(talentTreeIndex).reduce((sum, tree) => sum + tree.specializations.length, 0)} specializations, ${Object.keys(dungeons).length} dungeons, ${Object.keys(achievements).length} achievements, ${Object.keys(medals).length} medals, ${Object.keys(imagines).length} imagines, ${Object.keys(lifeProfessions).length} life professions, ${Object.keys(reputations).length} regional reputations; all sigil, visible-medal, and talent-tree completeness gates passed`);
+console.log(`${Object.keys(items).length} items, ${Object.keys(sigils).length} sigil families with ${Object.values(sigils).reduce((sum, levels) => sum + levels.length, 0)} exact levels, ${Object.keys(equipmentAttributes).length} equipment attributes, ${Object.keys(titles).length} titles, ${Object.keys(skills).length} skills, ${Object.keys(talents).length} talents, ${Object.keys(talentNodes).length} talent nodes across ${Object.keys(talentTreeIndex).length} professions and ${Object.values(talentTreeIndex).reduce((sum, tree) => sum + tree.specializations.length, 0)} specializations, ${Object.keys(dungeons).length} dungeons, ${Object.keys(achievements).length} achievements, ${Object.keys(medals).length} medals, ${Object.keys(imagines).length} imagines, ${Object.keys(lifeProfessions).length} life professions, ${Object.keys(reputations).length} regional reputations; all equipment, sigil, visible-medal, class-skill, and talent-tree completeness gates passed`);
 
 function cleanAttributeDescription(value) {
   if (typeof value !== "string") return undefined;
