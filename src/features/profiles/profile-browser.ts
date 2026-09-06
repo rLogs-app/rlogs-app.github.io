@@ -3,6 +3,7 @@ import {
   type PublicProfileCatalogEntry,
   isPublicProfileCatalog,
 } from "../../contracts/public-profiles";
+import type { PublishedProfileIndex } from "../../contracts/published-profiles";
 import { renderSyncedCharacterProfile } from "../account/profile-view";
 import {
   loadPublishedProfile,
@@ -23,41 +24,18 @@ export async function mountProfileBrowser(): Promise<void> {
   }
 
   let catalog: PublicProfileCatalog;
+  let catalogSource: "api" | "snapshot";
   try {
-    if (apiBase) {
-      const response = await fetch(`${apiBase}/v1/profiles`);
-      if (!response.ok) throw new Error(`Profile catalog request failed with HTTP ${response.status}.`);
-      const value: unknown = await response.json();
-      if (!isPublicProfileCatalog(value)) throw new Error("The public profile catalog is invalid.");
-      catalog = value;
-    } else {
-      const index = await loadPublishedProfileIndex();
-      catalog = {
-        schema_version: 1,
-        profiles: index.profiles.map((entry) => ({
-          profile_id: entry.profile_id,
-          claimed: false,
-          package_id: entry.source_package_id ?? "developer-fixture",
-          updated_unix_millis: entry.source_updated_unix_millis ?? entry.source_created_unix_millis ?? Date.now(),
-          source_client_build: entry.source_client_build ?? "developer-fixture",
-          deployment: entry.deployment,
-          region: entry.region,
-          realm: entry.realm ?? null,
-          world: entry.world ?? null,
-          character_id: entry.character_id,
-          display_name: entry.label,
-          module_inventory_count: 0,
-          equipped_module_count: 0,
-        })),
-      };
-    }
+    ({ catalog, source: catalogSource } = await loadProfileCatalog());
   } catch (error) {
     status.textContent = "Unavailable";
     list.replaceChildren(message(errorText(error)));
     return;
   }
 
-  status.textContent = `${catalog.profiles.length.toLocaleString()} public profiles`;
+  status.textContent = catalogSource === "api"
+    ? `${catalog.profiles.length.toLocaleString()} public profiles`
+    : `${catalog.profiles.length.toLocaleString()} published profile snapshot · read-only`;
   const requested = requestedProfileReference(location.pathname, location.search);
   let selected = requested
     ? catalog.profiles.find((entry) =>
@@ -111,6 +89,52 @@ export async function mountProfileBrowser(): Promise<void> {
   } catch (error) {
     detail.replaceChildren(message(errorText(error)));
   }
+}
+
+export async function loadProfileCatalog(
+  endpoint = apiBase,
+  request: (url: string) => Promise<Response> = (url) => fetch(url),
+  loadSnapshot: () => Promise<PublishedProfileIndex> = loadPublishedProfileIndex,
+): Promise<{ catalog: PublicProfileCatalog; source: "api" | "snapshot" }> {
+  if (endpoint) {
+    try {
+      const response = await request(`${endpoint}/v1/profiles`);
+      if (!response.ok) {
+        throw new Error(`Profile catalog request failed with HTTP ${response.status}.`);
+      }
+      const value: unknown = await response.json();
+      if (!isPublicProfileCatalog(value)) {
+        throw new Error("The public profile catalog is invalid.");
+      }
+      return { catalog: value, source: "api" };
+    } catch {
+      // The checked-in snapshot keeps already-published public profiles
+      // readable during a hosted API outage. It never enables writes.
+    }
+  }
+  return { catalog: catalogFromPublishedIndex(await loadSnapshot()), source: "snapshot" };
+}
+
+function catalogFromPublishedIndex(index: PublishedProfileIndex): PublicProfileCatalog {
+  return {
+    schema_version: 1,
+    profiles: index.profiles.map((entry) => ({
+      profile_id: entry.profile_id,
+      claimed: false,
+      package_id: entry.source_package_id ?? "published-snapshot",
+      updated_unix_millis:
+        entry.source_updated_unix_millis ?? entry.source_created_unix_millis ?? Date.now(),
+      source_client_build: entry.source_client_build ?? "published-snapshot",
+      deployment: entry.deployment,
+      region: entry.region,
+      realm: entry.realm ?? null,
+      world: entry.world ?? null,
+      character_id: entry.character_id,
+      display_name: entry.label,
+      module_inventory_count: 0,
+      equipped_module_count: 0,
+    })),
+  };
 }
 
 export function requestedProfileReference(pathname: string, search: string): string | undefined {
