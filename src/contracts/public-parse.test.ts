@@ -46,12 +46,23 @@ describe("public parse contract", () => {
     expect(
       isPublicParseReport({
         schema_version: 12,
+        projection_revision: 1,
         report_id: `rpt_${"ab".repeat(16)}`,
         visibility: "unlisted",
         verification: { tier: "replayed" },
         runs: [],
       }),
     ).toBe(true);
+    expect(
+      isPublicParseReport({
+        schema_version: 12,
+        projection_revision: -1,
+        report_id: `rpt_${"ab".repeat(16)}`,
+        visibility: "unlisted",
+        verification: { tier: "replayed" },
+        runs: [],
+      }),
+    ).toBe(false);
   });
 
   it("accepts a server-authoritative visibility update receipt", () => {

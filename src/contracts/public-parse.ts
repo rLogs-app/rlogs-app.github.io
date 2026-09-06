@@ -76,6 +76,7 @@ export interface SceneFacetValue {
 
 export interface PublicParseReport {
   schema_version: 6 | 7 | 8 | 9 | 10 | 11 | 12;
+  projection_revision?: number;
   report_id: string;
   visibility: "public" | "unlisted" | "private";
   created_unix_millis: number;
@@ -397,6 +398,8 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
       value.schema_version === 10 ||
       value.schema_version === 11 ||
       value.schema_version === 12) &&
+    (value.projection_revision === undefined ||
+      nonnegativeSafeInteger(value.projection_revision)) &&
     typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) &&
     (value.visibility === "public" ||
