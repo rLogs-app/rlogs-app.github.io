@@ -45,7 +45,7 @@ describe("public parse contract", () => {
     ).toBe(true);
     expect(
       isPublicParseReport({
-        schema_version: 9,
+        schema_version: 12,
         report_id: `rpt_${"ab".repeat(16)}`,
         visibility: "unlisted",
         verification: { tier: "replayed" },
@@ -123,7 +123,7 @@ describe("public parse contract", () => {
     expect(validateRunGroupId("../../private-run")).toBe(false);
     expect(
       isPublicRunReconciliation({
-        schema_version: 10,
+        schema_version: 12,
         reconciliation_id: `rec_${"ef".repeat(16)}`,
         run_group_id: runGroupId,
         status: "reconciled",

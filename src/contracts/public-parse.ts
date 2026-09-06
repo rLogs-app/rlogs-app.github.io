@@ -73,7 +73,7 @@ export interface SceneFacetValue {
 }
 
 export interface PublicParseReport {
-  schema_version: 6 | 7 | 8 | 9 | 10 | 11;
+  schema_version: 6 | 7 | 8 | 9 | 10 | 11 | 12;
   report_id: string;
   visibility: "public" | "unlisted" | "private";
   created_unix_millis: number;
@@ -243,7 +243,7 @@ export interface PublicRdpsInfluence {
 }
 
 export interface PublicRunReconciliation {
-  schema_version: 5 | 6 | 7 | 8 | 9 | 10 | 11;
+  schema_version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
   reconciliation_id: string;
   run_group_id: string;
   status: RunAttributionReconciliationStatus;
@@ -393,7 +393,8 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
       value.schema_version === 8 ||
       value.schema_version === 9 ||
       value.schema_version === 10 ||
-      value.schema_version === 11) &&
+      value.schema_version === 11 ||
+      value.schema_version === 12) &&
     typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) &&
     (value.visibility === "public" ||
@@ -462,7 +463,8 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
       value.schema_version !== 8 &&
       value.schema_version !== 9 &&
       value.schema_version !== 10 &&
-      value.schema_version !== 11) ||
+      value.schema_version !== 11 &&
+      value.schema_version !== 12) ||
     typeof value.reconciliation_id !== "string" ||
     !reconciliationIdPattern.test(value.reconciliation_id) ||
     typeof value.run_group_id !== "string" ||

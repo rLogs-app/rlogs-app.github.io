@@ -272,7 +272,7 @@ describe("parse search", () => {
       shielding: 0,
     })));
     const report: PublicParseReport = {
-      schema_version: 10,
+      schema_version: 12,
       report_id: reportId,
       visibility: "public",
       created_unix_millis: 1,
@@ -369,7 +369,7 @@ describe("parse search", () => {
       ],
     };
     const reconciliation: PublicRunReconciliation = {
-      schema_version: 8,
+      schema_version: 12,
       reconciliation_id: `rec_${"c".repeat(32)}`,
       run_group_id: runGroupId,
       status: "reconciled",
