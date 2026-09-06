@@ -479,8 +479,14 @@ a.home-feed-row:focus-visible {
 
 .scene-ranking h3 {
   min-height: 0;
-  margin-bottom: 10px;
+  margin-bottom: 2px;
   font-size: 16px;
+}
+
+.scene-ranking-context {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .scene-ranking ol {

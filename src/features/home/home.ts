@@ -18,6 +18,7 @@ import {
   type PublicCommunityMilestoneCatalog,
 } from "../../contracts/public-activity";
 import { fetchPublicRead } from "../../public-api";
+import { regionalSeason } from "./regional-seasons";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 const sessionKey = "rlogs.web-session.v1";
@@ -25,6 +26,8 @@ const sessionKey = "rlogs.web-session.v1";
 export interface SceneRanking {
   key: string;
   label: string;
+  regionLabel: string;
+  seasonLabel: string;
   floor?: number;
   entries: PublicParseCatalogEntry[];
 }
@@ -90,18 +93,36 @@ export function buildSceneRankings(entries: PublicParseCatalogEntry[]): SceneRan
   );
   const groups = new Map<string, SceneRanking>();
   const stimen = ranked.filter(isStimenRun);
-  const highestStimenFloor = Math.max(0, ...stimen.map(stimenFloor));
+  const highestStimenFloorBySeason = new Map<string, number>();
+  for (const entry of stimen) {
+    const season = regionalSeason(entry.deployment_id, entry.region_id, entry.created_unix_millis);
+    const seasonKey = `${season.cohort}:${season.seasonId ?? "unknown"}`;
+    highestStimenFloorBySeason.set(
+      seasonKey,
+      Math.max(highestStimenFloorBySeason.get(seasonKey) ?? 0, stimenFloor(entry)),
+    );
+  }
 
   for (const entry of ranked) {
+    const season = regionalSeason(entry.deployment_id, entry.region_id, entry.created_unix_millis);
+    const seasonKey = `${season.cohort}:${season.seasonId ?? "unknown"}`;
+    const highestStimenFloor = highestStimenFloorBySeason.get(seasonKey) ?? 0;
     const floor = stimenFloor(entry);
     if (isStimenRun(entry) && floor !== highestStimenFloor) continue;
     const key = isStimenRun(entry)
-      ? `stimen:${highestStimenFloor}`
-      : `scene:${entry.scene_id ?? entry.activity_id ?? entry.scene_name ?? "unknown"}`;
+      ? `${season.cohort}:${season.seasonId ?? "unknown"}:stimen:${highestStimenFloor}`
+      : `${season.cohort}:${season.seasonId ?? "unknown"}:scene:${entry.scene_id ?? entry.activity_id ?? entry.scene_name ?? "unknown"}`;
     const label = isStimenRun(entry)
       ? `Stimen Remains · Floor ${highestStimenFloor}`
       : entry.scene_name ?? entry.activity_id ?? `Scene ${entry.scene_id ?? "unknown"}`;
-    const group = groups.get(key) ?? { key, label, ...(isStimenRun(entry) ? { floor } : {}), entries: [] };
+    const group = groups.get(key) ?? {
+      key,
+      label,
+      regionLabel: season.regionLabel,
+      seasonLabel: season.seasonLabel,
+      ...(isStimenRun(entry) ? { floor } : {}),
+      entries: [],
+    };
     group.entries.push(entry);
     groups.set(key, group);
   }
@@ -154,7 +175,7 @@ function renderRankings(catalog: PublicParseCatalog, target: HTMLElement): void 
   target.innerHTML = groups.length
     ? groups
         .map(
-          (group) => `<section class="scene-ranking"><h3>${escapeHtml(group.label)}</h3><ol>${group.entries
+          (group) => `<section class="scene-ranking"><h3>${escapeHtml(group.label)}</h3><p class="scene-ranking-context">${escapeHtml(group.regionLabel)} · ${escapeHtml(group.seasonLabel)}</p><ol>${group.entries
             .map((entry) => `<li><a href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span>${escapeHtml(entry.submitter_name ?? "Unknown submitter")}</span><strong>${formatDuration(entry.total_run_time_micros)}</strong></a></li>`)
             .join("")}</ol></section>`,
         )
