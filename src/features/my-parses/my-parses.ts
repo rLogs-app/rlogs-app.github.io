@@ -15,6 +15,7 @@ import {
 } from "../parse-browser/parse-browser";
 import { createParseDetailModal } from "../parse-browser/parse-detail-modal";
 import { loadParsePresentation } from "../parse-browser/parse-presentation";
+import { fetchPublicRead } from "../../public-api";
 
 const sessionKey = "rlogs.web-session.v1";
 const configuredApi = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
@@ -229,10 +230,10 @@ async function authenticatedFetch(
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   headers.set("Authorization", `Bearer ${session.access_token}`);
-  const response = await fetch(url, {
-    ...init,
-    headers,
-  });
+  const request = { ...init, headers };
+  const response = String(init.method ?? "GET").toUpperCase() === "GET"
+    ? await fetchPublicRead(url, request)
+    : await fetch(url, request);
   if (response.status === 401) {
     localStorage.removeItem(sessionKey);
     window.dispatchEvent(new Event("rlogs:session-changed"));

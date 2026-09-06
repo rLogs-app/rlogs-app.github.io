@@ -21,6 +21,7 @@ import {
   localizedEffectName,
   type ParsePresentationCatalog,
 } from "./parse-presentation";
+import { fetchPublicRead } from "../../public-api";
 
 const baseUrl = import.meta.env.BASE_URL;
 const configuredApi = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -288,7 +289,7 @@ async function fetchReconciliation(runGroupId: string): Promise<PublicRunReconci
 }
 
 async function fetchTyped<T>(url: string, guard: (value: unknown) => value is T): Promise<T> {
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  const response = await fetchPublicRead(url, { headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(`Request failed (${response.status}).`);
   const value: unknown = await response.json();
   if (!guard(value)) throw new Error("The server returned an unsupported parse contract.");

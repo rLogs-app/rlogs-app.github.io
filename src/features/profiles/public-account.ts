@@ -2,6 +2,7 @@ import {
   type PublicProfileCatalogEntry,
   isPublicProfileCatalog,
 } from "../../contracts/public-profiles";
+import { fetchPublicRead } from "../../public-api";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
@@ -26,7 +27,7 @@ export async function mountPublicAccount(): Promise<void> {
     return;
   }
   try {
-    const response = await fetch(`${apiBase}/v1/users/${accountId}`);
+    const response = await fetchPublicRead(`${apiBase}/v1/users/${accountId}`);
     if (response.status === 404) throw new Error("That rLogs account was not found.");
     if (!response.ok) throw new Error(`Player account request failed with HTTP ${response.status}.`);
     const account = parsePublicAccountCatalog(await response.json());

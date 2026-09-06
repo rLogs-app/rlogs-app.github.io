@@ -4,6 +4,7 @@ import {
   setSiteDeveloperModePreference,
   siteDeveloperModePreference,
 } from "../../site-developer-mode";
+import { fetchPublicRead } from "../../public-api";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 const sessionKey = "rlogs.web-session.v1";
@@ -138,7 +139,7 @@ export async function mountAccount(mode: "profile" | "settings" = "profile"): Pr
 async function renderSignedOut(status: HTMLElement, content: HTMLElement): Promise<void> {
   let enabled = false;
   try {
-    const response = await fetch(`${apiBase}/v1/auth/config`);
+    const response = await fetchPublicRead(`${apiBase}/v1/auth/config`);
     const value: unknown = await response.json();
     enabled =
       response.ok &&
@@ -173,15 +174,20 @@ async function renderSignedIn(
 ): Promise<void> {
   let account = session.account;
   try {
-    const response = await fetch(`${apiBase}/v1/auth/me`, {
+    const response = await fetchPublicRead(`${apiBase}/v1/auth/me`, {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
-    if (!response.ok) throw new Error("Session expired.");
+    if (response.status === 401) {
+      localStorage.removeItem(sessionKey);
+      window.dispatchEvent(new Event("rlogs:session-changed"));
+      await renderSignedOut(status, content);
+      return;
+    }
+    if (!response.ok) throw new Error(`Account request failed with HTTP ${response.status}.`);
     account = parseAccount(await response.json());
-  } catch {
-    localStorage.removeItem(sessionKey);
-    window.dispatchEvent(new Event("rlogs:session-changed"));
-    await renderSignedOut(status, content);
+  } catch (error) {
+    status.textContent = "Temporarily unavailable";
+    content.replaceChildren(message(`${errorText(error)} Your signed-in session was preserved; retry shortly.`));
     return;
   }
   status.textContent = "Signed in";
@@ -570,7 +576,7 @@ async function renderClaimedProfileLinks(session: WebSession): Promise<HTMLEleme
 }
 
 async function loadLinkedProfileCatalog(session: WebSession): Promise<LinkedProfileCatalog> {
-  const response = await fetch(`${apiBase}/v1/auth/profiles`, {
+  const response = await fetchPublicRead(`${apiBase}/v1/auth/profiles`, {
     headers: { Authorization: `Bearer ${session.access_token}` },
   });
   if (!response.ok) throw new Error(`Linked-profile request failed with HTTP ${response.status}.`);

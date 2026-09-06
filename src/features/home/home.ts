@@ -17,6 +17,7 @@ import {
   type PublicCommunityMilestone,
   type PublicCommunityMilestoneCatalog,
 } from "../../contracts/public-activity";
+import { fetchPublicRead } from "../../public-api";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 const sessionKey = "rlogs.web-session.v1";
@@ -316,7 +317,7 @@ async function fetchTyped<T>(
   guard: (value: unknown) => value is T,
   headers: HeadersInit = { Accept: "application/json" },
 ): Promise<T> {
-  const response = await fetch(url, { headers });
+  const response = await fetchPublicRead(url, { headers });
   if (!response.ok) throw new Error(`Request failed (${response.status}).`);
   const value: unknown = await response.json();
   if (!guard(value)) throw new Error("The server returned an unsupported public contract.");

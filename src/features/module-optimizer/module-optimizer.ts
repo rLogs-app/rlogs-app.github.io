@@ -32,6 +32,7 @@ import {
   requestedOptimizerLoadout,
   requestedOptimizerProfile,
 } from "./optimizer-profile-route";
+import { fetchPublicRead } from "../../public-api";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 const sessionKey = "rlogs.web-session.v1";
@@ -166,7 +167,7 @@ async function loadSyncedInventory(): Promise<void> {
     return;
   }
 
-  const response = await fetch(`${apiBase}/v1/auth/profiles`, {
+  const response = await fetchPublicRead(`${apiBase}/v1/auth/profiles`, {
     headers: { Authorization: `Bearer ${session.access_token}`, Accept: "application/json" },
   });
   if (response.status === 401) {

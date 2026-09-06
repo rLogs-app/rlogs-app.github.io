@@ -8,6 +8,7 @@ import {
   type WebsitePayloadEnvelope,
   validateWebsitePayload,
 } from "../../contracts/website-payload";
+import { fetchPublicRead } from "../../public-api";
 
 const publishedProfilesUrl = `${import.meta.env.BASE_URL}profile-snapshots/`;
 const configuredApi = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
@@ -101,7 +102,7 @@ export async function loadPublishedProfileLoadout(
   const currentProject = currentProjectId(profile.envelope);
   if (currentProject === projectId) return profile.envelope;
   if (configuredApi && profile.entry.profile_id.startsWith("prf_")) {
-    const response = await fetch(
+    const response = await fetchPublicRead(
       `${configuredApi}/v1/profiles/${encodeURIComponent(profile.entry.profile_id)}/loadouts/${projectId}`,
     );
     if (!response.ok) {
@@ -126,7 +127,7 @@ export async function loadPublishedProfileLoadout(
 }
 
 async function loadSubmittedProfile(profileId: string): Promise<PublishedProfile> {
-  const response = await fetch(
+  const response = await fetchPublicRead(
     `${configuredApi}/v1/profiles/${encodeURIComponent(profileId)}`,
   );
   if (!response.ok) {

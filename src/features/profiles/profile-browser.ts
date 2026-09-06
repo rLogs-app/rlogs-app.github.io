@@ -5,6 +5,7 @@ import {
 } from "../../contracts/public-profiles";
 import { renderSyncedCharacterProfile } from "../account/profile-view";
 import { loadPublishedProfile } from "./published-profile-loader";
+import { fetchPublicRead } from "../../public-api";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
@@ -86,7 +87,7 @@ export async function mountProfileBrowser(): Promise<void> {
 
 export async function loadProfileCatalog(
   endpoint = apiBase,
-  request: (url: string) => Promise<Response> = (url) => fetch(url),
+  request: (url: string) => Promise<Response> = (url) => fetchPublicRead(url),
 ): Promise<PublicProfileCatalog> {
   if (!endpoint) {
     throw new Error("The public profile API is not configured for this deployment.");
