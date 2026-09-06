@@ -49,45 +49,39 @@ export async function mountHome(): Promise<void> {
   const authorization = activeAccessToken();
   const photoHeaders = new Headers({ Accept: "application/json" });
   if (authorization) photoHeaders.set("Authorization", `Bearer ${authorization}`);
-  const [parseResult, profileResult, newestPhotoResult, popularPhotoResult, milestoneResult] = await Promise.allSettled([
-    fetchTyped(`${apiBase}/v1/parses?limit=250`, isPublicParseCatalog),
-    fetchTyped(`${apiBase}/v1/profiles`, isPublicProfileCatalog),
+  const parseTask = fetchTyped(`${apiBase}/v1/parses?limit=250`, isPublicParseCatalog).then(
+    (catalog) => { renderRecentParses(catalog, recent); renderRankings(catalog, rankings); },
+    () => {
+      setUnavailable("home-parse-status", recent, "Recent parse submissions are temporarily unavailable.");
+      setUnavailable("home-ranking-status", rankings, "Scene rankings are temporarily unavailable.");
+    },
+  );
+  const profileTask = fetchTyped(`${apiBase}/v1/profiles`, isPublicProfileCatalog).then(
+    (catalog) => renderLatestProfiles(catalog, profiles),
+    () => setUnavailable("home-profile-status", profiles, "Recently seen players are temporarily unavailable."),
+  );
+  const photoTask = Promise.all([
     fetchTyped(`${apiBase}/v1/photos?sort=newest&limit=4`, isPublicPhotoCatalog, photoHeaders),
     fetchTyped(`${apiBase}/v1/photos?sort=popular&limit=4`, isPublicPhotoCatalog, photoHeaders),
-    fetchTyped(`${apiBase}/v1/activity/milestones?limit=10`, isPublicCommunityMilestoneCatalog),
-  ]);
-
-  if (parseResult.status === "fulfilled") {
-    renderRecentParses(parseResult.value, recent);
-    renderRankings(parseResult.value, rankings);
-  } else {
-    setUnavailable("home-parse-status", recent, "Recent parse submissions are temporarily unavailable.");
-    setUnavailable("home-ranking-status", rankings, "Scene rankings are temporarily unavailable.");
-  }
-
-  if (profileResult.status === "fulfilled") {
-    renderLatestProfiles(profileResult.value, profiles);
-  } else {
-    setUnavailable("home-profile-status", profiles, "Recently seen players are temporarily unavailable.");
-  }
-
-  if (newestPhotoResult.status === "fulfilled" && popularPhotoResult.status === "fulfilled") {
-    renderPhotoCatalog(newestPhotoResult.value, newestPhotos);
-    renderPhotoCatalog(popularPhotoResult.value, popularPhotos);
-    const status = required("home-photo-status");
-    status.textContent = `${newestPhotoResult.value.total_entries.toLocaleString()} photos`;
-    status.className = "status-chip success";
-    bindPhotoLikes();
-  } else {
-    setUnavailable("home-photo-status", newestPhotos, "Community photos are temporarily unavailable.");
-    popularPhotos.innerHTML = '<p class="empty-state">Popular photos are temporarily unavailable.</p>';
-  }
-
-  if (milestoneResult.status === "fulfilled") {
-    renderMilestones(milestoneResult.value, milestones);
-  } else {
-    setUnavailable("home-milestone-status", milestones, "First-clear milestones are temporarily unavailable.");
-  }
+  ]).then(
+    ([newestCatalog, popularCatalog]) => {
+      renderPhotoCatalog(newestCatalog, newestPhotos);
+      renderPhotoCatalog(popularCatalog, popularPhotos);
+      const status = required("home-photo-status");
+      status.textContent = `${newestCatalog.total_entries.toLocaleString()} photos`;
+      status.className = "status-chip success";
+      bindPhotoLikes();
+    },
+    () => {
+      setUnavailable("home-photo-status", newestPhotos, "Community photos are temporarily unavailable.");
+      popularPhotos.innerHTML = '<p class="empty-state">Popular photos are temporarily unavailable.</p>';
+    },
+  );
+  const milestoneTask = fetchTyped(`${apiBase}/v1/activity/milestones?limit=10`, isPublicCommunityMilestoneCatalog).then(
+    (catalog) => renderMilestones(catalog, milestones),
+    () => setUnavailable("home-milestone-status", milestones, "First-clear milestones are temporarily unavailable."),
+  );
+  await Promise.allSettled([parseTask, profileTask, photoTask, milestoneTask]);
 }
 
 export function buildSceneRankings(entries: PublicParseCatalogEntry[]): SceneRanking[] {
@@ -145,7 +139,7 @@ function renderLatestProfiles(catalog: PublicProfileCatalog, target: HTMLElement
   target.innerHTML = profiles.length
     ? profiles
         .map((profile) => {
-          const location = [profile.region, profile.realm ?? profile.world].filter(Boolean).map(String).join(" · ");
+          const location = [profile.region, profile.realm ?? profile.world].filter(Boolean).map((value) => humanizeIdentifier(String(value))).join(" · ");
           return `<a class="home-feed-row profile-feed-row" href="/profiles/${encodeURIComponent(profile.character_id)}/"><span><strong>${escapeHtml(profile.display_name ?? `UID ${profile.character_id}`)}</strong><small>${escapeHtml(location || profile.deployment)}</small></span><span><small>Last seen</small><strong>${escapeHtml(relativeTime(profile.updated_unix_millis))}</strong></span></a>`;
         })
         .join("")
@@ -161,7 +155,7 @@ function renderRankings(catalog: PublicParseCatalog, target: HTMLElement): void 
     ? groups
         .map(
           (group) => `<section class="scene-ranking"><h3>${escapeHtml(group.label)}</h3><ol>${group.entries
-            .map((entry) => `<li><a href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span>${escapeHtml(entry.region_id)}</span><strong>${formatDuration(entry.total_run_time_micros)}</strong><small>${new Date(entry.created_unix_millis).toLocaleDateString()}</small></a></li>`)
+            .map((entry) => `<li><a href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span>${escapeHtml(entry.submitter_name ?? "Unknown submitter")}</span><strong>${formatDuration(entry.total_run_time_micros)}</strong></a></li>`)
             .join("")}</ol></section>`,
         )
         .join("")
@@ -170,7 +164,11 @@ function renderRankings(catalog: PublicParseCatalog, target: HTMLElement): void 
 
 function parseFeedRow(entry: PublicParseCatalogEntry): string {
   const name = entry.scene_name ?? entry.activity_id ?? `Scene ${entry.scene_id ?? "unknown"}`;
-  return `<a class="home-feed-row" href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(entry.region_id)} · ${entry.participant_count} players</small></span><span><small>${escapeHtml(relativeTime(entry.created_unix_millis))}</small><strong>${formatDuration(entry.total_run_time_micros)}</strong></span></a>`;
+  return `<a class="home-feed-row" href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span><strong>${escapeHtml(name)}</strong><small>Submitted by ${escapeHtml(entry.submitter_name ?? "Unknown submitter")} · ${entry.participant_count} players</small></span><span><strong>${formatDuration(entry.total_run_time_micros)}</strong></span></a>`;
+}
+
+function humanizeIdentifier(value: string): string {
+  return value.split(/[-_\s]+/u).filter(Boolean).map((part) => `${part[0]?.toLocaleUpperCase() ?? ""}${part.slice(1)}`).join(" ");
 }
 
 function isStimenRun(entry: PublicParseCatalogEntry): boolean {

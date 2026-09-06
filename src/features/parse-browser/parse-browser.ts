@@ -235,6 +235,12 @@ export function bindParseReportInteractions(root: HTMLElement): void {
         const rightValue = Number(right.dataset[partyMetricDatasetKey(metric)] ?? "-1");
         return (leftValue - rightValue) * multiplier;
       });
+    const maximum = Math.max(0, ...sorted.map((row) => Number(row.dataset[partyMetricDatasetKey(metric)] ?? "-1")));
+    sorted.forEach((row) => {
+      const value = Number(row.dataset[partyMetricDatasetKey(metric)] ?? "-1");
+      const width = value < 0 || maximum <= 0 ? 0 : Math.max(0, value / maximum) * 100;
+      row.style.setProperty("--row-fill", `${width.toFixed(2)}%`);
+    });
     sorted.forEach((row) => rows.append(row));
     table.querySelectorAll<HTMLButtonElement>("[data-party-sort]").forEach((button) => {
       button.setAttribute("aria-sort", button === sortButton ? direction : "none");
@@ -457,24 +463,22 @@ function renderPartyTable(
   rdpsStatus: string,
 ): string {
   const ordered = sortPartyParticipants(participants, "adps", "descending", activeCombatMicros);
-  const maxima = Object.fromEntries(partySortMetrics.map((metric) => [
-    metric,
-    Math.max(0, ...ordered.map((actor) => partyMetricValue(actor, metric, activeCombatMicros) ?? 0)),
-  ])) as Record<PartySortMetric, number>;
+  const initialMaximum = Math.max(0, ...ordered.map((actor) => partyMetricValue(actor, "adps", activeCombatMicros) ?? 0));
   const headers = partySortMetrics.map((metric) => `<button type="button" data-party-sort="${metric}" aria-sort="${metric === "adps" ? "descending" : "none"}">${escapeHtml(partyMetricLabels[metric])}</button>`).join("");
   const rows = ordered.map((actor, index) => {
     const color = chartColors[index % chartColors.length];
     const data = partySortMetrics.map((metric) => `data-${partyMetricDatasetKey(metric).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}="${partyMetricValue(actor, metric, activeCombatMicros) ?? -1}"`).join(" ");
     const cells = partySortMetrics.map((metric) => {
       const value = partyMetricValue(actor, metric, activeCombatMicros);
-      const width = value == null || maxima[metric] <= 0 ? 0 : Math.max(0, value / maxima[metric]) * 100;
       const incomplete = metric === "rdps" && "rdps_incomplete" in actor && actor.rdps_incomplete ? "*" : "";
-      return `<span class="parse-party-metric" style="--metric-fill:${width.toFixed(2)}%;--series-color:${color}"><strong>${value == null ? "—" : formatPartyMetric(metric, value)}${incomplete}</strong></span>`;
+      return `<span class="parse-party-metric"><strong>${value == null ? "—" : formatPartyMetric(metric, value)}${incomplete}</strong></span>`;
     }).join("");
-    return `<div class="parse-party-row" data-party-row ${data}><span class="parse-party-player"><i style="--series-color:${color}"></i><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span></span>${cells}</div>`;
+    const initialValue = partyMetricValue(actor, "adps", activeCombatMicros);
+    const initialWidth = initialValue == null || initialMaximum <= 0 ? 0 : Math.max(0, initialValue / initialMaximum) * 100;
+    return `<div class="parse-party-row" data-party-row ${data} style="--series-color:${color};--row-fill:${initialWidth.toFixed(2)}%"><span class="parse-party-player"><i></i><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span></span>${cells}</div>`;
   }).join("");
   return `<section class="parse-party" data-parse-party-table data-party-sort="adps" data-party-sort-direction="descending">
-    <div class="parse-party-head"><span><strong>Party</strong><small>${participants.length} combatants · rDPS ${escapeHtml(rdpsStatus)}${reconciled ? " · reconciled" : ""}</small></span><small>Click any metric to sort · bars compare that metric across the party</small></div>
+    <div class="parse-party-head"><span><strong>Party</strong><small>${participants.length} combatants · rDPS ${escapeHtml(rdpsStatus)}${reconciled ? " · reconciled" : ""}</small></span><small>Choose a metric to sort and scale the row bars</small></div>
     <div class="parse-party-columns"><span>Player</span>${headers}</div>
     <div data-party-rows>${rows}</div>
   </section>`;

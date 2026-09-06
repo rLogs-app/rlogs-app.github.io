@@ -17,6 +17,8 @@ export interface PublicParseCatalogEntry {
   local_profile_witness_character_count?: number;
   attribution_reconciliation_status?: RunAttributionReconciliationStatus;
   created_unix_millis: number;
+  submitter_id?: string;
+  submitter_name?: string;
   deployment_id: string;
   region_id: string;
   activity_id?: string;
