@@ -1,4 +1,4 @@
-import { copyFile, mkdir, rm } from "node:fs/promises";
+import { copyFile, cp, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
@@ -10,9 +10,15 @@ function publishPageRoutes(): Plugin {
     apply: "build",
     async writeBundle(options) {
       const outputDirectory = resolve(process.cwd(), options.dir ?? "dist");
-      // Vite copies the legacy public profile fixtures before this hook. Clear
-      // those data directories first, then create the real /profiles/ page;
-      // doing this after route generation would delete that route as well.
+      // Keep the last published, read-only profile snapshot at a data URL that
+      // cannot collide with the /profiles/ application route.
+      await cp(
+        resolve(outputDirectory, "profiles"),
+        resolve(outputDirectory, "profile-snapshots"),
+        { recursive: true },
+      );
+      // Vite copied the source snapshot under /profiles. Clear that directory
+      // before creating the real /profiles/ application route.
       await Promise.all(
         ["fixtures", "profiles"].map((directory) =>
           rm(resolve(outputDirectory, directory), { recursive: true, force: true }),

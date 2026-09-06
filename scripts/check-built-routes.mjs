@@ -20,4 +20,19 @@ if (profileEntries.length !== 1 || profileEntries[0] !== "index.html") {
   throw new Error("The public /profiles/ route contains legacy static profile fixtures.");
 }
 
-console.log(`Verified ${routes.length} deployable page routes and no legacy profile fixtures.`);
+const snapshotIndex = JSON.parse(
+  await readFile(resolve(root, "profile-snapshots", "index.v1.json"), "utf8"),
+);
+if (!Array.isArray(snapshotIndex.profiles) || snapshotIndex.profiles.length === 0) {
+  throw new Error("The read-only profile fallback snapshot is missing or empty.");
+}
+for (const profile of snapshotIndex.profiles) {
+  const payload = resolve(root, "profile-snapshots", profile.payload_path);
+  if (!(await stat(payload)).isFile()) {
+    throw new Error(`Profile fallback payload ${profile.payload_path} is missing.`);
+  }
+}
+
+console.log(
+  `Verified ${routes.length} deployable page routes and ${snapshotIndex.profiles.length} read-only profile fallback snapshot(s).`,
+);

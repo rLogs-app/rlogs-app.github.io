@@ -9,7 +9,7 @@ import {
   validateWebsitePayload,
 } from "../../contracts/website-payload";
 
-const publishedProfilesUrl = `${import.meta.env.BASE_URL}profiles/`;
+const publishedProfilesUrl = `${import.meta.env.BASE_URL}profile-snapshots/`;
 const configuredApi = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 let indexRequest: Promise<PublishedProfileIndex> | undefined;
 
