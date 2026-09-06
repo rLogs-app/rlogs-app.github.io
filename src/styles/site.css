@@ -468,13 +468,18 @@ a.home-feed-row:focus-visible {
 
 .scene-rankings {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 10px;
+  padding: 10px;
+  align-items: start;
 }
 
 .scene-ranking {
-  padding: 14px 16px;
-  border-top: 1px solid var(--line);
-  border-right: 1px solid var(--line);
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(11 20 32 / 70%);
 }
 
 .scene-ranking h3 {
@@ -492,7 +497,7 @@ a.home-feed-row:focus-visible {
 .scene-ranking ol {
   padding: 0;
   margin: 0;
-  list-style-position: inside;
+  list-style: none;
 }
 
 .scene-ranking li {
@@ -502,11 +507,24 @@ a.home-feed-row:focus-visible {
 
 .scene-ranking li a {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 10px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
-  padding: 7px 0;
+  min-height: 34px;
+  padding: 6px 0;
   text-decoration: none;
+}
+
+.scene-ranking-position {
+  color: var(--muted);
+  font: 800 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-align: center;
+}
+
+.scene-ranking-submitter {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .scene-ranking li a:hover strong,

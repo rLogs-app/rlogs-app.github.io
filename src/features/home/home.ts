@@ -176,7 +176,7 @@ function renderRankings(catalog: PublicParseCatalog, target: HTMLElement): void 
     ? groups
         .map(
           (group) => `<section class="scene-ranking"><h3>${escapeHtml(group.label)}</h3><p class="scene-ranking-context">${escapeHtml(group.regionLabel)} · ${escapeHtml(group.seasonLabel)}</p><ol>${group.entries
-            .map((entry) => `<li><a href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span>${escapeHtml(entry.submitter_name ?? "Unknown submitter")}</span><strong>${formatDuration(entry.total_run_time_micros)}</strong></a></li>`)
+            .map((entry, index) => `<li><a href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span class="scene-ranking-position">${index + 1}</span><span class="scene-ranking-submitter">${escapeHtml(entry.submitter_name ?? "Unknown submitter")}</span><strong>${formatDuration(entry.total_run_time_micros)}</strong></a></li>`)
             .join("")}</ol></section>`,
         )
         .join("")
