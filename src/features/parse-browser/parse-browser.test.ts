@@ -123,7 +123,7 @@ describe("parse search", () => {
     expect(projected[0]?.abilities).toEqual(actor.abilities);
   });
 
-  it("does not move a partially proven Encore action", () => {
+  it("moves the packet-proven portion of a partial Encore action", () => {
     const actor = {
       actor_id: "damage", character_id: "3", display_name: "Damage", actor_kind: "player",
       class_id: 11, class_name: "Marksman", specialization_id: 2,
@@ -131,8 +131,29 @@ describe("parse search", () => {
       hps: 0, tps: 0, rdps: null, deaths: 0,
       abilities: [{ ability_id: "230401", presentation_name: "Encore", presentation_kind: "support-generated-damage", icon_asset_path: null, casts: 0, hits: 2, critical_hits: 1, damage: 100, effective_damage: 100, healing: 0, effective_healing: 0, shielding: 0 }],
     };
-    const projected = ownedSkillParticipants([actor], [], []);
-    expect(projected[0]?.abilities?.[0]?.damage).toBe(100);
+    const healer = {
+      ...actor, actor_id: "healer", character_id: "4", display_name: "Healer",
+      class_id: 13, class_name: "Beat Performer", specialization_id: 1,
+      specialization_name: "Concerto", abilities: [
+        { ...actor.abilities[0]!, damage: 30, effective_damage: 30, hits: 1, critical_hits: 0 },
+      ],
+    };
+    const influence = {
+      effect_id: "55333", attribution_component: "Encore (55333) standalone generated damage (actions 230401/230501)",
+      complete_effect: false, provider_actor_id: "healer", recipient_actor_id: "damage",
+      affected_ability_id: "230401", target_actor_id: "boss", first_observed_micros: 1,
+      last_observed_micros: 2, damage_event_count: 1, critical_hit_count: null,
+      observed_damage: "60", exact_integer_delta: "60", exact_rational_deltas: [],
+      attributed_rdps: "60", damage_context_complete: true,
+    };
+    const projected = ownedSkillParticipants([actor, healer], [influence], []);
+    expect(projected.find((entry) => entry.actor_id === "damage")?.abilities?.[0]).toMatchObject({
+      damage: 40, hits: 1, critical_hits: 0,
+    });
+    expect(projected.find((entry) => entry.actor_id === "healer")?.abilities?.[0]).toMatchObject({
+      presentation_name: "Encore", damage: 90, hits: 2, critical_hits: 1,
+    });
+    expect(projected.find((entry) => entry.actor_id === "healer")?.abilities).toHaveLength(1);
   });
 
   it("presents the fixed broad activity categories", () => {

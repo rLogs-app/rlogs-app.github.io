@@ -723,9 +723,8 @@ const encoreDamageActionIds = new Set(["230401", "230501"]);
  * immutable raw participant totals intact everywhere else, but present a
  * semantic skill-ownership view here. The overall effect can remain partial
  * while its standalone generated-damage component is exact. A move is allowed
- * only when exact component rows cover the entire raw Encore action total;
- * missing or overlapping-provider evidence therefore remains on the recipient
- * rather than being guessed.
+ * only for the damage covered by exact component rows. Any uncovered remainder
+ * stays on the wire recipient rather than making a provider guess.
  */
 export function ownedSkillParticipants(
   participants: AnalysisParticipant[],
@@ -798,16 +797,30 @@ export function ownedSkillParticipants(
     const moved = [...providers.values()].reduce((sum, value) => sum + value.damage, 0n);
     if (
       !Number.isSafeInteger(ability.damage) ||
-      moved !== BigInt(ability.damage) ||
+      moved > BigInt(ability.damage) ||
       [...providers.keys()].some((providerId) => !byActor.has(providerId))
     ) continue;
-    if (providers.size === 1) {
-      const [providerId, value] = [...providers.entries()][0]!;
-      if (value.criticalHits === null && value.events === ability.hits) {
-        providers.set(providerId, { ...value, criticalHits: ability.critical_hits });
-      }
+    const movedEvents = [...providers.values()].reduce((sum, value) => sum + value.events, 0);
+    if (movedEvents > ability.hits) continue;
+    const remainderEvents = ability.hits - movedEvents;
+    const criticalAllocations = proportionalEventAllocation(
+      ability.critical_hits,
+      [
+        ...[...providers.entries()].map(([providerId, value]) => ({ key: providerId, events: value.events })),
+        { key: "recipient", events: remainderEvents },
+      ],
+      ability.hits,
+    );
+    const movedDamage = Number(moved);
+    if (!Number.isSafeInteger(movedDamage)) continue;
+    if (movedDamage === ability.damage) {
+      recipient!.abilities = recipient!.abilities!.filter((candidate) => candidate !== ability);
+    } else {
+      ability.damage -= movedDamage;
+      ability.effective_damage = Math.max(0, ability.effective_damage - movedDamage);
+      ability.hits = remainderEvents;
+      ability.critical_hits = criticalAllocations.get("recipient") ?? 0;
     }
-    recipient!.abilities = recipient!.abilities!.filter((candidate) => candidate !== ability);
     for (const [providerId, value] of providers) {
       if (!byActor.has(providerId)) continue;
       const previous = providerTotals.get(providerId) ?? {
@@ -818,9 +831,7 @@ export function ownedSkillParticipants(
       providerTotals.set(providerId, {
         damage: previous.damage + value.damage,
         events: previous.events + value.events,
-        criticalHits: previous.criticalHits === null || value.criticalHits === null
-          ? null
-          : previous.criticalHits + value.criticalHits,
+        criticalHits: (previous.criticalHits ?? 0) + (criticalAllocations.get(providerId) ?? 0),
       });
     }
   }
@@ -829,9 +840,16 @@ export function ownedSkillParticipants(
     ?.presentation_name ?? "Encore";
   for (const [providerId, value] of providerTotals) {
     const provider = byActor.get(providerId);
-    const damage = Number(value.damage);
-    if (!provider || !Number.isSafeInteger(damage)) continue;
+    if (!provider) continue;
     provider.abilities ??= [];
+    const existingEncore = provider.abilities.filter((ability) =>
+      encoreDamageActionIds.has(ability.ability_id) &&
+      ability.presentation_kind === "support-generated-damage"
+    );
+    const existingDamage = existingEncore.reduce((sum, ability) => sum + ability.damage, 0);
+    const damage = Number(value.damage) + existingDamage;
+    if (!Number.isSafeInteger(damage)) continue;
+    provider.abilities = provider.abilities.filter((ability) => !existingEncore.includes(ability));
     provider.abilities.push({
       ability_id: `support-effect:${encoreEffectId}`,
       presentation_name: encoreName,
@@ -840,16 +858,40 @@ export function ownedSkillParticipants(
       presentation_recount_group_id: null,
       presentation_recount_group_name: null,
       casts: 0,
-      hits: value.events,
-      critical_hits: value.criticalHits ?? 0,
+      hits: value.events + existingEncore.reduce((sum, ability) => sum + ability.hits, 0),
+      critical_hits: (value.criticalHits ?? 0) + existingEncore.reduce((sum, ability) => sum + ability.critical_hits, 0),
       damage,
-      effective_damage: damage,
+      effective_damage: Number(value.damage) + existingEncore.reduce((sum, ability) => sum + ability.effective_damage, 0),
       healing: 0,
       effective_healing: 0,
       shielding: 0,
     });
   }
   return participants.map((actor) => byActor.get(actor.actor_id) ?? actor);
+}
+
+function proportionalEventAllocation(
+  total: number,
+  buckets: Array<{ key: string; events: number }>,
+  totalEvents: number,
+): Map<string, number> {
+  const allocations = new Map<string, number>();
+  if (totalEvents <= 0 || total <= 0) return allocations;
+  const ranked = buckets.map((bucket) => {
+    const exact = total * bucket.events / totalEvents;
+    const base = Math.min(bucket.events, Math.floor(exact));
+    allocations.set(bucket.key, base);
+    return { ...bucket, fraction: exact - base };
+  }).sort((left, right) => right.fraction - left.fraction || right.events - left.events);
+  let remaining = total - [...allocations.values()].reduce((sum, value) => sum + value, 0);
+  for (const bucket of ranked) {
+    if (remaining <= 0) break;
+    const allocated = allocations.get(bucket.key) ?? 0;
+    if (allocated >= bucket.events) continue;
+    allocations.set(bucket.key, allocated + 1);
+    remaining -= 1;
+  }
+  return allocations;
 }
 
 function renderSkillCard(
