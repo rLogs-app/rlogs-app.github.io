@@ -6,8 +6,17 @@ import {
 import { renderSyncedCharacterProfile } from "../account/profile-view";
 import { loadPublishedProfile } from "./published-profile-loader";
 import { fetchPublicRead } from "../../public-api";
+import {
+  type ObservedCharacterCatalog,
+  type ObservedCharacterEntry,
+  isObservedCharacterCatalog,
+} from "../../contracts/public-characters";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
+
+type DirectoryEntry =
+  | { kind: "claimed"; profile: PublicProfileCatalogEntry }
+  | { kind: "observed"; character: ObservedCharacterEntry };
 
 export async function mountProfileBrowser(): Promise<void> {
   const status = requiredElement("profile-browser-status");
@@ -21,24 +30,34 @@ export async function mountProfileBrowser(): Promise<void> {
   }
 
   let catalog: PublicProfileCatalog;
+  let observedCatalog: ObservedCharacterCatalog;
   try {
-    catalog = await loadProfileCatalog();
+    [catalog, observedCatalog] = await Promise.all([
+      loadProfileCatalog(),
+      loadObservedCharacterCatalog(),
+    ]);
   } catch (error) {
     status.textContent = "Unavailable";
     list.replaceChildren(message(errorText(error)));
     return;
   }
 
-  status.textContent = `${catalog.profiles.length.toLocaleString()} public profiles`;
+  const claimedProfileIds = new Set(catalog.profiles.map((entry) => entry.profile_id));
+  const directory: DirectoryEntry[] = [
+    ...observedCatalog.characters
+      .filter((entry) => !entry.claimed_profile_id || !claimedProfileIds.has(entry.claimed_profile_id))
+      .map((character): DirectoryEntry => ({ kind: "observed", character })),
+    ...catalog.profiles.map((profile): DirectoryEntry => ({ kind: "claimed", profile })),
+  ].sort((left, right) => directoryUpdated(right) - directoryUpdated(left));
+  status.textContent = `${directory.length.toLocaleString()} players · ${catalog.profiles.length.toLocaleString()} claimed`;
   const requested = requestedProfileReference(location.pathname, location.search);
   let selected = requested
-    ? catalog.profiles.find((entry) =>
-        entry.character_id === requested || entry.profile_id === requested)
+    ? directory.find((entry) => directoryReferences(entry).includes(requested))
     : undefined;
 
   const renderList = (): void => {
     const query = search.value.trim().toLocaleLowerCase();
-    const visible = catalog.profiles.filter((entry) => searchable(entry).includes(query));
+    const visible = directory.filter((entry) => searchableDirectoryEntry(entry).includes(query));
     list.replaceChildren();
     if (!visible.length) {
       list.append(message(query ? "No public profile matches that search." : "No player has published a profile yet."));
@@ -47,19 +66,26 @@ export async function mountProfileBrowser(): Promise<void> {
     for (const entry of visible) {
       const card = document.createElement("a");
       card.className = "linked-profile-card profile-browser-card";
-      if (entry.profile_id === selected?.profile_id) card.setAttribute("aria-current", "true");
-      card.href = profileUrl(entry.character_id);
-      const locationLabel = [entry.region, entry.realm ?? entry.world].filter(Boolean).join(" · ");
-      card.append(
-        element("strong", "", entry.display_name ?? `UID ${entry.character_id}`),
-        element("span", "identity-id", `UID ${entry.character_id}`),
-        element("small", "", locationLabel || entry.deployment),
-        element(
-          "small",
-          "",
-          `${entry.module_inventory_count.toLocaleString()} modules · ${entry.equipped_module_count.toLocaleString()} equipped`,
-        ),
-      );
+      if (directoryKey(entry) === (selected && directoryKey(selected))) card.setAttribute("aria-current", "true");
+      card.href = profileUrl(directoryReference(entry));
+      if (entry.kind === "claimed") {
+        const profile = entry.profile;
+        const locationLabel = [humanize(profile.region), profile.realm ?? profile.world].filter(Boolean).join(" · ");
+        card.append(
+          element("strong", "", profile.display_name ?? `UID ${profile.character_id}`),
+          element("span", "identity-id", `Claimed · UID ${profile.character_id}`),
+          element("small", "", locationLabel || humanize(profile.deployment)),
+          element("small", "", `${profile.module_inventory_count.toLocaleString()} modules · ${profile.equipped_module_count.toLocaleString()} equipped`),
+        );
+      } else {
+        const character = entry.character;
+        card.append(
+          element("strong", "", character.display_name),
+          element("span", "identity-id", "Observed in public parses"),
+          element("small", "", [character.class_name, character.specialization_name].filter(Boolean).join(" · ")),
+          element("small", "", `${character.report_count.toLocaleString()} involved ${character.report_count === 1 ? "parse" : "parses"} · ${humanize(character.region)}`),
+        );
+      }
       list.append(card);
     }
   };
@@ -70,18 +96,22 @@ export async function mountProfileBrowser(): Promise<void> {
     detail.replaceChildren(message("That public profile was not found."));
     return;
   }
-  selected ??= catalog.profiles[0];
+  selected ??= directory[0];
   if (!selected) return;
-  const canonicalUrl = profileUrl(selected.character_id);
+  const canonicalUrl = profileUrl(directoryReference(selected));
   if (location.pathname !== canonicalUrl || location.search) {
     history.replaceState(null, "", canonicalUrl);
   }
-  detail.replaceChildren(message("Loading the latest verified character snapshot…"));
-  try {
-    const profile = await loadPublishedProfile(selected.profile_id);
-    detail.replaceChildren(await renderSyncedCharacterProfile(profile));
-  } catch (error) {
-    detail.replaceChildren(message(errorText(error)));
+  if (selected.kind === "observed") {
+    detail.replaceChildren(renderObservedCharacter(selected.character));
+  } else {
+    detail.replaceChildren(message("Loading the latest verified character snapshot…"));
+    try {
+      const profile = await loadPublishedProfile(selected.profile.profile_id);
+      detail.replaceChildren(await renderSyncedCharacterProfile(profile));
+    } catch (error) {
+      detail.replaceChildren(message(errorText(error)));
+    }
   }
 }
 
@@ -103,6 +133,18 @@ export async function loadProfileCatalog(
   return value;
 }
 
+export async function loadObservedCharacterCatalog(
+  endpoint = apiBase,
+  request: (url: string) => Promise<Response> = (url) => fetchPublicRead(url),
+): Promise<ObservedCharacterCatalog> {
+  if (!endpoint) throw new Error("The public character API is not configured for this deployment.");
+  const response = await request(`${endpoint}/v1/characters`);
+  if (!response.ok) throw new Error(`Character catalog request failed with HTTP ${response.status}.`);
+  const value: unknown = await response.json();
+  if (!isObservedCharacterCatalog(value)) throw new Error("The public character catalog is invalid.");
+  return value;
+}
+
 export function requestedProfileReference(pathname: string, search: string): string | undefined {
   const path = pathname.replace(/\/+$/u, "");
   const match = /^\/profiles\/([^/]+)$/u.exec(path);
@@ -120,18 +162,83 @@ export function profileUrl(characterId: string): string {
   return `/profiles/${encodeURIComponent(characterId)}/`;
 }
 
-function searchable(entry: PublicProfileCatalogEntry): string {
-  return [
-    entry.display_name,
-    entry.character_id,
-    entry.deployment,
-    entry.region,
-    entry.realm,
-    entry.world,
-  ]
+function searchableDirectoryEntry(entry: DirectoryEntry): string {
+  const values = entry.kind === "claimed"
+    ? [entry.profile.display_name, entry.profile.character_id, entry.profile.deployment, entry.profile.region, entry.profile.realm, entry.profile.world]
+    : [entry.character.display_name, entry.character.class_name, entry.character.specialization_name, entry.character.deployment, entry.character.region];
+  return values
     .filter((value): value is string => Boolean(value))
     .join(" ")
     .toLocaleLowerCase();
+}
+
+function directoryReference(entry: DirectoryEntry): string {
+  return entry.kind === "claimed" ? entry.profile.character_id : entry.character.observed_character_key;
+}
+
+function directoryReferences(entry: DirectoryEntry): string[] {
+  return entry.kind === "claimed"
+    ? [entry.profile.character_id, entry.profile.profile_id]
+    : [entry.character.observed_character_key];
+}
+
+function directoryKey(entry: DirectoryEntry): string {
+  return `${entry.kind}:${directoryReference(entry)}`;
+}
+
+function directoryUpdated(entry: DirectoryEntry): number {
+  return entry.kind === "claimed" ? entry.profile.updated_unix_millis : entry.character.last_seen_unix_millis;
+}
+
+function renderObservedCharacter(character: ObservedCharacterEntry): HTMLElement {
+  const article = element("article", "panel profile-data-section observed-character-profile");
+  const heading = element("div", "profile-data-heading");
+  const title = element("div", "");
+  title.append(
+    element("p", "eyebrow", "Observed public combat record"),
+    element("h2", "", character.display_name),
+    element("p", "section-intro", "This lightweight profile contains only information observed in public parses. It is not a claimed character profile."),
+  );
+  heading.append(title, element("span", "status-chip neutral", "Unclaimed"));
+  article.append(heading);
+
+  const facts = element("dl", "profile-facts observed-character-facts");
+  for (const [label, value] of [
+    ["Class", [character.class_name, character.specialization_name].filter(Boolean).join(" / ") || "Not observed"],
+    ["Region", humanize(character.region)],
+    ["Client deployment", humanize(character.deployment)],
+    ["First observed", formatDate(character.first_seen_unix_millis)],
+    ["Last observed", formatDate(character.last_seen_unix_millis)],
+    ["Public parses", character.report_count.toLocaleString()],
+  ]) {
+    facts.append(element("dt", "", label), element("dd", "", value));
+  }
+  article.append(facts);
+
+  const reports = element("section", "observed-character-reports");
+  reports.append(element("h3", "", "Involved parses"));
+  const links = element("div", "linked-profile-list observed-character-report-list");
+  for (const report of character.reports) {
+    const link = element("a", "linked-profile-card");
+    link.setAttribute("href", `/parses/?parse=${encodeURIComponent(report.report_id)}&run=${report.run_index}`);
+    link.append(
+      element("strong", "", report.scene_name ?? `Scene ${report.scene_id ?? "unresolved"}`),
+      element("small", "", `${humanize(report.terminal_state)} · ${formatDate(report.created_unix_millis)}`),
+      element("span", "identity-id", report.report_id),
+    );
+    links.append(link);
+  }
+  reports.append(links);
+  article.append(reports);
+  return article;
+}
+
+function humanize(value: string): string {
+  return value.replace(/[-_]+/gu, " ").replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase());
+}
+
+function formatDate(unixMillis: number): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(unixMillis));
 }
 
 function requiredElement(id: string): HTMLElement {

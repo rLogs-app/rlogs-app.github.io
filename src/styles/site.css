@@ -2920,6 +2920,36 @@ footer {
   min-width: 0;
 }
 
+.observed-character-profile {
+  padding: 22px;
+}
+
+.observed-character-profile .section-intro {
+  margin-bottom: 0;
+}
+
+.observed-character-facts {
+  margin-top: 18px;
+}
+
+.observed-character-reports {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 18px;
+}
+
+.observed-character-report-list {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  display: grid;
+  gap: 10px;
+}
+
+.observed-character-report-list .identity-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .synced-character-profile {
   overflow: hidden;
   border: 1px solid var(--line-bright);

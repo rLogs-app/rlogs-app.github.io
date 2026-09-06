@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { loadProfileCatalog, profileUrl, requestedProfileReference } from "./profile-browser";
+import {
+  loadObservedCharacterCatalog,
+  loadProfileCatalog,
+  profileUrl,
+  requestedProfileReference,
+} from "./profile-browser";
 describe("public profile routes", () => {
   it("uses the observable character UID as the canonical URL", () => {
     expect(profileUrl("3296036")).toBe("/profiles/3296036/");
@@ -14,6 +19,10 @@ describe("public profile routes", () => {
         "?profile=prf_e569ead2193f107ea0ce6c44de4e5983",
       ),
     ).toBe("prf_e569ead2193f107ea0ce6c44de4e5983");
+  });
+
+  it("uses an opaque observed character key as a stable unclaimed profile route", () => {
+    expect(profileUrl(`obs_${"a".repeat(32)}`)).toBe(`/profiles/obs_${"a".repeat(32)}/`);
   });
 
   it("does not substitute stale developer fixtures when the API is unavailable", async () => {
@@ -32,5 +41,41 @@ describe("public profile routes", () => {
       async () => Response.json({ schema_version: 1, profiles: [] }),
     );
     expect(result).toEqual({ schema_version: 1, profiles: [] });
+  });
+
+  it("loads a materialized observed character directory", async () => {
+    const catalog = {
+      schema_version: 1 as const,
+      generated_unix_millis: 1,
+      total_characters: 1,
+      characters: [{
+        observed_character_key: `obs_${"a".repeat(32)}`,
+        identity_kind: "legacy_name_observation" as const,
+        character_id: null,
+        claimed_profile_id: null,
+        display_name: "Player",
+        deployment: "global",
+        region: "north-america",
+        class_id: 4,
+        class_name: "Wind Knight",
+        specialization_id: 107,
+        specialization_name: "Vanguard Spec",
+        first_seen_unix_millis: 1,
+        last_seen_unix_millis: 1,
+        report_count: 1,
+        reports: [{
+          report_id: `rpt_${"b".repeat(32)}`,
+          run_index: 0,
+          created_unix_millis: 1,
+          scene_id: 6515,
+          scene_name: "Cursed Radiant Tomb",
+          terminal_state: "completed",
+        }],
+      }],
+    };
+    await expect(loadObservedCharacterCatalog(
+      "https://api.rlogs.example",
+      async () => Response.json(catalog),
+    )).resolves.toEqual(catalog);
   });
 });
