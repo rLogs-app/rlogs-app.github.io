@@ -9,6 +9,7 @@
     "check": "tsc -b --pretty false",
     "preview": "vite preview",
     "test": "vitest run",
+    "smoke:production-profiles": "node scripts/audit-live-profile-presentation.mjs",
     "profile:publish": "node scripts/publish-profile.ts",
     "profile:catalog": "node scripts/generate-profile-presentation.mjs",
     "parse:catalog": "node scripts/generate-parse-presentation.mjs"
