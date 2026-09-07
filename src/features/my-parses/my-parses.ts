@@ -214,7 +214,7 @@ export function bindMyParseSkillDetails(
 
 async function fetchCatalog(session: WebSession, offset = 0): Promise<MyParseCatalog> {
   const response = await authenticatedFetch(
-    `${configuredApi}/v1/auth/parses?limit=250${offset ? `&offset=${offset}` : ""}`,
+    `${configuredApi}/v1/auth/parses?limit=50${offset ? `&offset=${offset}` : ""}`,
     session,
   );
   const value: unknown = await response.json();
