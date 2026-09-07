@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatClearTime, isProfileLeaderboard, seasonThreeActivities } from "./leaderboards";
+import { competitionRank, formatClearTime, isProfileLeaderboard, seasonThreeActivities } from "./leaderboards";
 
 describe("profile leaderboards", () => {
   it("uses all six packet-proven Season 3 Master activities", () => {
@@ -8,6 +8,11 @@ describe("profile leaderboards", () => {
 
   it("formats the game's recorded pass time in minutes and seconds", () => {
     expect(formatClearTime(329)).toBe("5:29");
+  });
+
+  it("gives equal profile values the same competition rank", () => {
+    const values = [4066, 4066, 3931, 2350];
+    expect(values.map((_, index) => competitionRank(values, index))).toEqual([1, 1, 3, 4]);
   });
 
   it("accepts a compact indexed leaderboard response", () => {

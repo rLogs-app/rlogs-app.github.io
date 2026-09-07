@@ -98,11 +98,13 @@ export function formatClearTime(seconds: number): string {
 function renderLeaderboard(value: ProfileLeaderboard): void {
   const scoreList = required("master-score-ranking");
   const timeList = required("master-time-ranking");
-  scoreList.replaceChildren(...value.master_scores.map((entry, index) => rankingRow(
-    entry, index + 1, entry.master_score.toLocaleString(), "Master Score",
+  scoreList.replaceChildren(...value.master_scores.map((entry, index, entries) => rankingRow(
+    entry, competitionRank(entries.map((candidate) => candidate.master_score), index),
+    entry.master_score.toLocaleString(), "Master Score",
   )));
-  timeList.replaceChildren(...value.dungeon_times.map((entry, index) => rankingRow(
-    entry, index + 1, formatClearTime(entry.pass_time_seconds),
+  timeList.replaceChildren(...value.dungeon_times.map((entry, index, entries) => rankingRow(
+    entry, competitionRank(entries.map((candidate) => candidate.pass_time_seconds), index),
+    formatClearTime(entry.pass_time_seconds),
     `${entry.completion_count?.toLocaleString() ?? "Observed"} clear${entry.completion_count === 1 ? "" : "s"}`,
   )));
   if (value.master_scores.length === 0) scoreList.append(emptyRow("No verified Master Scores for this season and region."));
@@ -110,6 +112,13 @@ function renderLeaderboard(value: ProfileLeaderboard): void {
   const status = required("leaderboard-status");
   status.textContent = `${value.master_scores.length.toLocaleString()} ranked profiles`;
   status.className = "status-chip success";
+}
+
+export function competitionRank(sortedValues: number[], index: number): number {
+  if (index <= 0) return 1;
+  return sortedValues[index] === sortedValues[index - 1]
+    ? competitionRank(sortedValues, index - 1)
+    : index + 1;
 }
 
 function rankingRow(entry: LeaderboardIdentity, rank: number, primary: string, secondary: string): HTMLLIElement {
