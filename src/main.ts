@@ -10,6 +10,11 @@ const page = mountSiteNavigation();
 if (page === "home") {
   void import("./features/home/home").then(({ mountHome }) => mountHome());
 }
+if (page === "leaderboards") {
+  void import("./features/leaderboards/leaderboards").then(({ mountLeaderboards }) =>
+    mountLeaderboards(),
+  );
+}
 
 if (page === "account") {
   void import("./features/account/account").then(({ mountAccount }) => mountAccount("profile"));

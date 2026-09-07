@@ -1,10 +1,11 @@
 const sessionKey = "rlogs.web-session.v1";
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
-export type SitePage = "home" | "parses" | "my-parses" | "profiles" | "users" | "account" | "my-account" | "optimizer";
+export type SitePage = "home" | "leaderboards" | "parses" | "my-parses" | "profiles" | "users" | "account" | "my-account" | "optimizer";
 
 const pageTitles: Record<SitePage, string> = {
   home: "rLogs",
+  leaderboards: "Leaderboards · rLogs",
   parses: "Parses · rLogs",
   "my-parses": "My Parses · rLogs",
   profiles: "Profiles · rLogs",
@@ -17,6 +18,7 @@ const pageTitles: Record<SitePage, string> = {
 export function pageFromPath(pathname: string): SitePage {
   const route = pathname.replace(/\/+$/u, "") || "/";
   if (route === "/parses") return "parses";
+  if (route === "/leaderboards") return "leaderboards";
   if (route === "/my-parses") return "my-parses";
   if (route === "/profiles" || route.startsWith("/profiles/")) return "profiles";
   if (route === "/users" || route.startsWith("/users/")) return "users";

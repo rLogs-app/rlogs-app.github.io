@@ -17,6 +17,7 @@
           "/": "home",
           "/parses": "parses",
           "/my-parses": "my-parses",
+          "/leaderboards": "leaderboards",
           "/profiles": "profiles",
           "/users": "users",
           "/account": "account",
@@ -43,6 +44,7 @@
       </a>
       <nav aria-label="Primary navigation">
         <a href="/" data-nav-page="home">Home</a>
+        <a href="/leaderboards/" data-nav-page="leaderboards">Leaderboards</a>
         <a href="/parses/" data-nav-page="parses">Parses</a>
         <a href="/profiles/" data-nav-page="profiles">Profiles</a>
         <a href="/my-account/" data-nav-page="my-account" data-authenticated-nav hidden>My Account</a>
@@ -193,6 +195,43 @@
           <div id="profile-browser-detail" class="profile-browser-detail" aria-live="polite">
             <p class="empty-state">Choose a profile to view its latest snapshot.</p>
           </div>
+        </div>
+      </section>
+
+      <section id="leaderboards" class="content-section leaderboard-section" data-page="leaderboards">
+        <div class="section-heading leaderboard-heading">
+          <div>
+            <p class="eyebrow">In-game profile records</p>
+            <h2>Master leaderboards</h2>
+          </div>
+          <span id="leaderboard-status" class="status-chip neutral" role="status">Loading rankings…</span>
+        </div>
+        <p class="section-intro">
+          Rankings use the latest live-verified values observed on each claimed character profile.
+        </p>
+        <div class="leaderboard-controls" aria-label="Leaderboard filters">
+          <label><span>Season</span><select id="leaderboard-season"><option value="3">Season 3</option></select></label>
+          <label><span>Region</span><select id="leaderboard-region"><option value="north-america">North America</option><option value="">All regions</option></select></label>
+          <label><span>Dungeon</span><select id="leaderboard-activity"></select></label>
+          <label><span>Master tier</span><select id="leaderboard-tier"></select></label>
+        </div>
+        <div class="leaderboard-grid">
+          <article class="panel leaderboard-panel" aria-labelledby="master-score-title">
+            <div class="leaderboard-panel-heading">
+              <div><p class="eyebrow">Overall</p><h3 id="master-score-title">Master Score</h3></div>
+              <span>Highest score first</span>
+            </div>
+            <div class="leaderboard-column-head" aria-hidden="true"><span>Rank &amp; character</span><span>Score</span></div>
+            <ol id="master-score-ranking" class="leaderboard-list"><li class="empty-state">Loading scores…</li></ol>
+          </article>
+          <article class="panel leaderboard-panel" aria-labelledby="master-time-title">
+            <div class="leaderboard-panel-heading">
+              <div><p class="eyebrow">Recorded clear</p><h3 id="master-time-title">Dungeon times</h3></div>
+              <span>Fastest time first</span>
+            </div>
+            <div class="leaderboard-column-head" aria-hidden="true"><span>Rank &amp; character</span><span>Time</span></div>
+            <ol id="master-time-ranking" class="leaderboard-list"><li class="empty-state">Loading times…</li></ol>
+          </article>
         </div>
       </section>
 

@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const routes = ["parses", "my-parses", "profiles", "users", "account", "my-account", "optimizer"];
+const routes = ["leaderboards", "parses", "my-parses", "profiles", "users", "account", "my-account", "optimizer"];
 const root = resolve(process.cwd(), "dist");
 const rootHtml = await readFile(resolve(root, "index.html"), "utf8");
 const fallbackHtml = await readFile(resolve(root, "404.html"), "utf8");

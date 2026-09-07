@@ -35,6 +35,7 @@ html {
 }
 
 html[data-rlogs-page="home"] [data-page~="home"],
+html[data-rlogs-page="leaderboards"] [data-page~="leaderboards"],
 html[data-rlogs-page="parses"] [data-page~="parses"],
 html[data-rlogs-page="my-parses"] [data-page~="my-parses"],
 html[data-rlogs-page="profiles"] [data-page~="profiles"],
@@ -43,6 +44,167 @@ html[data-rlogs-page="account"] [data-page~="account"],
 html[data-rlogs-page="my-account"] [data-page~="my-account"],
 html[data-rlogs-page="optimizer"] [data-page~="optimizer"] {
   display: block;
+}
+
+.leaderboard-section {
+  padding-top: 42px;
+}
+
+.leaderboard-heading h2 {
+  margin-bottom: 0;
+}
+
+.leaderboard-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 22px 0 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgb(13 20 32 / 84%);
+}
+
+.leaderboard-controls label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.leaderboard-controls select {
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 9px;
+}
+
+.leaderboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.leaderboard-panel {
+  overflow: hidden;
+}
+
+.leaderboard-panel-heading,
+.leaderboard-column-head,
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.leaderboard-panel-heading {
+  padding: 17px 18px 13px;
+  border-bottom: 1px solid var(--line);
+}
+
+.leaderboard-panel-heading h3,
+.leaderboard-panel-heading p {
+  margin: 0;
+}
+
+.leaderboard-panel-heading h3 {
+  margin-top: 2px;
+  font-size: 22px;
+}
+
+.leaderboard-panel-heading > span,
+.leaderboard-column-head {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.leaderboard-column-head {
+  padding: 9px 18px;
+  background: rgb(7 11 18 / 48%);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.leaderboard-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leaderboard-list .empty-state {
+  margin: 0;
+  padding: 28px 18px;
+}
+
+.leaderboard-row {
+  min-height: 66px;
+  padding: 10px 18px;
+  border-top: 1px solid rgb(32 49 73 / 72%);
+}
+
+.leaderboard-row:first-child {
+  border-top: 0;
+}
+
+.leaderboard-rank-identity {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.leaderboard-rank {
+  color: var(--muted);
+  font: 800 15px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-align: center;
+}
+
+.leaderboard-row:nth-child(-n + 3) .leaderboard-rank {
+  color: var(--accent);
+}
+
+.leaderboard-identity {
+  min-width: 0;
+  text-decoration: none;
+}
+
+.leaderboard-identity strong,
+.leaderboard-identity small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-identity strong {
+  font-size: 16px;
+}
+
+.leaderboard-identity small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.leaderboard-value {
+  color: var(--accent);
+  font: 850 20px/1.1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-align: right;
+}
+
+.leaderboard-value small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font: 600 11px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
@@ -5175,6 +5337,11 @@ footer p {
 }
 
 @media (max-width: 900px) {
+  .leaderboard-controls,
+  .leaderboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .profile-browser-layout {
     grid-template-columns: 1fr;
   }
@@ -5287,6 +5454,35 @@ footer p {
 
   .feature-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .leaderboard-section {
+    padding-top: 28px;
+  }
+
+  .leaderboard-controls,
+  .leaderboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .leaderboard-panel-heading {
+    padding: 14px;
+  }
+
+  .leaderboard-panel-heading > span {
+    display: none;
+  }
+
+  .leaderboard-column-head,
+  .leaderboard-row {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .leaderboard-value {
+    font-size: 18px;
   }
 }
 

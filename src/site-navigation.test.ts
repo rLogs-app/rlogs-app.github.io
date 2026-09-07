@@ -4,6 +4,7 @@ import { hasActiveSession, pageFromPath } from "./site-navigation";
 describe("site navigation", () => {
   it.each([
     ["/", "home"],
+    ["/leaderboards/", "leaderboards"],
     ["/parses/", "parses"],
     ["/my-parses/", "my-parses"],
     ["/profiles/", "profiles"],
