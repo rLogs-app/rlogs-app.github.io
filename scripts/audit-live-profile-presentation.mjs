@@ -15,11 +15,22 @@ const coveredClasses = new Set();
 const coveredSpecializations = new Set();
 let equipmentCount = 0;
 let skillCount = 0;
+let observedReportCount = 0;
 
 const profileCatalog = await getJson(`${apiBase}/v1/profiles`);
 if (profileCatalog?.schema_version !== 1 || !Array.isArray(profileCatalog.profiles)) {
   throw new Error("The production profile catalog has an unsupported contract.");
 }
+const profilesById = new Map();
+for (const entry of profileCatalog.profiles) {
+  const profileId = string(entry?.profile_id);
+  if (!profileId) failures.push("profile catalog entry has no profile_id");
+  else if (profilesById.has(profileId)) failures.push(`duplicate profile catalog identity: ${profileId}`);
+  else profilesById.set(profileId, entry);
+}
+
+const observedCatalog = await getJson(`${apiBase}/v1/characters`);
+checkObservedCharacters(observedCatalog, profilesById);
 
 for (const entry of profileCatalog.profiles) {
   const profileId = string(entry?.profile_id);
@@ -90,6 +101,8 @@ if (failures.length) {
 console.log(JSON.stringify({
   schema_version: 1,
   profiles: profileCatalog.profiles.length,
+  observed_characters: Array.isArray(observedCatalog?.characters) ? observedCatalog.characters.length : 0,
+  observed_report_links: observedReportCount,
   equipment_records: equipmentCount,
   skill_records: skillCount,
   unique_assets: iconPaths.size,
@@ -98,6 +111,66 @@ console.log(JSON.stringify({
   warnings,
   result: "passed",
 }));
+
+function checkObservedCharacters(value, claimedProfiles) {
+  if (value?.schema_version !== 1 || !Array.isArray(value.characters)) {
+    failures.push("the production observed-character catalog has an unsupported contract");
+    return;
+  }
+  if (!Number.isSafeInteger(value.total_characters) || value.total_characters !== value.characters.length) {
+    failures.push("observed-character total does not match the materialized directory");
+  }
+
+  const observedKeys = new Set();
+  for (const character of value.characters) {
+    const key = string(character?.observed_character_key);
+    const name = string(character?.display_name);
+    if (!key) failures.push("observed character has no stable key");
+    else if (observedKeys.has(key)) failures.push(`duplicate observed character key: ${key}`);
+    else observedKeys.add(key);
+    if (!name) failures.push(`${key ?? "unknown character"}: display name is missing`);
+
+    const reports = array(character?.reports);
+    if (!Number.isSafeInteger(character?.report_count) || character.report_count !== reports.length) {
+      failures.push(`${name ?? key ?? "unknown character"}: report count does not match its run references`);
+    }
+    const reportKeys = new Set();
+    for (const report of reports) {
+      const reportId = string(report?.report_id);
+      const runIndex = integer(report?.run_index);
+      if (!reportId || runIndex === null || runIndex < 0) {
+        failures.push(`${name ?? key ?? "unknown character"}: malformed involved-parse reference`);
+        continue;
+      }
+      const reportKey = `${reportId}:${runIndex}`;
+      if (reportKeys.has(reportKey)) failures.push(`${name ?? key}: duplicate involved parse ${reportKey}`);
+      else reportKeys.add(reportKey);
+      observedReportCount += 1;
+    }
+
+    if (character?.identity_kind !== "verified_uid") continue;
+    const characterId = string(character?.character_id);
+    const claimedProfileId = string(character?.claimed_profile_id);
+    if (!characterId || !claimedProfileId) {
+      failures.push(`${name ?? key}: verified UID is missing its claimed profile linkage`);
+      continue;
+    }
+    if (/^Player\s+\d+$/iu.test(name ?? "")) {
+      failures.push(`${characterId}: verified UID regressed to placeholder name ${name}`);
+    }
+    const claimed = claimedProfiles.get(claimedProfileId);
+    if (!claimed) {
+      failures.push(`${characterId}: claimed profile ${claimedProfileId} is absent from the profile catalog`);
+      continue;
+    }
+    if (string(claimed.character_id) !== characterId) {
+      failures.push(`${characterId}: claimed profile points to character ${string(claimed.character_id) ?? "missing"}`);
+    }
+    if (string(claimed.display_name)?.toLocaleLowerCase() !== name?.toLocaleLowerCase()) {
+      failures.push(`${characterId}: observed name ${name} disagrees with claimed name ${string(claimed.display_name) ?? "missing"}`);
+    }
+  }
+}
 
 function checkPresentation(uid, kind, id, collection) {
   const presentation = record(collection)?.[String(id)];
