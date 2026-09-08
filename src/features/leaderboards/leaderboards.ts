@@ -11,13 +11,28 @@ export const seasonThreeActivities = [
   [6565, "Sea-Ringed Reef"],
 ] as const;
 
-interface LeaderboardIdentity {
-  profile_id: string;
+export const trainingClassFilters = [
+  { id: 1, name: "Stormblade", specializations: [[101, "Iaido Slash"], [102, "Moonstrike"]] },
+  { id: 2, name: "Frost Mage", specializations: [[104, "Icicle"], [105, "Frostbeam"]] },
+  { id: 3, name: "Twin Striker", specializations: [[128, "Formless"], [129, "Crimson"]] },
+  { id: 4, name: "Wind Knight", specializations: [[107, "Vanguard"], [108, "Skyward"]] },
+  { id: 5, name: "Verdant Oracle", specializations: [[110, "Smite"], [111, "Lifebind"]] },
+  { id: 9, name: "Heavy Guardian", specializations: [[113, "Earthfort"], [114, "Block"]] },
+  { id: 11, name: "Marksman", specializations: [[116, "Wildpack"], [117, "Falconry"]] },
+  { id: 12, name: "Shield Knight", specializations: [[122, "Recovery"], [123, "Shield"]] },
+  { id: 13, name: "Beat Performer", specializations: [[119, "Dissonance"], [120, "Concerto"]] },
+] as const;
+
+interface RankedIdentity {
   character_id: string;
   display_name: string | null;
   deployment_id: string;
   region_id: string;
   realm_id: string | null;
+}
+
+interface LeaderboardIdentity extends RankedIdentity {
+  profile_id: string;
   observed_unix_millis: number;
 }
 
@@ -43,15 +58,52 @@ export interface ProfileLeaderboard {
   dungeon_times: DungeonTimeEntry[];
 }
 
+interface TrainingDummyEntry {
+  result_id: string;
+  character_id: string;
+  display_name: string | null;
+  deployment_id: string;
+  region_id: string;
+  realm_id: string | null;
+  world_id: string | null;
+  season_id: number;
+  class_id: number;
+  specialization_id: number;
+  target_monster_id: 115 | 122;
+  duration_micros: 180_000_000;
+  total_damage: number;
+  dps: number;
+  created_unix_millis: number;
+  verified_unix_millis: number;
+}
+
+export interface TrainingDummyLeaderboard {
+  schema_version: 1;
+  season_id: number;
+  region_id: string | null;
+  class_id: number | null;
+  specialization_id: number | null;
+  duration_micros: 180_000_000;
+  results: TrainingDummyEntry[];
+}
+
 export async function mountLeaderboards(): Promise<void> {
   const season = requiredSelect("leaderboard-season");
   const region = requiredSelect("leaderboard-region");
   const activity = requiredSelect("leaderboard-activity");
   const tier = requiredSelect("leaderboard-tier");
+  const trainingSeason = requiredSelect("training-dummy-season");
+  const trainingRegion = requiredSelect("training-dummy-region");
+  const trainingClass = requiredSelect("training-dummy-class");
+  const trainingSpecialization = requiredSelect("training-dummy-specialization");
   for (const [id, name] of seasonThreeActivities) activity.add(new Option(name, String(id)));
   activity.value = "1633";
   for (let value = 20; value >= 1; value -= 1) tier.add(new Option(`M${value}`, String(value)));
   tier.value = "20";
+  for (const entry of trainingClassFilters) {
+    trainingClass.add(new Option(entry.name, String(entry.id)));
+  }
+  populateTrainingSpecializations(trainingSpecialization, trainingClass.value);
 
   const refresh = async (): Promise<void> => {
     setLoading();
@@ -74,7 +126,32 @@ export async function mountLeaderboards(): Promise<void> {
   };
 
   for (const control of [season, region, activity, tier]) control.addEventListener("change", () => void refresh());
-  await refresh();
+  const refreshTraining = async (): Promise<void> => {
+    setTrainingLoading();
+    if (!apiBase) return setTrainingFailure("Rankings are available on the published site.");
+    const query = new URLSearchParams({ season: trainingSeason.value, limit: "100" });
+    if (trainingRegion.value) query.set("region", trainingRegion.value);
+    if (trainingClass.value) query.set("class", trainingClass.value);
+    if (trainingSpecialization.value) query.set("specialization", trainingSpecialization.value);
+    try {
+      const response = await fetchPublicRead(`${apiBase}/v1/leaderboards/training-dummy?${query}`);
+      const value: unknown = await response.json();
+      if (!response.ok || !isTrainingDummyLeaderboard(value)) {
+        throw new Error("invalid training-dummy leaderboard response");
+      }
+      renderTrainingDummyLeaderboard(value);
+    } catch {
+      setTrainingFailure("Target-dummy rankings are temporarily unavailable.");
+    }
+  };
+  trainingClass.addEventListener("change", () => {
+    populateTrainingSpecializations(trainingSpecialization, trainingClass.value);
+    void refreshTraining();
+  });
+  for (const control of [trainingSeason, trainingRegion, trainingSpecialization]) {
+    control.addEventListener("change", () => void refreshTraining());
+  }
+  await Promise.all([refresh(), refreshTraining()]);
 }
 
 export function isProfileLeaderboard(value: unknown): value is ProfileLeaderboard {
@@ -87,6 +164,40 @@ export function isProfileLeaderboard(value: unknown): value is ProfileLeaderboar
       positiveInteger(entry.tier) && positiveInteger(entry.pass_time_seconds) &&
       (entry.score === null || nonnegativeInteger(entry.score)) &&
       (entry.completion_count === null || nonnegativeInteger(entry.completion_count)));
+}
+
+export function isTrainingDummyLeaderboard(value: unknown): value is TrainingDummyLeaderboard {
+  if (!isRecord(value) || value.schema_version !== 1 || !positiveInteger(value.season_id) ||
+      !(value.region_id === null || typeof value.region_id === "string") ||
+      !(value.class_id === null || positiveInteger(value.class_id)) ||
+      !(value.specialization_id === null || positiveInteger(value.specialization_id)) ||
+      value.duration_micros !== 180_000_000 || !Array.isArray(value.results)) return false;
+  return value.results.every((entry) => isRecord(entry) &&
+    typeof entry.result_id === "string" && typeof entry.character_id === "string" &&
+    (entry.display_name === null || typeof entry.display_name === "string") &&
+    typeof entry.deployment_id === "string" && typeof entry.region_id === "string" &&
+    (entry.realm_id === null || typeof entry.realm_id === "string") &&
+    (entry.world_id === null || typeof entry.world_id === "string") &&
+    positiveInteger(entry.season_id) && positiveInteger(entry.class_id) &&
+    positiveInteger(entry.specialization_id) &&
+    (entry.target_monster_id === 115 || entry.target_monster_id === 122) &&
+    entry.duration_micros === 180_000_000 && positiveInteger(entry.total_damage) &&
+    positiveNumber(entry.dps) && positiveInteger(entry.created_unix_millis) &&
+    positiveInteger(entry.verified_unix_millis));
+}
+
+function populateTrainingSpecializations(select: HTMLSelectElement, classValue: string): void {
+  const selected = select.value;
+  select.replaceChildren(new Option("All specializations", ""));
+  const requestedClass = Number.parseInt(classValue, 10);
+  for (const entry of trainingClassFilters) {
+    if (Number.isSafeInteger(requestedClass) && entry.id !== requestedClass) continue;
+    for (const [id, name] of entry.specializations) {
+      const label = Number.isSafeInteger(requestedClass) ? name : `${entry.name} · ${name}`;
+      select.add(new Option(label, String(id)));
+    }
+  }
+  if ([...select.options].some((option) => option.value === selected)) select.value = selected;
 }
 
 export function formatClearTime(seconds: number): string {
@@ -114,6 +225,22 @@ function renderLeaderboard(value: ProfileLeaderboard): void {
   status.className = "status-chip success";
 }
 
+function renderTrainingDummyLeaderboard(value: TrainingDummyLeaderboard): void {
+  const list = required("training-dummy-ranking");
+  list.replaceChildren(...value.results.map((entry, index, entries) => rankingRow(
+    entry,
+    competitionRank(entries.map((candidate) => candidate.dps), index),
+    `${formatDps(entry.dps)} DPS`,
+    `${entry.total_damage.toLocaleString()} damage · ${trainingSpecializationName(entry.class_id, entry.specialization_id)}`,
+  )));
+  if (value.results.length === 0) {
+    list.append(emptyRow("No verified solo target-dummy tests match these filters yet."));
+  }
+  const status = required("training-dummy-status");
+  status.textContent = `${value.results.length.toLocaleString()} verified test${value.results.length === 1 ? "" : "s"}`;
+  status.className = "status-chip success";
+}
+
 export function competitionRank(sortedValues: number[], index: number): number {
   if (index <= 0) return 1;
   return sortedValues[index] === sortedValues[index - 1]
@@ -121,7 +248,7 @@ export function competitionRank(sortedValues: number[], index: number): number {
     : index + 1;
 }
 
-function rankingRow(entry: LeaderboardIdentity, rank: number, primary: string, secondary: string): HTMLLIElement {
+function rankingRow(entry: RankedIdentity, rank: number, primary: string, secondary: string): HTMLLIElement {
   const row = document.createElement("li");
   row.className = "leaderboard-row";
   const identityBlock = document.createElement("div");
@@ -171,6 +298,31 @@ function setFailure(message: string): void {
   required("master-time-ranking").replaceChildren(emptyRow(message));
 }
 
+function setTrainingLoading(): void {
+  const status = required("training-dummy-status");
+  status.textContent = "Loading rankings…";
+  status.className = "status-chip neutral";
+  required("training-dummy-ranking").replaceChildren(emptyRow("Loading dummy results…"));
+}
+
+function setTrainingFailure(message: string): void {
+  const status = required("training-dummy-status");
+  status.textContent = "Unavailable";
+  status.className = "status-chip warning";
+  required("training-dummy-ranking").replaceChildren(emptyRow(message));
+}
+
+function trainingSpecializationName(classId: number, specializationId: number): string {
+  const classEntry = trainingClassFilters.find((entry) => entry.id === classId);
+  const specialization = classEntry?.specializations.find(([id]) => id === specializationId);
+  if (!classEntry) return `Class ${classId} · Spec ${specializationId}`;
+  return `${classEntry.name} · ${specialization?.[1] ?? `Spec ${specializationId}`}`;
+}
+
+function formatDps(value: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
+}
+
 function identity(value: unknown): value is LeaderboardIdentity {
   return isRecord(value) && typeof value.profile_id === "string" && typeof value.character_id === "string" &&
     (value.display_name === null || typeof value.display_name === "string") &&
@@ -204,4 +356,8 @@ function positiveInteger(value: unknown): value is number {
 
 function nonnegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function positiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
 }

@@ -233,6 +233,32 @@
             <ol id="master-time-ranking" class="leaderboard-list"><li class="empty-state">Loading times…</li></ol>
           </article>
         </div>
+        <section class="leaderboard-training" aria-labelledby="training-dummy-title">
+          <div class="section-heading leaderboard-heading">
+            <div>
+              <p class="eyebrow">Packet-verified solo test</p>
+              <h2 id="training-dummy-title">3-minute target dummy</h2>
+            </div>
+            <span id="training-dummy-status" class="status-chip neutral" role="status">Loading rankings…</span>
+          </div>
+          <p class="section-intro">
+            Only the local character's damage to the selected Guild Hall target dummy is counted. Grouped or externally assisted tests are not ranked.
+          </p>
+          <div class="leaderboard-controls leaderboard-training-controls" aria-label="Target dummy leaderboard filters">
+            <label><span>Season</span><select id="training-dummy-season"><option value="3">Season 3</option></select></label>
+            <label><span>Region</span><select id="training-dummy-region"><option value="north-america">North America</option><option value="">All regions</option></select></label>
+            <label><span>Class</span><select id="training-dummy-class"><option value="">All classes</option></select></label>
+            <label><span>Specialization</span><select id="training-dummy-specialization"><option value="">All specializations</option></select></label>
+          </div>
+          <article class="panel leaderboard-panel" aria-labelledby="training-dummy-ranking-title">
+            <div class="leaderboard-panel-heading">
+              <div><p class="eyebrow">Exact 3:00 window</p><h3 id="training-dummy-ranking-title">Damage per second</h3></div>
+              <span>Highest DPS first</span>
+            </div>
+            <div class="leaderboard-column-head" aria-hidden="true"><span>Rank &amp; character</span><span>DPS</span></div>
+            <ol id="training-dummy-ranking" class="leaderboard-list"><li class="empty-state">Loading dummy results…</li></ol>
+          </article>
+        </section>
       </section>
 
       <section id="parse" class="content-section parse-section" data-page="parses">

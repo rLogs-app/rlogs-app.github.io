@@ -90,6 +90,16 @@ html[data-rlogs-page="optimizer"] [data-page~="optimizer"] {
   gap: 14px;
 }
 
+.leaderboard-training {
+  margin-top: 34px;
+  padding-top: 30px;
+  border-top: 1px solid var(--line);
+}
+
+.leaderboard-training > .section-intro {
+  margin-bottom: 0;
+}
+
 .leaderboard-panel {
   overflow: hidden;
 }
