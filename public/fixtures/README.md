@@ -14,6 +14,8 @@ Source captures remain private and are never website artifacts.
 `parse-reconciliation.v1.json` are public-safe browser fixtures for the
 submission-service contract. The timeline fixtures include the complete
 reducer-authored eDPS/aDPS rate clock, including frozen inactivity intervals.
+The report and reconciliation fixtures also cover exact, matching multi-POV,
+conflicting, and missing combat loadout evidence without inventory instance IDs.
 Production builds can set
 `VITE_RLOGS_API_BASE_URL`; the browser then reads live server-generated
 catalog and report projections instead of these files.

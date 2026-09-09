@@ -72,6 +72,34 @@ describe("public parse contract", () => {
     timeline.rate_clock = [{ second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 }];
     expect(isPublicParseReport(report)).toBe(false);
   });
+  it("validates bounded privacy-safe loadout phases and fail-closed reconciliation selection", () => {
+    const report = fixture("parse-report.v1.json") as any;
+    expect(report.runs[0].combat_loadout_phases[0].equipped_modules[0]).not.toHaveProperty("instance_id");
+    expect(isPublicParseReport(report)).toBe(true);
+    delete report.runs[0].combat_loadout_phases;
+    expect(isPublicParseReport(report)).toBe(false);
+
+    const reconciliation = fixture("parse-reconciliation.v1.json") as any;
+    const conflict = reconciliation.characters.find((character: any) => character.character_id === "c8");
+    expect(conflict.combat_loadout_disposition).toBe("multiple_reports_require_ordering");
+    expect(conflict.selected_combat_loadout_phases).toEqual([]);
+    expect(isPublicRunReconciliation(reconciliation)).toBe(true);
+    conflict.selected_combat_loadout_phases = [reconciliation.reports[0].combat_loadout_phases[1]];
+    expect(isPublicRunReconciliation(reconciliation)).toBe(false);
+
+    const contradictory = fixture("parse-reconciliation.v1.json") as any;
+    const secondC7 = contradictory.reports[1].combat_loadout_phases.find((phase: any) => phase.character_id === "c7");
+    secondC7.equipped_modules[0].effects[0].initial_link_points = 19;
+    expect(isPublicRunReconciliation(contradictory)).toBe(false);
+  });
+  it("rejects partial module facts for missing or invalid snapshots", () => {
+    const report = fixture("parse-report.v1.json") as any;
+    const phase = report.runs[0].combat_loadout_phases[0];
+    phase.module_snapshot_disposition = "invalid";
+    expect(isPublicParseReport(report)).toBe(false);
+    phase.equipped_modules = [];
+    expect(isPublicParseReport(report)).toBe(true);
+  });
   it("validates v2 rDPS buckets as complete non-negative safe-integer triples", () => {
     const report = fixture("parse-report.v1.json") as any;
     const point = report.runs[0].participants[0].series[0];

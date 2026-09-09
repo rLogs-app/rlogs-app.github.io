@@ -6,6 +6,7 @@ import {
   type PublicParseCatalogEntry,
   type PublicParseReport,
   type PublicParticipant,
+  type PublicCombatLoadoutPhase,
   type PublicRun,
   type PublicRunReconciliation,
   type PublicTimelineRateClockPoint,
@@ -189,11 +190,91 @@ export function renderReport(report: PublicParseReport, runIndex: number, reconc
       ${metric("Retries", `${run.retry_count} / ${run.boss_retry_count} boss`)}
     </div>
     ${renderTimeline(graph)}
+    ${renderPartyLoadouts(run, graph.participants, reconciliation)}
     <div class="parse-party"><div class="parse-party-head"><strong>Party</strong><small>${graph.participants.length} combatants / rDPS ${escapeHtml(run.rdps_status)}</small></div>
       ${graph.participants.map((participant) => renderParticipant(participant, run.rdps_status)).join("")}
     </div>
     <p class="parse-proof">Build ${escapeHtml(report.client_build)} / ${report.verification.event_count.toLocaleString()} canonical events / ${run.data_gap_count} data gaps / report ${escapeHtml(report.report_id)}${run.run_group_id ? ` / group ${escapeHtml(run.run_group_id)}` : ""}</p>
   </article>`;
+}
+
+export interface PartyLoadoutSummary {
+  participant: PublicParticipant;
+  disposition: "exact" | "conflict" | "missing";
+  evidenceLabel: string;
+  phases: PublicCombatLoadoutPhase[];
+}
+
+export function partyLoadoutSummaries(
+  run: PublicRun,
+  participants: readonly PublicParticipant[],
+  reconciliation?: PublicRunReconciliation,
+): PartyLoadoutSummary[] {
+  const characters = new Map(reconciliation?.characters.map((character) => [character.character_id, character]));
+  return participants.map((participant) => {
+    const characterId = participant.character_id;
+    if (!characterId) return { participant, disposition: "missing", evidenceLabel: "No stable character identity", phases: [] };
+    if (reconciliation) {
+      const character = characters.get(characterId);
+      if (!character || character.combat_loadout_disposition === "missing") {
+        return { participant, disposition: "missing", evidenceLabel: "Missing POV loadout evidence", phases: [] };
+      }
+      if (character.combat_loadout_disposition === "multiple_reports_require_ordering") {
+        return { participant, disposition: "conflict", evidenceLabel: "Conflicting POV loadouts — none selected", phases: [] };
+      }
+      return {
+        participant,
+        disposition: "exact",
+        evidenceLabel: character.combat_loadout_disposition === "multiple_reports_identical"
+          ? `${character.participant_report_count} matching POVs` : "Exact local POV",
+        phases: character.selected_combat_loadout_phases,
+      };
+    }
+    const phases = run.combat_loadout_phases.filter((phase) => phase.character_id === characterId);
+    return phases.length
+      ? { participant, disposition: "exact", evidenceLabel: "Exact canonical POV", phases }
+      : { participant, disposition: "missing", evidenceLabel: "Missing canonical POV evidence", phases: [] };
+  });
+}
+
+export function renderPartyLoadouts(
+  run: PublicRun,
+  participants: readonly PublicParticipant[],
+  reconciliation?: PublicRunReconciliation,
+): string {
+  const summaries = partyLoadoutSummaries(run, participants, reconciliation);
+  const exact = summaries.filter((summary) => summary.disposition === "exact").length;
+  return `<section class="party-loadouts" aria-label="Party runes and loadouts">
+    <div class="parse-party-head"><strong>Runes &amp; loadouts</strong><small>${exact} exact / ${summaries.length} party members</small></div>
+    <div class="party-loadout-grid">${summaries.map(renderPartyLoadout).join("")}</div>
+    <p class="timeline-note">Multi-POV loadouts are selected only when their phase sequences agree. Conflicting snapshots remain separate evidence and are never merged.</p>
+  </section>`;
+}
+
+function renderPartyLoadout(summary: PartyLoadoutSummary): string {
+  const name = summary.participant.display_name ?? `Player ${summary.participant.actor_id}`;
+  const statusClass = summary.disposition === "exact" ? "success" : summary.disposition === "conflict" ? "warning" : "neutral";
+  if (summary.disposition !== "exact") {
+    return `<article class="party-loadout-card"><div class="party-loadout-title"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(summary.participant.class_name ?? "Class unresolved")}</small></span><span class="status-chip ${statusClass}">${escapeHtml(summary.evidenceLabel)}</span></div><p class="party-loadout-empty">No loadout was selected.</p></article>`;
+  }
+  const phases = [...summary.phases].sort((left, right) => left.run_elapsed_micros - right.run_elapsed_micros);
+  const moduleCount = phases.at(-1)?.equipped_module_count;
+  return `<details class="party-loadout-card"><summary class="party-loadout-title"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(summary.participant.class_name ?? "Class unresolved")} · ${moduleCount ?? "?"} modules · ${phases.length} phase${phases.length === 1 ? "" : "s"}</small></span><span class="status-chip ${statusClass}">${escapeHtml(summary.evidenceLabel)}</span></summary>
+    <div class="party-loadout-phases">${phases.map((phase, index) => renderLoadoutPhase(phase, index, phases.length)).join("")}</div></details>`;
+}
+
+function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, count: number): string {
+  const context = phase.in_active_combat ? "Active combat" : index === 0 ? "Run baseline" : "Between pulls";
+  const modules = phase.module_snapshot_disposition === "complete"
+    ? phase.equipped_modules.length
+      ? `<div class="loadout-modules">${phase.equipped_modules.map((module) => `<span><strong>Slot ${module.equipped_slot}: module ${module.config_id}${module.level == null ? "" : ` · Lv ${module.level}`}</strong><small>${module.effects.length ? module.effects.map((effect) => `rune ${effect.effect_id}${effect.initial_link_points == null ? "" : ` · ${effect.initial_link_points} LP`}`).join(" / ") : "No rune effects"}</small></span>`).join("")}</div>`
+      : '<p class="party-loadout-empty">Complete module snapshot: no modules equipped.</p>'
+    : `<p class="party-loadout-empty">${phase.module_snapshot_disposition === "invalid" ? "Invalid module snapshot — partial runes withheld." : "Module/rune evidence missing."}</p>`;
+  const skills = phase.equipped_skill_ids.length ? phase.equipped_skill_ids.map((id) => escapeHtml(id)).join(", ") : "None observed";
+  const imagines = phase.equipped_imagines.length ? phase.equipped_imagines.map((imagine) => `slot ${imagine.equipped_slot}: ${escapeHtml(imagine.skill_id)}${imagine.tier == null ? "" : ` (tier ${imagine.tier})`}`).join(", ") : "None observed";
+  return `<section class="loadout-phase" data-loadout-at-micros="${phase.run_elapsed_micros}"><div class="loadout-phase-heading"><strong>${count > 1 ? `Phase ${index + 1}` : "Selected phase"}</strong><small>${context} · ${formatDuration(phase.run_elapsed_micros)}</small></div>
+    <p><strong>${escapeHtml([phase.class_name, phase.specialization_name].filter(Boolean).join(" / ") || "Class unresolved")}</strong> · ${phase.equipment_count ?? "?"} equipment · ${phase.talent_count ?? "?"} talents</p>
+    ${modules}<p><small>Skills</small> ${skills}</p><p><small>Imagines</small> ${imagines}</p></section>`;
 }
 
 export interface CanonicalGraphSelection {

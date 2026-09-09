@@ -340,6 +340,12 @@
             "at_micros": 1000000,
             "phase_index": 0,
             "source_report_id": "rpt_99b755083b2a00602526d6cb7312d6c5"
+          },
+          {
+            "character_id": "c13",
+            "at_micros": 1400000,
+            "phase_index": 0,
+            "source_report_id": "rpt_99b755083b2a00602526d6cb7312d6c5"
           }
         ],
         "rdps_influence_spans": [
@@ -907,7 +913,93 @@
             "adps_elapsed_micros": 30687013
           }
         ]
-      }
+      },
+      "combat_loadout_phases": [
+        {
+          "character_id": "c7",
+          "display_name": "MarieRose",
+          "observed_micros": 1000000,
+          "run_elapsed_micros": 1000000,
+          "game_time_millis": 1000,
+          "segment_index": 0,
+          "encounter_index": 0,
+          "attempt_number": 1,
+          "in_active_combat": true,
+          "class_id": 5,
+          "class_name": "Marksman",
+          "specialization_id": null,
+          "specialization_name": null,
+          "equipped_skill_ids": [
+            "skill-c7"
+          ],
+          "equipped_imagines": [
+            {
+              "skill_id": "imagine-c7",
+              "tier": 5,
+              "equipped_slot": 1
+            }
+          ],
+          "equipment_count": 8,
+          "equipped_module_count": 1,
+          "module_snapshot_disposition": "complete",
+          "equipped_modules": [
+            {
+              "equipped_slot": 1,
+              "config_id": 5500104,
+              "level": 6,
+              "effects": [
+                {
+                  "effect_id": 1110,
+                  "initial_link_points": 20
+                }
+              ]
+            }
+          ],
+          "talent_count": 12
+        },
+        {
+          "character_id": "c13",
+          "display_name": "Heavy Guardian",
+          "observed_micros": 1400000,
+          "run_elapsed_micros": 1400000,
+          "game_time_millis": 1400,
+          "segment_index": 0,
+          "encounter_index": 0,
+          "attempt_number": 1,
+          "in_active_combat": true,
+          "class_id": 5,
+          "class_name": "Heavy Guardian",
+          "specialization_id": null,
+          "specialization_name": null,
+          "equipped_skill_ids": [
+            "skill-c13"
+          ],
+          "equipped_imagines": [
+            {
+              "skill_id": "imagine-c13",
+              "tier": 5,
+              "equipped_slot": 1
+            }
+          ],
+          "equipment_count": 8,
+          "equipped_module_count": 1,
+          "module_snapshot_disposition": "complete",
+          "equipped_modules": [
+            {
+              "equipped_slot": 2,
+              "config_id": 5500304,
+              "level": 6,
+              "effects": [
+                {
+                  "effect_id": 1130,
+                  "initial_link_points": 20
+                }
+              ]
+            }
+          ],
+          "talent_count": 12
+        }
+      ]
     }
   ]
 }

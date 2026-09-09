@@ -37,7 +37,8 @@ export interface PublicRun {
   terminal_state: string; total_run_time_micros: number | null; game_time_micros: number | null;
   active_combat_micros: number; true_time_micros: number | null; retry_count: number; boss_retry_count: number;
   rdps_status: string; data_gap_count: number; authoritative_start: boolean; authoritative_completion: boolean;
-  submission_disposition: string; segments: PublicRunSegment[]; participants: PublicParticipant[]; timeline: PublicCombatTimeline;
+  submission_disposition: string; segments: PublicRunSegment[]; participants: PublicParticipant[];
+  combat_loadout_phases: PublicCombatLoadoutPhase[]; timeline: PublicCombatTimeline;
 }
 export interface PublicRunSegment {
   index: number; kind: string; wall_time_micros: number; active_combat_micros: number; attempt_count: number; retry_count: number;
@@ -69,13 +70,44 @@ export interface PublicCombatTimeline {
 export interface PublicTimelineRateClockPoint {
   second: number; edps_elapsed_micros: number; adps_elapsed_micros: number;
 }
+export type ProfileWitnessDisposition = "missing" | "single_report_exact" | "multiple_reports_identical" | "multiple_reports_require_ordering";
+export type ModuleSnapshotDisposition = "missing" | "complete" | "invalid";
+export interface PublicCombatLoadoutPhase {
+  character_id: string; display_name: string | null; observed_micros: number; run_elapsed_micros: number;
+  game_time_millis: number | null; segment_index: number | null; encounter_index: number | null; attempt_number: number | null;
+  in_active_combat: boolean; class_id: number | null; class_name: string | null; specialization_id: number | null;
+  specialization_name: string | null; equipped_skill_ids: string[]; equipped_imagines: PublicCombatImagineLoadout[];
+  equipment_count: number | null; equipped_module_count: number | null; module_snapshot_disposition: ModuleSnapshotDisposition;
+  equipped_modules: PublicCombatEquippedModule[]; talent_count: number | null;
+}
+export interface PublicCombatImagineLoadout { skill_id: string; tier: number | null; equipped_slot: number }
+export interface PublicCombatEquippedModule { equipped_slot: number; config_id: number; level: number | null; effects: PublicCombatModuleEffect[] }
+export interface PublicCombatModuleEffect { effect_id: number; initial_link_points: number | null }
+export interface PublicLocalProfileWitness {
+  character_id: string; placement: "unspecified" | "pre_run_baseline" | "in_run"; event_sequence: number;
+  observed_micros: number; game_time_millis: number | null; payload_sha256: string;
+}
+export interface PublicLocalStateWitness extends PublicLocalProfileWitness {
+  related_character_id?: string; actor_id: number; entity_uuid: number;
+  kind: "entity_attributes" | "temporary_attributes" | "resource" | "life_wave_trigger_status" | "life_wave_trigger_healing" | "stat_resonance_status";
+  update_kind: string;
+}
+export interface PublicReconciliationCharacter {
+  character_id: string; participant_report_count: number; disposition: ProfileWitnessDisposition; selected_report_id: string | null;
+  state_witness_count: number; game_time_aligned_state_witness_count: number; witnesses: PublicCharacterWitnessSource[];
+  combat_loadout_disposition: ProfileWitnessDisposition; selected_combat_loadout_phases: PublicCombatLoadoutPhase[];
+}
+export interface PublicCharacterWitnessSource {
+  report_id: string; run_index: number; artifact_sha256: string; snapshots: PublicLocalProfileWitness[]; state_snapshots: PublicLocalStateWitness[];
+}
 export interface PublicRunReconciliation {
   schema_version: 15 | 16; reconciliation_id: string; run_group_id: string; status: ReconciliationStatus;
   canonical_spine: { report_id: string; run_index: number; artifact_sha256: string; authoritative_start: boolean;
     authoritative_completion: boolean; data_gap_count: number; event_count: number };
   reports: Array<{ report_id: string; run_index: number; artifact_sha256: string; protocol_pack_digest: string;
-    created_unix_millis: number; canonical_spine: boolean; local_profile_witnesses: unknown[]; local_state_witnesses: unknown[];
-    combat_loadout_phases: unknown[] }>;
+    created_unix_millis: number; canonical_spine: boolean; local_profile_witnesses: PublicLocalProfileWitness[];
+    local_state_witnesses: PublicLocalStateWitness[]; combat_loadout_phases: PublicCombatLoadoutPhase[] }>;
+  characters: PublicReconciliationCharacter[];
   participant_character_count: number; local_vantage_character_count: number; complete_local_vantage_coverage: boolean;
   state_replay_readiness: string; state_replay_blockers: string[]; verified_state_input_sha256?: string;
   reconciled_participants: Array<PublicParticipant & { rdps_damage: number | null; contribution_given: number | null;
@@ -88,6 +120,8 @@ const reportIdPattern = /^rpt_[a-f0-9]{32}$/;
 const groupIdPattern = /^run_[a-f0-9]{32}$/;
 const reconciliationStatuses = new Set<ReconciliationStatus>(["single_vantage", "multiple_reports_no_additional_vantage", "cross_vantage_evidence_available", "reconciled"]);
 const replayReadiness = new Set(["single_vantage", "multiple_reports_no_additional_vantage", "blocked", "partial_coverage_ready", "full_coverage_ready"]);
+const profileWitnessDispositions = new Set<ProfileWitnessDisposition>(["missing", "single_report_exact", "multiple_reports_identical", "multiple_reports_require_ordering"]);
+const moduleSnapshotDispositions = new Set<ModuleSnapshotDisposition>(["missing", "complete", "invalid"]);
 
 export function isPublicParseCatalog(value: unknown): value is PublicParseCatalog {
   return isRecord(value) && value.schema_version === 6 && isNonNegativeInteger(value.total_entries) && isNonNegativeInteger(value.offset) &&
@@ -121,6 +155,8 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
     typeof value.complete_local_vantage_coverage === "boolean" && replayReadiness.has(value.state_replay_readiness) &&
     Array.isArray(value.state_replay_blockers) && value.state_replay_blockers.every((blocker) => typeof blocker === "string") &&
     typeof value.attribution_replay_completed === "boolean" && isConservation(value.conservation) && isReplayStateConsistent(value) &&
+    Array.isArray(value.characters) && value.characters.length <= 256 && value.characters.every((character) => isReconciliationCharacter(character, value.reports)) &&
+    unique(value.characters.map((character: unknown) => isRecord(character) ? character.character_id : character)) &&
     Array.isArray(value.reconciled_participants) && value.reconciled_participants.every((participant) => isParticipant(participant, timelineSchema)) &&
     isTimeline(value.timeline, value.reconciled_participants, value.attribution_replay_completed) &&
     value.timeline.canonical_report_id === value.canonical_spine.report_id &&
@@ -148,6 +184,8 @@ function isVerification(value: unknown): boolean {
 function isPublicRun(value: unknown, reportId: string, timelineSchema: 1 | 2 | 3): boolean {
   return isRecord(value) && isNonNegativeInteger(value.run_index) && typeof value.run_group_id === "string" &&
     groupIdPattern.test(value.run_group_id) && isRecord(value.timeline) && value.timeline.schema_version === timelineSchema &&
+    (timelineSchema < 3 ? value.combat_loadout_phases === undefined || isLoadoutPhases(value.combat_loadout_phases, value.timeline.duration_micros)
+      : isLoadoutPhases(value.combat_loadout_phases, value.timeline.duration_micros)) &&
     Array.isArray(value.participants) && value.participants.every((participant) => isParticipant(participant, timelineSchema)) &&
     isTimeline(value.timeline, value.participants, true) && value.timeline.canonical_report_id === reportId &&
     value.timeline.canonical_run_index === value.run_index;
@@ -216,7 +254,93 @@ function isReconciliationReport(value: unknown): value is PublicRunReconciliatio
   return isRecord(value) && typeof value.report_id === "string" && reportIdPattern.test(value.report_id) &&
     isNonNegativeInteger(value.run_index) && typeof value.artifact_sha256 === "string" && typeof value.protocol_pack_digest === "string" &&
     isNonNegativeInteger(value.created_unix_millis) && typeof value.canonical_spine === "boolean" &&
-    Array.isArray(value.local_profile_witnesses) && Array.isArray(value.local_state_witnesses) && Array.isArray(value.combat_loadout_phases);
+    Array.isArray(value.local_profile_witnesses) && value.local_profile_witnesses.length <= 65_536 && value.local_profile_witnesses.every(isLocalProfileWitness) &&
+    Array.isArray(value.local_state_witnesses) && value.local_state_witnesses.length <= 262_144 && value.local_state_witnesses.every(isLocalStateWitness) &&
+    isLoadoutPhases(value.combat_loadout_phases);
+}
+function isReconciliationCharacter(value: unknown, reports: readonly unknown[]): boolean {
+  if (!isRecord(value) || typeof value.character_id !== "string" || !value.character_id ||
+      !isNonNegativeInteger(value.participant_report_count) || !profileWitnessDispositions.has(value.disposition) ||
+      !isNonNegativeInteger(value.state_witness_count) || !isNonNegativeInteger(value.game_time_aligned_state_witness_count) ||
+      !Array.isArray(value.witnesses) || value.witnesses.length > 256 || !value.witnesses.every(isCharacterWitnessSource) ||
+      !profileWitnessDispositions.has(value.combat_loadout_disposition) || !isLoadoutPhases(value.selected_combat_loadout_phases)) return false;
+  if (value.selected_report_id !== null && (typeof value.selected_report_id !== "string" ||
+      !reports.some((report) => isRecord(report) && report.report_id === value.selected_report_id))) return false;
+  const selected = value.combat_loadout_disposition === "single_report_exact" || value.combat_loadout_disposition === "multiple_reports_identical";
+  if (!selected) return value.selected_combat_loadout_phases.length === 0;
+  if (value.selected_report_id === null || value.selected_combat_loadout_phases.length === 0 ||
+      !value.selected_combat_loadout_phases.every((phase: PublicCombatLoadoutPhase) => phase.character_id === value.character_id)) return false;
+  const sourceSets = reports.flatMap((report) => {
+    if (!isRecord(report) || !Array.isArray(report.combat_loadout_phases)) return [];
+    const phases = report.combat_loadout_phases.filter((phase: unknown) => isRecord(phase) && phase.character_id === value.character_id) as PublicCombatLoadoutPhase[];
+    return phases.length ? [{ report_id: report.report_id, phases }] : [];
+  });
+  const selectedSource = sourceSets.find((source) => source.report_id === value.selected_report_id);
+  if (!selectedSource || loadoutSemanticKey(selectedSource.phases) !== loadoutSemanticKey(value.selected_combat_loadout_phases)) return false;
+  return value.combat_loadout_disposition !== "multiple_reports_identical" ||
+    (sourceSets.length >= 2 && sourceSets.every((source) => loadoutSemanticKey(source.phases) === loadoutSemanticKey(selectedSource.phases)));
+}
+function loadoutSemanticKey(phases: readonly PublicCombatLoadoutPhase[]): string {
+  return JSON.stringify(phases.map((phase) => ({
+    segment_index: phase.segment_index, encounter_index: phase.encounter_index, attempt_number: phase.attempt_number,
+    in_active_combat: phase.in_active_combat, class_id: phase.class_id, specialization_id: phase.specialization_id,
+    equipment_count: phase.equipment_count, equipped_module_count: phase.equipped_module_count,
+    module_snapshot_disposition: phase.module_snapshot_disposition,
+    equipped_modules: [...phase.equipped_modules].sort((left, right) => left.equipped_slot - right.equipped_slot),
+    talent_count: phase.talent_count, equipped_skill_ids: [...phase.equipped_skill_ids].sort(),
+    equipped_imagines: [...phase.equipped_imagines].sort((left, right) => left.equipped_slot - right.equipped_slot),
+  })));
+}
+function isCharacterWitnessSource(value: unknown): boolean {
+  return isRecord(value) && typeof value.report_id === "string" && reportIdPattern.test(value.report_id) &&
+    isNonNegativeInteger(value.run_index) && typeof value.artifact_sha256 === "string" &&
+    Array.isArray(value.snapshots) && value.snapshots.length <= 65_536 && value.snapshots.every(isLocalProfileWitness) &&
+    Array.isArray(value.state_snapshots) && value.state_snapshots.length <= 262_144 && value.state_snapshots.every(isLocalStateWitness);
+}
+function isLocalProfileWitness(value: unknown): boolean {
+  return isRecord(value) && typeof value.character_id === "string" && value.character_id.length > 0 &&
+    (value.placement === "unspecified" || value.placement === "pre_run_baseline" || value.placement === "in_run") &&
+    isNonNegativeInteger(value.event_sequence) && isNonNegativeInteger(value.observed_micros) &&
+    (value.game_time_millis === null || Number.isSafeInteger(value.game_time_millis)) && typeof value.payload_sha256 === "string";
+}
+function isLocalStateWitness(value: unknown): boolean {
+  return isLocalProfileWitness(value) && isRecord(value) &&
+    (value.related_character_id === undefined || typeof value.related_character_id === "string") &&
+    Number.isInteger(value.actor_id) && Number.isInteger(value.entity_uuid) &&
+    ["entity_attributes", "temporary_attributes", "resource", "life_wave_trigger_status", "life_wave_trigger_healing", "stat_resonance_status"].includes(String(value.kind)) &&
+    typeof value.update_kind === "string";
+}
+function isLoadoutPhases(value: unknown, durationMicros?: number): value is PublicCombatLoadoutPhase[] {
+  return Array.isArray(value) && value.length <= 4_096 && value.every((phase) => isLoadoutPhase(phase, durationMicros));
+}
+function isLoadoutPhase(value: unknown, durationMicros?: number): value is PublicCombatLoadoutPhase {
+  if (!isRecord(value) || typeof value.character_id !== "string" || !value.character_id ||
+      !(value.display_name === null || typeof value.display_name === "string") || !isNonNegativeInteger(value.observed_micros) ||
+      !isNonNegativeInteger(value.run_elapsed_micros) || (durationMicros !== undefined && value.run_elapsed_micros > durationMicros) ||
+      !(value.game_time_millis === null || Number.isSafeInteger(value.game_time_millis)) ||
+      !optionalNonNegativeInteger(value.segment_index) || !optionalNonNegativeInteger(value.encounter_index) || !optionalNonNegativeInteger(value.attempt_number) ||
+      typeof value.in_active_combat !== "boolean" || !optionalInteger(value.class_id) || !optionalText(value.class_name) ||
+      !optionalInteger(value.specialization_id) || !optionalText(value.specialization_name) ||
+      !Array.isArray(value.equipped_skill_ids) || value.equipped_skill_ids.length > 256 || !value.equipped_skill_ids.every((id) => typeof id === "string") ||
+      !Array.isArray(value.equipped_imagines) || value.equipped_imagines.length > 16 || !value.equipped_imagines.every(isImagineLoadout) ||
+      !optionalNonNegativeInteger(value.equipment_count) || !optionalNonNegativeInteger(value.equipped_module_count) ||
+      !moduleSnapshotDispositions.has(value.module_snapshot_disposition) || !Array.isArray(value.equipped_modules) ||
+      value.equipped_modules.length > 16 || !value.equipped_modules.every(isEquippedModule) || !optionalNonNegativeInteger(value.talent_count)) return false;
+  const slots = value.equipped_modules.map((module: PublicCombatEquippedModule) => module.equipped_slot);
+  if (!unique(slots)) return false;
+  return value.module_snapshot_disposition === "complete"
+    ? value.equipped_module_count === value.equipped_modules.length && value.equipped_modules.every((module: PublicCombatEquippedModule) =>
+      module.effects.every((effect) => effect.initial_link_points !== null))
+    : value.equipped_modules.length === 0;
+}
+function isImagineLoadout(value: unknown): boolean {
+  return isRecord(value) && typeof value.skill_id === "string" && optionalNonNegativeInteger(value.tier) && Number.isSafeInteger(value.equipped_slot);
+}
+function isEquippedModule(value: unknown): boolean {
+  return isRecord(value) && Number.isSafeInteger(value.equipped_slot) && Number.isSafeInteger(value.config_id) &&
+    optionalNonNegativeInteger(value.level) && Array.isArray(value.effects) && value.effects.length <= 16 &&
+    value.effects.every((effect) => isRecord(effect) && Number.isSafeInteger(effect.effect_id) &&
+      (effect.initial_link_points === null || Number.isSafeInteger(effect.initial_link_points)));
 }
 function isConservation(value: unknown): boolean {
   return value == null || (isRecord(value) && Number.isSafeInteger(value.raw_damage) && Number.isSafeInteger(value.rdps_damage) &&
@@ -270,6 +394,9 @@ function isReconciliationStatus(value: unknown): value is ReconciliationStatus {
   return typeof value === "string" && reconciliationStatuses.has(value as ReconciliationStatus);
 }
 function isNonNegativeInteger(value: unknown): value is number { return Number.isSafeInteger(value) && Number(value) >= 0 }
+function optionalNonNegativeInteger(value: unknown): boolean { return value === null || isNonNegativeInteger(value) }
+function optionalInteger(value: unknown): boolean { return value === null || Number.isSafeInteger(value) }
+function optionalText(value: unknown): boolean { return value === null || typeof value === "string" }
 function isFiniteNumber(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value) }
 function strictlyAscending(values: readonly number[]): boolean { return values.every((value, index) => index === 0 || value > values[index - 1]!) }
 function unique(values: readonly unknown[]): boolean { return new Set(values).size === values.length }

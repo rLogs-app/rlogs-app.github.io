@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
-import { hasCompleteRdpsBuckets, renderReport, renderTimeline, rollingBucketSeries, rollingTimelineSamples, selectCanonicalGraph, timelineCumulativeRateLabel, timelineDamageRatesAtSecond, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
+import { hasCompleteRdpsBuckets, partyLoadoutSummaries, renderPartyLoadouts, renderReport, renderTimeline, rollingBucketSeries, rollingTimelineSamples, selectCanonicalGraph, timelineCumulativeRateLabel, timelineDamageRatesAtSecond, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(readFileSync(new URL(`../../../public/fixtures/${name}`, import.meta.url), "utf8")) as T;
 
@@ -173,6 +173,37 @@ describe("damage-rate labels", () => {
     const html = renderTimeline({ ...graph, participants, timeline });
     expect(html.match(/<polyline /gu)).toHaveLength(20 * 4 * 3);
     expect(html.match(/ data-values="/gu)).toHaveLength(20 * 4);
+  });
+});
+
+describe("party rune and loadout summaries", () => {
+  it("uses reconciled selections for matching POVs without merging conflicts", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const reconciliation = load<PublicRunReconciliation>("parse-reconciliation.v1.json");
+    const summaries = partyLoadoutSummaries(report.runs[0], report.runs[0].participants, reconciliation);
+    expect(summaries).toHaveLength(5);
+    expect(summaries.find((summary) => summary.participant.character_id === "c7")).toMatchObject({ disposition: "exact", evidenceLabel: "2 matching POVs" });
+    expect(summaries.find((summary) => summary.participant.character_id === "c8")).toMatchObject({ disposition: "conflict", phases: [] });
+    expect(summaries.find((summary) => summary.participant.character_id === "c11")).toMatchObject({ disposition: "missing", phases: [] });
+
+    const html = renderPartyLoadouts(report.runs[0], report.runs[0].participants, reconciliation);
+    expect(html.match(/class="party-loadout-card"/gu)).toHaveLength(5);
+    expect(html).toContain("Conflicting POV loadouts — none selected");
+    expect(html).toContain("Missing POV loadout evidence");
+    expect(html).toContain("Slot 1: module 5500104 · Lv 6");
+    expect(html).toContain("rune 1110 · 20 LP");
+    expect(html).toContain('data-loadout-at-micros="1000000"');
+  });
+
+  it("falls back only to exact canonical-POV phases and never renders private instance ids", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const run = structuredClone(report.runs[0]);
+    (run.combat_loadout_phases[0].equipped_modules[0] as any).instance_id = "private-inventory-instance";
+    const summaries = partyLoadoutSummaries(run, run.participants);
+    expect(summaries.filter((summary) => summary.disposition === "exact")).toHaveLength(2);
+    const html = renderPartyLoadouts(run, run.participants);
+    expect(html).toContain("Exact canonical POV");
+    expect(html).not.toContain("private-inventory-instance");
   });
 });
 

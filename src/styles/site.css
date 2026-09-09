@@ -402,6 +402,95 @@ h3 {
   font-size: 10px;
 }
 
+.party-loadouts {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.party-loadouts > .parse-party-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.party-loadout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.party-loadout-card {
+  min-width: 0;
+  padding: 14px;
+  background: var(--surface);
+}
+
+.party-loadout-title,
+.loadout-phase-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+summary.party-loadout-title {
+  cursor: pointer;
+}
+
+.party-loadout-title strong,
+.party-loadout-title small,
+.loadout-phase-heading strong,
+.loadout-phase-heading small,
+.loadout-modules strong,
+.loadout-modules small {
+  display: block;
+}
+
+.party-loadout-title small,
+.loadout-phase-heading small,
+.loadout-modules small,
+.loadout-phase p small,
+.party-loadout-empty {
+  color: var(--muted);
+}
+
+.party-loadout-phases {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.loadout-phase {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 2%);
+}
+
+.loadout-phase p {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.loadout-modules {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.loadout-modules > span {
+  padding: 7px 8px;
+  border-left: 2px solid var(--accent);
+  background: rgb(0 0 0 / 12%);
+}
+
+.party-loadouts > .timeline-note {
+  margin: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+
 .parse-proof {
   margin: 16px 0 0;
   font: 600 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
@@ -1030,6 +1119,18 @@ h3 {
 
 .status-chip.neutral {
   color: var(--muted);
+}
+
+.status-chip.success {
+  color: var(--success);
+  border-color: rgb(103 232 170 / 45%);
+  background: rgb(103 232 170 / 7%);
+}
+
+.status-chip.warning {
+  color: #ffcc66;
+  border-color: rgb(255 204 102 / 45%);
+  background: rgb(255 204 102 / 7%);
 }
 
 .status-chip.valid {
