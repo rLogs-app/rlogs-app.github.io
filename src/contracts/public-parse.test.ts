@@ -23,12 +23,21 @@ describe("public parse contract", () => {
   });
   it("allows only the exact projection and timeline compatibility pairs", () => {
     const current = fixture("parse-report.v1.json") as any;
-    expect(current.projection_revision).toBe(5);
-    expect(current.runs[0].timeline.schema_version).toBe(2);
+    expect(current.schema_version).toBe(15);
+    expect(current.projection_revision).toBe(6);
+    expect(current.runs[0].timeline.schema_version).toBe(3);
     expect(isPublicParseReport(current)).toBe(true);
-    expect(isPublicParseReport({ ...current, projection_revision: 4 })).toBe(false);
+    expect(isPublicParseReport({ ...current, projection_revision: 5 })).toBe(false);
 
     const legacy = structuredClone(current);
+    legacy.schema_version = 14;
+    legacy.projection_revision = 5;
+    legacy.runs[0].timeline.schema_version = 2;
+    delete legacy.runs[0].timeline.rate_clock;
+    delete legacy.runs[0].timeline.rate_clock_complete;
+    delete legacy.runs[0].timeline.omitted.rate_clock_points;
+    expect(isPublicParseReport(legacy)).toBe(true);
+
     legacy.projection_revision = 4;
     legacy.runs[0].timeline.schema_version = 1;
     legacy.runs[0].participants.forEach((participant: any) => {
@@ -42,6 +51,26 @@ describe("public parse contract", () => {
     expect(isPublicParseReport(legacy)).toBe(true);
     legacy.runs[0].timeline.schema_version = 2;
     expect(isPublicParseReport(legacy)).toBe(false);
+  });
+  it("requires a complete monotonic reducer-authored rate clock for timeline v3", () => {
+    const report = fixture("parse-report.v1.json") as any;
+    const timeline = report.runs[0].timeline;
+    expect(timeline.rate_clock[9]).toEqual({ second: 9, edps_elapsed_micros: 10_000_000, adps_elapsed_micros: 8_000_000 });
+    expect(timeline.rate_clock[14]).toEqual({ second: 14, edps_elapsed_micros: 10_000_000, adps_elapsed_micros: 8_000_000 });
+    expect(timeline.rate_clock[24]).toEqual({ second: 24, edps_elapsed_micros: 15_000_000, adps_elapsed_micros: 11_000_000 });
+    expect(isPublicParseReport(report)).toBe(true);
+
+    timeline.rate_clock[24].adps_elapsed_micros = 99_000_000;
+    expect(isPublicParseReport(report)).toBe(false);
+  });
+  it("accepts an explicitly incomplete empty clock but rejects plausible fallback points", () => {
+    const report = fixture("parse-report.v1.json") as any;
+    const timeline = report.runs[0].timeline;
+    timeline.rate_clock_complete = false;
+    timeline.rate_clock = [];
+    expect(isPublicParseReport(report)).toBe(true);
+    timeline.rate_clock = [{ second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 }];
+    expect(isPublicParseReport(report)).toBe(false);
   });
   it("validates v2 rDPS buckets as complete non-negative safe-integer triples", () => {
     const report = fixture("parse-report.v1.json") as any;

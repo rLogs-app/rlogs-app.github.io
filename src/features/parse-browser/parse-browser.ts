@@ -8,6 +8,7 @@ import {
   type PublicParticipant,
   type PublicRun,
   type PublicRunReconciliation,
+  type PublicTimelineRateClockPoint,
   validateReportId,
 } from "../../contracts/public-parse";
 
@@ -238,6 +239,7 @@ export function renderTimeline(graph: CanonicalGraphSelection): string {
   const omissions = Object.values(timeline.omitted).reduce((sum, value) => sum + value, 0);
   const coverage = timeline.coverage.authoritative_start && timeline.coverage.authoritative_completion ? "Complete run bounds" : "Partial run bounds";
   const gaps = timeline.coverage.data_gap_count ? `${timeline.coverage.data_gap_count} unpositioned gap${timeline.coverage.data_gap_count === 1 ? "" : "s"}` : "No known gaps";
+  const rateClock = timeline.rate_clock_complete === true && timeline.rate_clock?.length ? "Exact eDPS/aDPS clock" : "eDPS/aDPS clock unavailable";
   return `<section class="combat-timeline" data-timeline-metric="damage" data-timeline-window="5" data-timeline-rdps-label="${rdpsLabel}" aria-label="Combat timeline">
     <div class="timeline-heading"><div><strong>Combat timeline</strong><small>${escapeHtml(graph.trustLabel)}</small></div>
       <div class="timeline-controls" role="group" aria-label="Timeline metric">
@@ -252,7 +254,7 @@ export function renderTimeline(graph: CanonicalGraphSelection): string {
       <button type="button" data-window="5" aria-pressed="true">5s</button>
       <button type="button" data-window="10" aria-pressed="false">10s</button>
     </div>
-    <div class="timeline-trust"><span class="status-chip ${graph.reconciled ? "success" : "neutral"}">${graph.reconciled ? "Reconciled canonical spine" : "Single canonical report"}</span><span>${coverage}</span><span>${gaps}</span></div>
+    <div class="timeline-trust"><span class="status-chip ${graph.reconciled ? "success" : "neutral"}">${graph.reconciled ? "Reconciled canonical spine" : "Single canonical report"}</span><span>${coverage}</span><span>${gaps}</span><span>${rateClock}</span></div>
     <div class="timeline-playback" role="group" aria-label="Timeline playback">
       <button type="button" data-timeline-play aria-pressed="false">Play</button>
       <input type="range" data-timeline-scrubber min="0" max="${durationSeconds}" step="1" value="0" aria-label="Timeline position" />
@@ -260,7 +262,7 @@ export function renderTimeline(graph: CanonicalGraphSelection): string {
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, rdpsLabel)}</div>
     <div class="timeline-inspection" data-timeline-inspection aria-live="polite"><strong>Point inspection</strong><span>Hover the graph or focus it and use the arrow keys.</span></div>
     <div class="timeline-legend" role="group" aria-label="Visible participants">${plotted.map(({ actor, color }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i></i><span>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</span></button>`).join("")}</div>
-    ${(rdpsTracks.length || captureSpans || runAlignedSpans || omissions) ? `<p class="timeline-note">${rdpsTracks.length ? `${rdpsLabel} uses exact server-published adjusted-damage buckets; missing buckets are never replaced with ordinary damage. ` : ""}${runAlignedSpans ? `${runAlignedSpans} verified rDPS affected-damage span${runAlignedSpans === 1 ? " is" : "s are"} shown in the evidence lane. ` : ""}${captureSpans ? `${captureSpans} rDPS influence span${captureSpans === 1 ? " is" : "s are"} capture-clock evidence and ${captureSpans === 1 ? "is" : "are"} intentionally not positioned on this run-elapsed graph. ` : ""}${omissions ? `${omissions} bounded item${omissions === 1 ? " was" : "s were"} omitted by the public projection.` : ""}</p>` : ""}
+    ${(rdpsTracks.length || captureSpans || runAlignedSpans || omissions || !timeline.rate_clock_complete) ? `<p class="timeline-note">${rdpsTracks.length ? `${rdpsLabel} uses exact server-published adjusted-damage buckets; missing buckets are never replaced with ordinary damage. ` : ""}${runAlignedSpans ? `${runAlignedSpans} verified rDPS affected-damage span${runAlignedSpans === 1 ? " is" : "s are"} shown in the evidence lane. ` : ""}${captureSpans ? `${captureSpans} rDPS influence span${captureSpans === 1 ? " is" : "s are"} capture-clock evidence and ${captureSpans === 1 ? "is" : "are"} intentionally not positioned on this run-elapsed graph. ` : ""}${!timeline.rate_clock_complete ? "Time-local eDPS and aDPS are unavailable because no complete reducer-authored rate clock was published; wall time is not substituted. " : ""}${omissions ? `${omissions} bounded item${omissions === 1 ? " was" : "s were"} omitted by the public projection.` : ""}</p>` : ""}
   </section>`;
 }
 
@@ -303,7 +305,9 @@ function renderTimelineSvg(timeline: PublicRun["timeline"], plotted: Array<{ act
     const end = left + Math.min(1, span.end_micros / Math.max(1, timeline.duration_micros)) * plotWidth;
     return `<rect class="timeline-rdps-evidence" x="${start.toFixed(1)}" y="${top + plotHeight - 6}" width="${Math.max(1.5, end - start).toFixed(1)}" height="6"><title>Verified rDPS affected-damage span ${span.influence_index + 1}: ${formatDuration(span.start_micros)}–${formatDuration(span.end_micros)}</title></rect>`;
   }).join("");
-  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="Sparse one-second combat rates over ${formatDuration(timeline.duration_micros)}; death and loadout markers use run elapsed time" data-duration-seconds="${seconds}" data-plot-left="${left}" data-plot-width="${plotWidth}">
+  const rateClock = timeline.rate_clock_complete === true && timeline.rate_clock?.length
+    ? timeline.rate_clock.map((point) => `${point.second}:${point.edps_elapsed_micros}:${point.adps_elapsed_micros}`).join(",") : "";
+  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="Sparse one-second combat rates over ${formatDuration(timeline.duration_micros)}; death and loadout markers use run elapsed time" data-duration-seconds="${seconds}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
     <line x1="${left}" y1="${top + plotHeight}" x2="${left + plotWidth}" y2="${top + plotHeight}" class="timeline-axis" />
     <text x="${left}" y="${height - 8}" class="timeline-tick">0:00</text><text x="${left + plotWidth}" y="${height - 8}" text-anchor="end" class="timeline-tick">${formatDuration(timeline.duration_micros)}</text>
     ${groups}${rdpsEvidence}${loadouts}${deaths}
@@ -367,6 +371,25 @@ export function timelineRateVariantsAtSecond(
     five: timelineValueAtSecond(samples.five, bounded),
     ten: timelineValueAtSecond(samples.ten, bounded),
     cumulative: cumulativeTotal / (bounded + 1),
+  };
+}
+
+export function timelineDamageRatesAtSecond(
+  oneSecondDamage: readonly [number, number][],
+  rateClock: readonly PublicTimelineRateClockPoint[] | null,
+  second: number,
+): { edps: number; adps: number } | null {
+  if (!rateClock?.length) return null;
+  const bounded = Math.max(0, Math.round(second));
+  const clock = rateClock[Math.min(bounded, rateClock.length - 1)];
+  if (!clock || clock.edps_elapsed_micros <= 0 || clock.adps_elapsed_micros <= 0) return null;
+  const damage = oneSecondDamage.reduce(
+    (total, [sampleSecond, value]) => sampleSecond <= bounded ? total + value : total,
+    0,
+  );
+  return {
+    edps: damage * 1_000_000 / clock.edps_elapsed_micros,
+    adps: damage * 1_000_000 / clock.adps_elapsed_micros,
   };
 }
 
@@ -523,15 +546,20 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
       five: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "5", line.dataset.participant ?? ""),
       ten: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "10", line.dataset.participant ?? ""),
     }, bounded),
+    damageRates: timeline.dataset.timelineMetric === "damage" ? timelineDamageRatesAtSecond(
+      timelineSamplesFor(svg, "damage", "1", line.dataset.participant ?? ""),
+      timelineRateClockFor(svg),
+      bounded,
+    ) : null,
   }));
   const metric = timeline.dataset.timelineMetric === "effective_healing" ? "HPS"
     : timeline.dataset.timelineMetric === "damage_taken" ? "TPS"
     : timeline.dataset.timelineMetric === "rdps_damage" ? timeline.dataset.timelineRdpsLabel ?? "rDPS" : "DPS";
   const time = formatDuration(bounded * 1_000_000);
   const cumulativeLabel = timelineCumulativeRateLabel(metric);
-  const details = active.length ? active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>1s ${formatNumber(row.variants.one)} · 5s ${formatNumber(row.variants.five)} · 10s ${formatNumber(row.variants.ten)} · ${cumulativeLabel} ${formatNumber(row.variants.cumulative)}</strong></span>`).join("") : "<span>No participants selected.</span>";
+  const details = active.length ? active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>1s ${formatNumber(row.variants.one)} · 5s ${formatNumber(row.variants.five)} · 10s ${formatNumber(row.variants.ten)} · ${row.damageRates ? `eDPS ${formatNumber(row.damageRates.edps)} · aDPS ${formatNumber(row.damageRates.adps)}` : timeline.dataset.timelineMetric === "damage" ? "eDPS/aDPS unavailable" : `${cumulativeLabel} ${formatNumber(row.variants.cumulative)}`}</strong></span>`).join("") : "<span>No participants selected.</span>";
   output.innerHTML = `<strong>${time}</strong>${details}`;
-  inspector.setAttribute("aria-valuetext", `${time}; ${active.map((row) => `${row.label}: 1 second ${formatNumber(row.variants.one)}, 5 second ${formatNumber(row.variants.five)}, 10 second ${formatNumber(row.variants.ten)}, ${cumulativeLabel} to now ${formatNumber(row.variants.cumulative)}`).join("; ") || "no participants selected"}`);
+  inspector.setAttribute("aria-valuetext", `${time}; ${active.map((row) => `${row.label}: 1 second ${formatNumber(row.variants.one)}, 5 second ${formatNumber(row.variants.five)}, 10 second ${formatNumber(row.variants.ten)}, ${row.damageRates ? `eDPS ${formatNumber(row.damageRates.edps)}, aDPS ${formatNumber(row.damageRates.adps)}` : timeline.dataset.timelineMetric === "damage" ? "eDPS and aDPS unavailable" : `${cumulativeLabel} to now ${formatNumber(row.variants.cumulative)}`}`).join("; ") || "no participants selected"}`);
 }
 
 export function timelineCumulativeRateLabel(metric: string): string {
@@ -539,6 +567,19 @@ export function timelineCumulativeRateLabel(metric: string): string {
 }
 
 const timelineSampleCache = new WeakMap<SVGSVGElement, Map<string, Array<[number, number]>>>();
+const timelineRateClockCache = new WeakMap<SVGSVGElement, PublicTimelineRateClockPoint[] | null>();
+
+function timelineRateClockFor(svg: SVGSVGElement): PublicTimelineRateClockPoint[] | null {
+  if (timelineRateClockCache.has(svg)) return timelineRateClockCache.get(svg) ?? null;
+  const clock = svg.dataset.rateClockComplete === "true" && svg.dataset.rateClock
+    ? svg.dataset.rateClock.split(",").flatMap((entry) => {
+      const [second, edps_elapsed_micros, adps_elapsed_micros] = entry.split(":").map(Number);
+      return Number.isSafeInteger(second) && Number.isSafeInteger(edps_elapsed_micros) && Number.isSafeInteger(adps_elapsed_micros)
+        ? [{ second, edps_elapsed_micros, adps_elapsed_micros }] : [];
+    }) : null;
+  timelineRateClockCache.set(svg, clock?.length ? clock : null);
+  return clock?.length ? clock : null;
+}
 
 function timelineSamplesFor(svg: SVGSVGElement, metric: string, window: string, participant: string): Array<[number, number]> {
   let cache = timelineSampleCache.get(svg);

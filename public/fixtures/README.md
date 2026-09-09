@@ -10,7 +10,10 @@ versioned website-payload and local-package validators used for local imports.
 
 Source captures remain private and are never website artifacts.
 
-`parse-catalog.v1.json` and `parse-report.v1.json` are public-safe browser
-fixtures for the submission-service contract. Production builds can set
+`parse-catalog.v1.json`, `parse-report.v1.json`, and
+`parse-reconciliation.v1.json` are public-safe browser fixtures for the
+submission-service contract. The timeline fixtures include the complete
+reducer-authored eDPS/aDPS rate clock, including frozen inactivity intervals.
+Production builds can set
 `VITE_RLOGS_API_BASE_URL`; the browser then reads live server-generated
 catalog and report projections instead of these files.

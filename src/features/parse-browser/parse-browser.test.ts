@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
-import { hasCompleteRdpsBuckets, renderReport, renderTimeline, rollingBucketSeries, rollingTimelineSamples, selectCanonicalGraph, timelineCumulativeRateLabel, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
+import { hasCompleteRdpsBuckets, renderReport, renderTimeline, rollingBucketSeries, rollingTimelineSamples, selectCanonicalGraph, timelineCumulativeRateLabel, timelineDamageRatesAtSecond, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(readFileSync(new URL(`../../../public/fixtures/${name}`, import.meta.url), "utf8")) as T;
 
@@ -76,6 +76,20 @@ describe("timeline rolling windows", () => {
     }, 1.4)).toEqual({ one: 30, five: 20, ten: 20, cumulative: 20 });
     expect(timelineCumulativeRateLabel("DPS")).toBe("run DPS");
   });
+
+  it("uses shared reducer clocks for time-local eDPS/aDPS and preserves pauses", () => {
+    const clock = [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 2, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 3, edps_elapsed_micros: 3_000_000, adps_elapsed_micros: 2_000_000 },
+    ];
+    expect(timelineDamageRatesAtSecond([[0, 100], [1, 100]], clock, 1)).toEqual({ edps: 100, adps: 200 });
+    expect(timelineDamageRatesAtSecond([[0, 100], [1, 100]], clock, 2)).toEqual({ edps: 100, adps: 200 });
+    expect(timelineDamageRatesAtSecond([[0, 100], [1, 100], [3, 100]], clock, 3)).toEqual({ edps: 100, adps: 150 });
+    expect(timelineDamageRatesAtSecond([[0, 100]], null, 0)).toBeNull();
+
+  });
 });
 
 describe("damage-rate labels", () => {
@@ -99,6 +113,9 @@ describe("damage-rate labels", () => {
     const html = renderTimeline(graph);
     expect(html).toContain('data-metric="rdps_damage"');
     expect(html).toContain('data-series="rdps_damage"');
+    expect(html).toContain('data-rate-clock-complete="true"');
+    expect(html).toContain('data-rate-clock="0:1000000:1000000,1:2000000:2000000');
+    expect(html).toContain("Exact eDPS/aDPS clock");
     expect(html).toContain('data-values="0:1200000,1:2490000');
     const renderedTracks = html.match(/<polyline /gu) ?? [];
     const inspectionPayloads = html.match(/ data-values="/gu) ?? [];
@@ -119,6 +136,18 @@ describe("damage-rate labels", () => {
     const legacyHtml = renderTimeline(selectCanonicalGraph(unavailable));
     expect(legacyHtml).not.toContain('data-metric="rdps_damage"');
     expect(legacyHtml).not.toContain('data-series="rdps_damage"');
+  });
+
+  it("fails closed in the UI when the reducer rate clock is incomplete", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const html = renderTimeline({
+      ...graph,
+      timeline: { ...graph.timeline, rate_clock_complete: false, rate_clock: [] },
+    });
+    expect(html).toContain('data-rate-clock-complete="false"');
+    expect(html).not.toContain(' data-rate-clock="');
+    expect(html).toContain("wall time is not substituted");
   });
 
   it("stores one inspection payload per metric and participant for a 20-player raid", () => {
