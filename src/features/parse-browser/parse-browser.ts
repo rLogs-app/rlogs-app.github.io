@@ -284,8 +284,13 @@ function renderTimelineSvg(timeline: PublicRun["timeline"], plotted: Array<{ act
         const y = top + plotHeight - (value / max) * plotHeight;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       });
-      const values = samples.map(([second, value]) => `${second}:${value}`).join(",");
-      return `<polyline data-participant="${participantIndex}" data-label="${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}" data-values="${values}" points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actor.display_name ?? actor.actor_id)} ${metric === "rdps_damage" ? rdpsLabel : metric.replaceAll("_", " ")}</title></polyline>`;
+      // The one-second curve is the authoritative inspection source. Rolling curves
+      // keep only their SVG coordinates; their samples are derived and cached in the
+      // browser instead of duplicating a potentially raid-sized payload three times.
+      const values = windowSeconds === 1
+        ? ` data-values="${samples.map(([second, value]) => `${second}:${value}`).join(",")}"`
+        : "";
+      return `<polyline data-participant="${participantIndex}" data-label="${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}"${values} points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actor.display_name ?? actor.actor_id)} ${metric === "rdps_damage" ? rdpsLabel : metric.replaceAll("_", " ")}</title></polyline>`;
     }).join("");
     const visible = metric === "damage" && windowSeconds === 5;
     const axisLabel = metric === "damage" ? "DPS" : metric === "effective_healing" ? "HPS" : metric === "damage_taken" ? "TPS" : rdpsLabel;
@@ -308,28 +313,34 @@ function renderTimelineSvg(timeline: PublicRun["timeline"], plotted: Array<{ act
 }
 
 export function rollingBucketSeries(points: readonly PublicParticipant["series"][number][], metric: TimelineMetric, totalSeconds: number, windowSeconds: number): Array<[number, number]> {
+  return rollingTimelineSamples(points.flatMap((point) => {
+    const amount = point[metric];
+    return amount == null ? [] : [[point.second, amount] as [number, number]];
+  }), totalSeconds, windowSeconds);
+}
+
+export function rollingTimelineSamples(samples: readonly [number, number][], totalSeconds: number, windowSeconds: number): Array<[number, number]> {
   const duration = Math.max(1, Math.floor(totalSeconds));
   const window = Math.max(1, Math.floor(windowSeconds));
   const totals = new Map<number, number>();
-  for (const point of points) {
-    const amount = point[metric];
-    if (point.second > duration || amount == null || amount === 0) continue;
-    for (let second = point.second; second <= Math.min(duration, point.second + window - 1); second += 1) {
+  for (const [sampleSecond, amount] of samples) {
+    if (sampleSecond > duration || amount === 0) continue;
+    for (let second = sampleSecond; second <= Math.min(duration, sampleSecond + window - 1); second += 1) {
       totals.set(second, (totals.get(second) ?? 0) + amount);
     }
   }
   const values = [...totals].map(([second, total]) => [second, total / Math.min(window, second + 1)] as [number, number]);
   const nonzero = values.sort(([left], [right]) => left - right);
-  const samples: Array<[number, number]> = [[0, totals.get(0) ?? 0]];
+  const outputSamples: Array<[number, number]> = [[0, totals.get(0) ?? 0]];
   nonzero.forEach(([second, value], index) => {
     const prior = nonzero[index - 1];
     const next = nonzero[index + 1];
-    if (second > 0 && (!prior || prior[0] + 1 < second) && samples.at(-1)?.[0] !== second - 1) samples.push([second - 1, 0]);
-    if (second !== 0) samples.push([second, value]);
-    if (second < duration && (!next || next[0] > second + 1)) samples.push([second + 1, 0]);
+    if (second > 0 && (!prior || prior[0] + 1 < second) && outputSamples.at(-1)?.[0] !== second - 1) outputSamples.push([second - 1, 0]);
+    if (second !== 0) outputSamples.push([second, value]);
+    if (second < duration && (!next || next[0] > second + 1)) outputSamples.push([second + 1, 0]);
   });
-  if (samples.at(-1)?.[0] !== duration) samples.push([duration, 0]);
-  return samples;
+  if (outputSamples.at(-1)?.[0] !== duration) outputSamples.push([duration, 0]);
+  return outputSamples;
 }
 
 export function hasCompleteRdpsBuckets(points: readonly PublicParticipant["series"][number][]): boolean {
@@ -527,9 +538,31 @@ export function timelineCumulativeRateLabel(metric: string): string {
   return `run ${metric}`;
 }
 
+const timelineSampleCache = new WeakMap<SVGSVGElement, Map<string, Array<[number, number]>>>();
+
 function timelineSamplesFor(svg: SVGSVGElement, metric: string, window: string, participant: string): Array<[number, number]> {
-  const line = svg.querySelector<SVGPolylineElement>(`[data-series="${metric}"][data-series-window="${window}"] [data-participant="${participant}"]`);
-  return parseTimelineValues(line?.dataset.values ?? "");
+  let cache = timelineSampleCache.get(svg);
+  if (!cache) {
+    cache = new Map();
+    timelineSampleCache.set(svg, cache);
+  }
+  const key = `${metric}:${window}:${participant}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const sourceKey = `${metric}:1:${participant}`;
+  let oneSecond = cache.get(sourceKey);
+  if (!oneSecond) {
+    const source = svg.querySelector<SVGPolylineElement>(`[data-series="${metric}"][data-series-window="1"] [data-participant="${participant}"]`);
+    oneSecond = parseTimelineValues(source?.dataset.values ?? "");
+    cache.set(sourceKey, oneSecond);
+  }
+  const samples = window === "1" ? oneSecond : rollingTimelineSamples(
+    oneSecond,
+    Number(svg.dataset.durationSeconds),
+    Number(window),
+  );
+  cache.set(key, samples);
+  return samples;
 }
 
 function parseTimelineValues(value: string): Array<[number, number]> {

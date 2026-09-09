@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
-import { hasCompleteRdpsBuckets, renderReport, renderTimeline, rollingBucketSeries, selectCanonicalGraph, timelineCumulativeRateLabel, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
+import { hasCompleteRdpsBuckets, renderReport, renderTimeline, rollingBucketSeries, rollingTimelineSamples, selectCanonicalGraph, timelineCumulativeRateLabel, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(readFileSync(new URL(`../../../public/fixtures/${name}`, import.meta.url), "utf8")) as T;
 
@@ -51,6 +51,15 @@ describe("timeline rolling windows", () => {
     expect(rollingBucketSeries(points, "damage", 5, 1)).toEqual([[0, 0], [1, 0], [2, 50], [3, 0], [5, 0]]);
   });
 
+  it("derives rolling inspection samples from the authoritative one-second series", () => {
+    const points = [
+      { second: 1, damage: 30, effective_healing: 0, damage_taken: 0 },
+      { second: 3, damage: 60, effective_healing: 0, damage_taken: 0 },
+    ];
+    const oneSecond = rollingBucketSeries(points, "damage", 10, 1);
+    expect(rollingTimelineSamples(oneSecond, 10, 3)).toEqual(rollingBucketSeries(points, "damage", 10, 3));
+  });
+
   it("inspects the same sparse line values that are rendered", () => {
     const samples: Array<[number, number]> = [[0, 0], [1, 30], [2, 0], [8, 0], [9, 50], [10, 50]];
     expect(timelineValueAtSecond(samples, 1)).toBe(30);
@@ -91,6 +100,11 @@ describe("damage-rate labels", () => {
     expect(html).toContain('data-metric="rdps_damage"');
     expect(html).toContain('data-series="rdps_damage"');
     expect(html).toContain('data-values="0:1200000,1:2490000');
+    const renderedTracks = html.match(/<polyline /gu) ?? [];
+    const inspectionPayloads = html.match(/ data-values="/gu) ?? [];
+    expect(inspectionPayloads).toHaveLength(renderedTracks.length / 3);
+    const rollingGroups = [...html.matchAll(/<g data-series="[^"]+" data-series-window="(?:5|10)"[^>]*>(.*?)<\/g>/gu)];
+    expect(rollingGroups.every(([, contents]) => !contents.includes("data-values="))).toBe(true);
     expect(html).toContain("missing buckets are never replaced with ordinary damage");
     expect(hasCompleteRdpsBuckets(report.runs[0].participants[0].series)).toBe(true);
     const rdps = rollingBucketSeries(report.runs[0].participants[0].series, "rdps_damage", 4, 1);
@@ -105,6 +119,31 @@ describe("damage-rate labels", () => {
     const legacyHtml = renderTimeline(selectCanonicalGraph(unavailable));
     expect(legacyHtml).not.toContain('data-metric="rdps_damage"');
     expect(legacyHtml).not.toContain('data-series="rdps_damage"');
+  });
+
+  it("stores one inspection payload per metric and participant for a 20-player raid", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const template = graph.participants[0];
+    const participants = Array.from({ length: 20 }, (_, index) => ({
+      ...structuredClone(template),
+      actor_id: `raid-${index}`,
+      display_name: `Raider ${index}`,
+    }));
+    const timeline = {
+      ...graph.timeline,
+      participant_tracks: participants.map((participant, index) => ({
+        actor_id: participant.actor_id,
+        character_id: participant.character_id,
+        observed_character_key: participant.observed_character_key ?? null,
+        display_name: participant.display_name,
+        canonical_participant_index: index,
+        series_point_count: participant.series.length,
+      })),
+    };
+    const html = renderTimeline({ ...graph, participants, timeline });
+    expect(html.match(/<polyline /gu)).toHaveLength(20 * 4 * 3);
+    expect(html.match(/ data-values="/gu)).toHaveLength(20 * 4);
   });
 });
 
