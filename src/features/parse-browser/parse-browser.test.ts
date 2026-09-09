@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
-import { renderTimeline, rollingBucketSeries, selectCanonicalGraph, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
+import { renderReport, renderTimeline, rollingBucketSeries, selectCanonicalGraph, timelineCumulativeRateLabel, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(readFileSync(new URL(`../../../public/fixtures/${name}`, import.meta.url), "utf8")) as T;
 
@@ -65,6 +65,23 @@ describe("timeline rolling windows", () => {
       five: [[0, 10], [1, 20], [2, 40 / 3], [3, 15]],
       ten: [[0, 10], [1, 20], [2, 40 / 3], [3, 15]],
     }, 1.4)).toEqual({ one: 30, five: 20, ten: 20, cumulative: 20 });
+    expect(timelineCumulativeRateLabel("DPS")).toBe("run DPS");
+  });
+});
+
+describe("damage-rate labels", () => {
+  it("maps stored history rates to eDPS and aDPS and identifies partial rDPS", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const html = renderReport(report, 0);
+    const teamEdps = report.runs[0].participants.reduce((sum, participant) => sum + participant.dps, 0);
+    const teamAdps = report.runs[0].participants.reduce((sum, participant) => sum + participant.encounter_dps, 0);
+
+    expect(html).toContain(`<small>Team eDPS</small><strong>${teamEdps.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong>`);
+    expect(html).toContain(`<small>Team aDPS</small><strong>${teamAdps.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong>`);
+    expect(html).toContain('<small>eDPS</small><strong>1,661,739.1</strong>');
+    expect(html).toContain('<small>aDPS</small><strong>2,871,605.2</strong>');
+    expect(html).toContain('<small>Partial rDPS</small><strong>1,661,739.1</strong>');
+    expect(html).not.toContain('<small>Team DPS</small>');
   });
 });
 

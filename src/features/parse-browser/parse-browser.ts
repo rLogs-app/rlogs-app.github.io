@@ -168,12 +168,12 @@ function renderCatalogEntry(entry: PublicParseCatalogEntry): string {
   </button>`;
 }
 
-function renderReport(report: PublicParseReport, runIndex: number, reconciliation?: PublicRunReconciliation): string {
+export function renderReport(report: PublicParseReport, runIndex: number, reconciliation?: PublicRunReconciliation): string {
   const run = report.runs.find((candidate) => candidate.run_index === runIndex) ?? report.runs[0];
   if (!run) return '<p class="empty-state">This report contains no public run.</p>';
   const graph = selectCanonicalGraph(run, reconciliation);
-  const teamDps = graph.participants.reduce((sum, actor) => sum + actor.dps, 0);
-  const teamEdps = graph.participants.reduce((sum, actor) => sum + actor.encounter_dps, 0);
+  const teamEdps = graph.participants.reduce((sum, actor) => sum + actor.dps, 0);
+  const teamAdps = graph.participants.reduce((sum, actor) => sum + actor.encounter_dps, 0);
   return `<article class="parse-report">
     <div class="parse-report-heading"><div><p class="eyebrow">${escapeHtml(report.region_id)} / ${escapeHtml(report.verification.tier)}</p>
       <h3>${escapeHtml(run.scene_name ?? run.activity_id ?? `Scene ${run.scene_id ?? "?"}`)}</h3>
@@ -183,13 +183,13 @@ function renderReport(report: PublicParseReport, runIndex: number, reconciliatio
       ${metric("Run", formatDuration(run.total_run_time_micros))}
       ${metric("Game", formatDuration(run.game_time_micros))}
       ${metric("Active", formatDuration(run.active_combat_micros))}
-      ${metric("Team DPS", formatNumber(teamDps))}
       ${metric("Team eDPS", formatNumber(teamEdps))}
+      ${metric("Team aDPS", formatNumber(teamAdps))}
       ${metric("Retries", `${run.retry_count} / ${run.boss_retry_count} boss`)}
     </div>
     ${renderTimeline(graph)}
     <div class="parse-party"><div class="parse-party-head"><strong>Party</strong><small>${graph.participants.length} combatants / rDPS ${escapeHtml(run.rdps_status)}</small></div>
-      ${graph.participants.map(renderParticipant).join("")}
+      ${graph.participants.map((participant) => renderParticipant(participant, run.rdps_status)).join("")}
     </div>
     <p class="parse-proof">Build ${escapeHtml(report.client_build)} / ${report.verification.event_count.toLocaleString()} canonical events / ${run.data_gap_count} data gaps / report ${escapeHtml(report.report_id)}${run.run_group_id ? ` / group ${escapeHtml(run.run_group_id)}` : ""}</p>
   </article>`;
@@ -499,9 +499,14 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
   }));
   const metric = timeline.dataset.timelineMetric === "effective_healing" ? "HPS" : timeline.dataset.timelineMetric === "damage_taken" ? "TPS" : "DPS";
   const time = formatDuration(bounded * 1_000_000);
-  const details = active.length ? active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>1s ${formatNumber(row.variants.one)} · 5s ${formatNumber(row.variants.five)} · 10s ${formatNumber(row.variants.ten)} · avg ${formatNumber(row.variants.cumulative)} ${metric}</strong></span>`).join("") : "<span>No participants selected.</span>";
+  const cumulativeLabel = timelineCumulativeRateLabel(metric);
+  const details = active.length ? active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>1s ${formatNumber(row.variants.one)} · 5s ${formatNumber(row.variants.five)} · 10s ${formatNumber(row.variants.ten)} · ${cumulativeLabel} ${formatNumber(row.variants.cumulative)}</strong></span>`).join("") : "<span>No participants selected.</span>";
   output.innerHTML = `<strong>${time}</strong>${details}`;
-  inspector.setAttribute("aria-valuetext", `${time}; ${active.map((row) => `${row.label}: 1 second ${formatNumber(row.variants.one)}, 5 second ${formatNumber(row.variants.five)}, 10 second ${formatNumber(row.variants.ten)}, average to now ${formatNumber(row.variants.cumulative)} ${metric}`).join("; ") || "no participants selected"}`);
+  inspector.setAttribute("aria-valuetext", `${time}; ${active.map((row) => `${row.label}: 1 second ${formatNumber(row.variants.one)}, 5 second ${formatNumber(row.variants.five)}, 10 second ${formatNumber(row.variants.ten)}, ${cumulativeLabel} to now ${formatNumber(row.variants.cumulative)}`).join("; ") || "no participants selected"}`);
+}
+
+export function timelineCumulativeRateLabel(metric: "DPS" | "HPS" | "TPS"): string {
+  return `run ${metric}`;
 }
 
 function timelineSamplesFor(svg: SVGSVGElement, metric: string, window: string, participant: string): Array<[number, number]> {
@@ -516,13 +521,14 @@ function parseTimelineValues(value: string): Array<[number, number]> {
   }) : [];
 }
 
-function renderParticipant(actor: PublicRun["participants"][number]): string {
+function renderParticipant(actor: PublicRun["participants"][number], rdpsStatus: string): string {
+  const rdpsLabel = rdpsStatus.startsWith("partial_") ? "Partial rDPS" : "rDPS";
   return `<div class="parse-party-row"><span><strong>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</strong>
     <small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span>
     <span><small>Damage</small><strong>${formatNumber(actor.damage)}</strong></span>
-    <span><small>DPS</small><strong>${formatNumber(actor.dps)}</strong></span>
-    <span><small>eDPS</small><strong>${formatNumber(actor.encounter_dps)}</strong></span>
-    <span><small>rDPS</small><strong>${actor.rdps == null ? "-" : formatNumber(actor.rdps)}</strong></span>
+    <span><small>eDPS</small><strong>${formatNumber(actor.dps)}</strong></span>
+    <span><small>aDPS</small><strong>${formatNumber(actor.encounter_dps)}</strong></span>
+    <span><small>${rdpsLabel}</small><strong>${actor.rdps == null ? "-" : formatNumber(actor.rdps)}</strong></span>
     <span><small>Deaths</small><strong>${actor.deaths}</strong></span></div>`;
 }
 
