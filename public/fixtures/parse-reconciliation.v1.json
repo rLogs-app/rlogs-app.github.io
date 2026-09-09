@@ -1,0 +1,31 @@
+{
+  "schema_version": 15,
+  "reconciliation_id": "rec_demo",
+  "run_group_id": "run_11111111111111111111111111111111",
+  "status": "reconciled",
+  "canonical_spine": {"report_id":"rpt_99b755083b2a00602526d6cb7312d6c5","run_index":0,"artifact_sha256":"demo","authoritative_start":true,"authoritative_completion":true,"data_gap_count":0,"event_count":32280},
+  "reports": [
+    {"report_id":"rpt_99b755083b2a00602526d6cb7312d6c5","run_index":0,"artifact_sha256":"demo","canonical_spine":true},
+    {"report_id":"rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","run_index":0,"artifact_sha256":"demo2","canonical_spine":false}
+  ],
+  "characters": [],
+  "participant_character_count": 5,
+  "local_vantage_character_count": 5,
+  "complete_local_vantage_coverage": true,
+  "state_replay_readiness": "full_coverage_ready",
+  "state_replay_blockers": [],
+  "verified_state_input_sha256": "demo-state",
+  "reconciled_participants": [],
+  "conservation": {"raw_damage":200605321,"rdps_damage":200605321,"contribution_given":12000,"contribution_received":12000,"conserved":true},
+  "rdps_influences": [],
+  "rdps_effects": [],
+  "attribution_replay_completed": true,
+  "timeline": {
+    "schema_version":1,"source":"reconciled_canonical_spine","canonical_report_id":"rpt_99b755083b2a00602526d6cb7312d6c5","canonical_run_index":0,
+    "contributing_report_ids":["rpt_99b755083b2a00602526d6cb7312d6c5","rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],"duration_micros":108052770,"time_basis":"run_elapsed","series_bucket_micros":1000000,
+    "coverage":{"authoritative_start":true,"authoritative_completion":true,"data_gap_count":0,"gap_timing":"no_known_gaps"},
+    "participant_tracks":[],"death_markers":[],"loadout_markers":[],
+    "rdps_influence_spans":[{"influence_index":0,"time_basis":"capture_observed","start_micros":990000000,"end_micros":991000000,"complete_lifecycle":false}],
+    "omitted":{"participant_tracks":0,"series_points":0,"death_markers":0,"loadout_markers":0,"rdps_influence_spans":0}
+  }
+}
