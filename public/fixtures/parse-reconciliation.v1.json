@@ -2,11 +2,11 @@
   "schema_version": 15,
   "reconciliation_id": "rec_demo",
   "run_group_id": "run_11111111111111111111111111111111",
-  "status": "reconciled",
+  "status": "cross_vantage_evidence_available",
   "canonical_spine": {"report_id":"rpt_99b755083b2a00602526d6cb7312d6c5","run_index":0,"artifact_sha256":"demo","authoritative_start":true,"authoritative_completion":true,"data_gap_count":0,"event_count":32280},
   "reports": [
-    {"report_id":"rpt_99b755083b2a00602526d6cb7312d6c5","run_index":0,"artifact_sha256":"demo","canonical_spine":true},
-    {"report_id":"rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","run_index":0,"artifact_sha256":"demo2","canonical_spine":false}
+    {"report_id":"rpt_99b755083b2a00602526d6cb7312d6c5","run_index":0,"artifact_sha256":"demo","protocol_pack_digest":"demo-pack","created_unix_millis":1786661918723,"canonical_spine":true,"local_profile_witnesses":[],"local_state_witnesses":[],"combat_loadout_phases":[]},
+    {"report_id":"rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","run_index":0,"artifact_sha256":"demo2","protocol_pack_digest":"demo-pack","created_unix_millis":1786661918724,"canonical_spine":false,"local_profile_witnesses":[],"local_state_witnesses":[],"combat_loadout_phases":[]}
   ],
   "characters": [],
   "participant_character_count": 5,
@@ -19,7 +19,7 @@
   "conservation": {"raw_damage":200605321,"rdps_damage":200605321,"contribution_given":12000,"contribution_received":12000,"conserved":true},
   "rdps_influences": [],
   "rdps_effects": [],
-  "attribution_replay_completed": true,
+  "attribution_replay_completed": false,
   "timeline": {
     "schema_version":1,"source":"reconciled_canonical_spine","canonical_report_id":"rpt_99b755083b2a00602526d6cb7312d6c5","canonical_run_index":0,
     "contributing_report_ids":["rpt_99b755083b2a00602526d6cb7312d6c5","rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],"duration_micros":108052770,"time_basis":"run_elapsed","series_bucket_micros":1000000,

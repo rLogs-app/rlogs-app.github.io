@@ -231,13 +231,19 @@ function renderTimeline(graph: CanonicalGraphSelection): string {
   const omissions = Object.values(timeline.omitted).reduce((sum, value) => sum + value, 0);
   const coverage = timeline.coverage.authoritative_start && timeline.coverage.authoritative_completion ? "Complete run bounds" : "Partial run bounds";
   const gaps = timeline.coverage.data_gap_count ? `${timeline.coverage.data_gap_count} unpositioned gap${timeline.coverage.data_gap_count === 1 ? "" : "s"}` : "No known gaps";
-  return `<section class="combat-timeline" data-timeline-metric="damage" aria-label="Combat timeline">
+  return `<section class="combat-timeline" data-timeline-metric="damage" data-timeline-window="5" aria-label="Combat timeline">
     <div class="timeline-heading"><div><strong>Combat timeline</strong><small>${escapeHtml(graph.trustLabel)}</small></div>
       <div class="timeline-controls" role="group" aria-label="Timeline metric">
         <button type="button" data-metric="damage" aria-pressed="true">DPS</button>
         <button type="button" data-metric="effective_healing" aria-pressed="false">HPS</button>
         <button type="button" data-metric="damage_taken" aria-pressed="false" title="Damage taken per second">TPS</button>
       </div></div>
+    <div class="timeline-window-controls" role="group" aria-label="Trailing average window">
+      <span>Trailing average</span>
+      <button type="button" data-window="1" aria-pressed="false">1s</button>
+      <button type="button" data-window="5" aria-pressed="true">5s</button>
+      <button type="button" data-window="10" aria-pressed="false">10s</button>
+    </div>
     <div class="timeline-trust"><span class="status-chip ${graph.reconciled ? "success" : "neutral"}">${graph.reconciled ? "Reconciled canonical spine" : "Single canonical report"}</span><span>${coverage}</span><span>${gaps}</span></div>
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted)}</div>
     <div class="timeline-legend">${plotted.map(({ actor, color }) => `<span><i style="--track:${color}"></i>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</span>`).join("")}</div>
@@ -250,19 +256,12 @@ function renderTimelineSvg(timeline: PublicRun["timeline"], plotted: Array<{ act
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const seconds = Math.max(1, Math.ceil(timeline.duration_micros / 1_000_000));
   const metrics: TimelineMetric[] = ["damage", "effective_healing", "damage_taken"];
-  const groups = metrics.map((metric) => {
-    const max = Math.max(1, ...plotted.flatMap(({ actor, track }) => actor.series.slice(0, track.series_point_count).map((point) => point[metric])));
-    const lines = plotted.map(({ actor, track, color }) => {
-      const sparse = actor.series.slice(0, track.series_point_count).filter((point) => point.second <= seconds);
-      const samples: Array<[number, number]> = [[0, 0]];
-      sparse.forEach((point, index) => {
-        const prior = sparse[index - 1];
-        const next = sparse[index + 1];
-        if (point.second > 0 && (!prior || prior.second + 1 < point.second)) samples.push([point.second - 1, 0]);
-        samples.push([point.second, point[metric]]);
-        if (point.second < seconds && (!next || next.second > point.second + 1)) samples.push([point.second + 1, 0]);
-      });
-      samples.push([seconds, 0]);
+  const windows = [1, 5, 10] as const;
+  const groups = metrics.flatMap((metric) => windows.map((windowSeconds) => {
+    const curves = plotted.map(({ actor, track, color }) => ({ actor, track, color,
+      points: rollingBucketSeries(actor.series.slice(0, track.series_point_count), metric, seconds, windowSeconds) }));
+    const max = Math.max(1, ...curves.flatMap(({ points }) => points.map(([, value]) => value)));
+    const lines = curves.map(({ actor, color, points: samples }) => {
       const coords = samples.map(([second, value]) => {
         const x = left + (second / seconds) * plotWidth;
         const y = top + plotHeight - (value / max) * plotHeight;
@@ -270,14 +269,40 @@ function renderTimelineSvg(timeline: PublicRun["timeline"], plotted: Array<{ act
       });
       return `<polyline points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actor.display_name ?? actor.actor_id)} ${metric.replaceAll("_", " ")}</title></polyline>`;
     }).join("");
-    return `<g data-series="${metric}"${metric === "damage" ? "" : " hidden"}>${lines}<text x="6" y="22" class="timeline-axis-label">${metric === "damage" ? "DPS" : metric === "effective_healing" ? "HPS" : "TPS"}</text><text x="6" y="${top + plotHeight}" class="timeline-axis-label">0</text></g>`;
-  }).join("");
+    const visible = metric === "damage" && windowSeconds === 5;
+    return `<g data-series="${metric}" data-series-window="${windowSeconds}"${visible ? "" : " hidden"}>${lines}<text x="6" y="22" class="timeline-axis-label">${metric === "damage" ? "DPS" : metric === "effective_healing" ? "HPS" : "TPS"}</text><text x="6" y="${top + plotHeight}" class="timeline-axis-label">0</text></g>`;
+  })).join("");
   const deaths = timeline.death_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", "Death")).join("");
   const loadouts = timeline.loadout_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", "Loadout change")).join("");
   return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sparse one-second combat rates over ${formatDuration(timeline.duration_micros)}; death and loadout markers use run elapsed time">
     <line x1="${left}" y1="${top + plotHeight}" x2="${left + plotWidth}" y2="${top + plotHeight}" class="timeline-axis" />
     <text x="${left}" y="${height - 8}" class="timeline-tick">0:00</text><text x="${left + plotWidth}" y="${height - 8}" text-anchor="end" class="timeline-tick">${formatDuration(timeline.duration_micros)}</text>
     ${groups}${loadouts}${deaths}</svg>`;
+}
+
+export function rollingBucketSeries(points: readonly PublicParticipant["series"][number][], metric: TimelineMetric, totalSeconds: number, windowSeconds: number): Array<[number, number]> {
+  const duration = Math.max(1, Math.floor(totalSeconds));
+  const window = Math.max(1, Math.floor(windowSeconds));
+  const totals = new Map<number, number>();
+  for (const point of points) {
+    const amount = point[metric];
+    if (point.second > duration || amount === 0) continue;
+    for (let second = point.second; second <= Math.min(duration, point.second + window - 1); second += 1) {
+      totals.set(second, (totals.get(second) ?? 0) + amount);
+    }
+  }
+  const values = [...totals].map(([second, total]) => [second, total / Math.min(window, second + 1)] as [number, number]);
+  const nonzero = values.sort(([left], [right]) => left - right);
+  const samples: Array<[number, number]> = [[0, totals.get(0) ?? 0]];
+  nonzero.forEach(([second, value], index) => {
+    const prior = nonzero[index - 1];
+    const next = nonzero[index + 1];
+    if (second > 0 && (!prior || prior[0] + 1 < second) && samples.at(-1)?.[0] !== second - 1) samples.push([second - 1, 0]);
+    if (second !== 0) samples.push([second, value]);
+    if (second < duration && (!next || next[0] > second + 1)) samples.push([second + 1, 0]);
+  });
+  if (samples.at(-1)?.[0] !== duration) samples.push([duration, 0]);
+  return samples;
 }
 
 function markerLine(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, kind: string, label: string): string {
@@ -293,7 +318,18 @@ function wireTimelineControls(root: HTMLElement): void {
     timeline.dataset.timelineMetric = metric;
     timeline.querySelectorAll<HTMLButtonElement>("[data-metric]").forEach((candidate) => candidate.setAttribute("aria-pressed", String(candidate === button)));
     timeline.querySelectorAll<SVGGElement>("[data-series]").forEach((series) => {
-      if (series.dataset.series === metric) series.removeAttribute("hidden");
+      if (series.dataset.series === metric && series.dataset.seriesWindow === timeline.dataset.timelineWindow) series.removeAttribute("hidden");
+      else series.setAttribute("hidden", "");
+    });
+  }));
+  root.querySelectorAll<HTMLButtonElement>("[data-window]").forEach((button) => button.addEventListener("click", () => {
+    const window = button.dataset.window;
+    const timeline = button.closest<HTMLElement>("[data-timeline-window]");
+    if (!timeline || !window) return;
+    timeline.dataset.timelineWindow = window;
+    timeline.querySelectorAll<HTMLButtonElement>("[data-window]").forEach((candidate) => candidate.setAttribute("aria-pressed", String(candidate === button)));
+    timeline.querySelectorAll<SVGGElement>("[data-series]").forEach((series) => {
+      if (series.dataset.series === timeline.dataset.timelineMetric && series.dataset.seriesWindow === window) series.removeAttribute("hidden");
       else series.setAttribute("hidden", "");
     });
   }));

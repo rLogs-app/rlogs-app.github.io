@@ -419,6 +419,7 @@ h3 {
 .timeline-heading,
 .timeline-trust,
 .timeline-controls,
+.timeline-window-controls,
 .timeline-legend {
   display: flex;
   flex-wrap: wrap;
@@ -449,6 +450,30 @@ h3 {
   border-radius: 7px;
   background: transparent;
   cursor: pointer;
+}
+
+.timeline-window-controls {
+  justify-content: flex-end;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.timeline-window-controls button {
+  padding: 4px 7px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.timeline-window-controls button[aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--line-bright);
+  background: rgb(255 255 255 / 6%);
 }
 
 .timeline-controls button[aria-pressed="true"] {
