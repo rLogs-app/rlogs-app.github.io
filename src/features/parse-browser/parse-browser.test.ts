@@ -250,6 +250,65 @@ describe("timeline interaction markup", () => {
     expect(html).toContain("Combat timeline");
   });
 
+  it("selects explicit singular/plural timeline messages and locale-formats counts", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const messages = createMessageResolver("de-DE", {
+      ...bundledMessageCatalogs,
+      "de-DE": {
+        "parse.timeline.gaps.one": "gap-one {count}",
+        "parse.timeline.gaps.other": "gap-other {count}",
+        "parse.timeline.note.run_span.one": "run-one {count}",
+        "parse.timeline.note.run_span.other": "run-other {count}",
+        "parse.timeline.note.omissions.one": "omission-one {count}",
+        "parse.timeline.note.omissions.other": "omission-other {count}",
+      },
+    });
+    const singular = renderTimeline({ ...graph, timeline: {
+      ...graph.timeline,
+      coverage: { ...graph.timeline.coverage, data_gap_count: 1, gap_timing: "count_only" },
+      rdps_influence_spans: [{ influence_index: 0, time_basis: "run_elapsed", start_micros: 0, end_micros: 1, complete_lifecycle: true }],
+      omitted: { ...graph.timeline.omitted, death_markers: 1 },
+    } }, messages);
+    expect(singular).toContain("gap-one 1");
+    expect(singular).toContain("run-one 1");
+    expect(singular).toContain("omission-one 1");
+    const plural = renderTimeline({ ...graph, timeline: {
+      ...graph.timeline,
+      coverage: { ...graph.timeline.coverage, data_gap_count: 1_234, gap_timing: "count_only" },
+      rdps_influence_spans: [0, 1].map((influence_index) => ({ influence_index, time_basis: "run_elapsed" as const, start_micros: 0, end_micros: 1, complete_lifecycle: true })),
+      omitted: { ...graph.timeline.omitted, death_markers: 2 },
+    } }, messages);
+    expect(plural).toContain("gap-other 1.234");
+    expect(plural).toContain("run-other 2");
+    expect(plural).toContain("omission-other 2");
+  });
+
+  it("escapes localized rDPS and trust labels in attributes, controls, notes, and party rows", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const messages = createMessageResolver("en-US", {
+      ...bundledMessageCatalogs,
+      "en-US": {
+        ...bundledMessageCatalogs["en-US"],
+        "parse.timeline.rdps.partial": "Partial <rDPS & evidence>",
+        "parse.timeline.trust.single": "Single <unsafe> trust",
+      },
+    });
+    const html = renderReport(report, 0, undefined, messages);
+    expect(html).toContain("Partial &lt;rDPS &amp; evidence&gt;");
+    expect(html).toContain("Single &lt;unsafe&gt; trust");
+    expect(html).not.toContain("Partial <rDPS");
+    expect(html).not.toContain("Single <unsafe>");
+
+    const exactReport = structuredClone(report);
+    exactReport.runs[0].rdps_status = "complete";
+    exactReport.runs[0].participants.forEach((participant) => { participant.rdps_incomplete = false; });
+    const exactMessages = createMessageResolver("en-US", {
+      "en-US": { ...bundledMessageCatalogs["en-US"], "parse.timeline.rdps.exact": "Exact-rDPS-marker" },
+    });
+    expect(renderReport(exactReport, 0, undefined, exactMessages)).toContain("Exact-rDPS-marker");
+  });
+
   it("renders independently toggleable tracks and a keyboard point inspector", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const graph = selectCanonicalGraph(report.runs[0]);
