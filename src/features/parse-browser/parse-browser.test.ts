@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
+import { bundledMessageCatalogs, createMessageResolver } from "../../localization/messages";
 import { hasCompleteRdpsBuckets, partyLoadoutSummaries, renderPartyLoadouts, renderReport, renderTimeline, rollingBucketSeries, rollingTimelineSamples, selectCanonicalGraph, timelineCumulativeRateLabel, timelineDamageRatesAtSecond, timelineRateVariantsAtSecond, timelineRdpsAtSecond, timelineValueAtSecond } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(readFileSync(new URL(`../../../public/fixtures/${name}`, import.meta.url), "utf8")) as T;
@@ -235,6 +236,20 @@ describe("party rune and loadout summaries", () => {
 });
 
 describe("timeline interaction markup", () => {
+  it("renders timeline controls through exact-locale fallback without invented translations", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const messages = createMessageResolver("fr-CA", {
+      ...bundledMessageCatalogs,
+      fr: { "parse.timeline.play": "base-locale-play-marker" },
+      "fr-CA": { "parse.timeline.trailing_average": "exact-locale-window-marker" },
+    });
+    const html = renderTimeline(selectCanonicalGraph(report.runs[0]), messages);
+    expect(html).toContain('data-locale="fr-CA"');
+    expect(html).toContain(">base-locale-play-marker</button>");
+    expect(html).toContain(">exact-locale-window-marker</span>");
+    expect(html).toContain("Combat timeline");
+  });
+
   it("renders independently toggleable tracks and a keyboard point inspector", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const graph = selectCanonicalGraph(report.runs[0]);
