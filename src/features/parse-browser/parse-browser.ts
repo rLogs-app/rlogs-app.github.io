@@ -220,14 +220,16 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
 type TimelineMetric = "damage" | "effective_healing" | "damage_taken";
 const palette = ["#52cfff", "#ffcc66", "#91e6a5", "#ff7aa8", "#b8a1ff", "#ff9166", "#7ce3dc", "#d9f06f"];
 
-function renderTimeline(graph: CanonicalGraphSelection): string {
+export function renderTimeline(graph: CanonicalGraphSelection): string {
   const { timeline, participants } = graph;
+  const durationSeconds = Math.max(1, Math.ceil(timeline.duration_micros / 1_000_000));
   const plotted = timeline.participant_tracks.flatMap((track, trackIndex) => {
     const actor = participants[track.canonical_participant_index];
     if (!actor || actor.actor_id !== track.actor_id) return [];
     return [{ actor, track, color: palette[trackIndex % palette.length] }];
   });
   const captureSpans = timeline.rdps_influence_spans.filter((span) => span.time_basis === "capture_observed").length;
+  const runAlignedSpans = timeline.rdps_influence_spans.filter((span) => span.time_basis === "run_elapsed").length;
   const omissions = Object.values(timeline.omitted).reduce((sum, value) => sum + value, 0);
   const coverage = timeline.coverage.authoritative_start && timeline.coverage.authoritative_completion ? "Complete run bounds" : "Partial run bounds";
   const gaps = timeline.coverage.data_gap_count ? `${timeline.coverage.data_gap_count} unpositioned gap${timeline.coverage.data_gap_count === 1 ? "" : "s"}` : "No known gaps";
@@ -245,9 +247,14 @@ function renderTimeline(graph: CanonicalGraphSelection): string {
       <button type="button" data-window="10" aria-pressed="false">10s</button>
     </div>
     <div class="timeline-trust"><span class="status-chip ${graph.reconciled ? "success" : "neutral"}">${graph.reconciled ? "Reconciled canonical spine" : "Single canonical report"}</span><span>${coverage}</span><span>${gaps}</span></div>
+    <div class="timeline-playback" role="group" aria-label="Timeline playback">
+      <button type="button" data-timeline-play aria-pressed="false">Play</button>
+      <input type="range" data-timeline-scrubber min="0" max="${durationSeconds}" step="1" value="0" aria-label="Timeline position" />
+    </div>
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted)}</div>
-    <div class="timeline-legend">${plotted.map(({ actor, color }) => `<span><i style="--track:${color}"></i>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</span>`).join("")}</div>
-    ${(captureSpans || omissions) ? `<p class="timeline-note">${captureSpans ? `${captureSpans} rDPS influence span${captureSpans === 1 ? " is" : "s are"} capture-clock evidence and ${captureSpans === 1 ? "is" : "are"} intentionally not positioned on this run-elapsed graph. ` : ""}${omissions ? `${omissions} bounded item${omissions === 1 ? " was" : "s were"} omitted by the public projection.` : ""}</p>` : ""}
+    <div class="timeline-inspection" data-timeline-inspection aria-live="polite"><strong>Point inspection</strong><span>Hover the graph or focus it and use the arrow keys.</span></div>
+    <div class="timeline-legend" role="group" aria-label="Visible participants">${plotted.map(({ actor, color }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i></i><span>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</span></button>`).join("")}</div>
+    ${(captureSpans || runAlignedSpans || omissions) ? `<p class="timeline-note">${runAlignedSpans ? `${runAlignedSpans} verified rDPS affected-damage span${runAlignedSpans === 1 ? " is" : "s are"} shown in the evidence lane. ` : ""}${captureSpans ? `${captureSpans} rDPS influence span${captureSpans === 1 ? " is" : "s are"} capture-clock evidence and ${captureSpans === 1 ? "is" : "are"} intentionally not positioned on this run-elapsed graph. ` : ""}${omissions ? `${omissions} bounded item${omissions === 1 ? " was" : "s were"} omitted by the public projection.` : ""}</p>` : ""}
   </section>`;
 }
 
@@ -261,23 +268,32 @@ function renderTimelineSvg(timeline: PublicRun["timeline"], plotted: Array<{ act
     const curves = plotted.map(({ actor, track, color }) => ({ actor, track, color,
       points: rollingBucketSeries(actor.series.slice(0, track.series_point_count), metric, seconds, windowSeconds) }));
     const max = Math.max(1, ...curves.flatMap(({ points }) => points.map(([, value]) => value)));
-    const lines = curves.map(({ actor, color, points: samples }) => {
+    const lines = curves.map(({ actor, color, points: samples }, participantIndex) => {
       const coords = samples.map(([second, value]) => {
         const x = left + (second / seconds) * plotWidth;
         const y = top + plotHeight - (value / max) * plotHeight;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       });
-      return `<polyline points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actor.display_name ?? actor.actor_id)} ${metric.replaceAll("_", " ")}</title></polyline>`;
+      const values = samples.map(([second, value]) => `${second}:${value}`).join(",");
+      return `<polyline data-participant="${participantIndex}" data-label="${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}" data-values="${values}" points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actor.display_name ?? actor.actor_id)} ${metric.replaceAll("_", " ")}</title></polyline>`;
     }).join("");
     const visible = metric === "damage" && windowSeconds === 5;
     return `<g data-series="${metric}" data-series-window="${windowSeconds}"${visible ? "" : " hidden"}>${lines}<text x="6" y="22" class="timeline-axis-label">${metric === "damage" ? "DPS" : metric === "effective_healing" ? "HPS" : "TPS"}</text><text x="6" y="${top + plotHeight}" class="timeline-axis-label">0</text></g>`;
   })).join("");
   const deaths = timeline.death_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", "Death")).join("");
   const loadouts = timeline.loadout_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", "Loadout change")).join("");
-  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sparse one-second combat rates over ${formatDuration(timeline.duration_micros)}; death and loadout markers use run elapsed time">
+  const rdpsEvidence = timeline.rdps_influence_spans.filter((span) => span.time_basis === "run_elapsed").map((span) => {
+    const start = left + Math.min(1, span.start_micros / Math.max(1, timeline.duration_micros)) * plotWidth;
+    const end = left + Math.min(1, span.end_micros / Math.max(1, timeline.duration_micros)) * plotWidth;
+    return `<rect class="timeline-rdps-evidence" x="${start.toFixed(1)}" y="${top + plotHeight - 6}" width="${Math.max(1.5, end - start).toFixed(1)}" height="6"><title>Verified rDPS affected-damage span ${span.influence_index + 1}: ${formatDuration(span.start_micros)}–${formatDuration(span.end_micros)}</title></rect>`;
+  }).join("");
+  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="Sparse one-second combat rates over ${formatDuration(timeline.duration_micros)}; death and loadout markers use run elapsed time" data-duration-seconds="${seconds}" data-plot-left="${left}" data-plot-width="${plotWidth}">
     <line x1="${left}" y1="${top + plotHeight}" x2="${left + plotWidth}" y2="${top + plotHeight}" class="timeline-axis" />
     <text x="${left}" y="${height - 8}" class="timeline-tick">0:00</text><text x="${left + plotWidth}" y="${height - 8}" text-anchor="end" class="timeline-tick">${formatDuration(timeline.duration_micros)}</text>
-    ${groups}${loadouts}${deaths}</svg>`;
+    ${groups}${rdpsEvidence}${loadouts}${deaths}
+    <g class="timeline-crosshair" data-timeline-crosshair hidden aria-hidden="true"><line x1="${left}" y1="${top}" x2="${left}" y2="${top + plotHeight}" /></g>
+    <rect class="timeline-inspector-hitbox" data-timeline-inspector x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" tabindex="0" role="slider" aria-label="Timeline point inspector" aria-valuemin="0" aria-valuemax="${seconds}" aria-valuenow="0" aria-valuetext="0:00" />
+  </svg>`;
 }
 
 export function rollingBucketSeries(points: readonly PublicParticipant["series"][number][], metric: TimelineMetric, totalSeconds: number, windowSeconds: number): Array<[number, number]> {
@@ -305,6 +321,28 @@ export function rollingBucketSeries(points: readonly PublicParticipant["series"]
   return samples;
 }
 
+export function timelineValueAtSecond(samples: readonly [number, number][], second: number): number {
+  const exact = samples.find(([sampleSecond]) => sampleSecond === second);
+  return exact?.[1] ?? 0;
+}
+
+export function timelineRateVariantsAtSecond(
+  samples: { one: readonly [number, number][]; five: readonly [number, number][]; ten: readonly [number, number][] },
+  second: number,
+): { one: number; five: number; ten: number; cumulative: number } {
+  const bounded = Math.max(0, Math.round(second));
+  const cumulativeTotal = samples.one.reduce(
+    (total, [sampleSecond, value]) => sampleSecond <= bounded ? total + value : total,
+    0,
+  );
+  return {
+    one: timelineValueAtSecond(samples.one, bounded),
+    five: timelineValueAtSecond(samples.five, bounded),
+    ten: timelineValueAtSecond(samples.ten, bounded),
+    cumulative: cumulativeTotal / (bounded + 1),
+  };
+}
+
 function markerLine(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, kind: string, label: string): string {
   const x = left + Math.min(1, atMicros / Math.max(1, durationMicros)) * width;
   return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}"><title>${label} at ${formatDuration(atMicros)}</title></line>`;
@@ -321,6 +359,7 @@ function wireTimelineControls(root: HTMLElement): void {
       if (series.dataset.series === metric && series.dataset.seriesWindow === timeline.dataset.timelineWindow) series.removeAttribute("hidden");
       else series.setAttribute("hidden", "");
     });
+    refreshTimelineInspection(timeline);
   }));
   root.querySelectorAll<HTMLButtonElement>("[data-window]").forEach((button) => button.addEventListener("click", () => {
     const window = button.dataset.window;
@@ -332,7 +371,149 @@ function wireTimelineControls(root: HTMLElement): void {
       if (series.dataset.series === timeline.dataset.timelineMetric && series.dataset.seriesWindow === window) series.removeAttribute("hidden");
       else series.setAttribute("hidden", "");
     });
+    refreshTimelineInspection(timeline);
   }));
+  root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]").forEach((button) => button.addEventListener("click", () => {
+    const timeline = button.closest<HTMLElement>("[data-timeline-metric]");
+    const participant = button.dataset.participantToggle;
+    if (!timeline || participant == null) return;
+    const visible = button.getAttribute("aria-pressed") !== "true";
+    button.setAttribute("aria-pressed", String(visible));
+    timeline.querySelectorAll<SVGPolylineElement>(`[data-participant="${participant}"]`).forEach((track) => {
+      if (visible) track.removeAttribute("hidden");
+      else track.setAttribute("hidden", "");
+    });
+    refreshTimelineInspection(timeline);
+  }));
+  root.querySelectorAll<SVGRectElement>("[data-timeline-inspector]").forEach((inspector) => {
+    const timeline = inspector.closest<HTMLElement>("[data-timeline-metric]");
+    if (!timeline) return;
+    const play = timeline.querySelector<HTMLButtonElement>("[data-timeline-play]");
+    const scrubber = timeline.querySelector<HTMLInputElement>("[data-timeline-scrubber]");
+    let playing = false;
+    let playbackFrame: number | null = null;
+    let playbackOriginMillis = 0;
+    let playbackOriginSecond = 0;
+    const stopPlayback = () => {
+      playing = false;
+      if (playbackFrame !== null) cancelAnimationFrame(playbackFrame);
+      playbackFrame = null;
+      if (play) {
+        play.textContent = "Play";
+        play.setAttribute("aria-pressed", "false");
+      }
+    };
+    const tickPlayback = (now: number) => {
+      if (!playing) return;
+      if (!timeline.isConnected) {
+        stopPlayback();
+        return;
+      }
+      const duration = Number(inspector.getAttribute("aria-valuemax") ?? "0");
+      const second = playbackOriginSecond + (now - playbackOriginMillis) / 1_000;
+      const boundedSecond = Math.min(duration, Math.round(second));
+      if (Number(inspector.getAttribute("aria-valuenow") ?? "-1") !== boundedSecond) {
+        showTimelineInspection(timeline, boundedSecond);
+      }
+      if (second >= duration) {
+        showTimelineInspection(timeline, duration);
+        stopPlayback();
+        return;
+      }
+      playbackFrame = requestAnimationFrame(tickPlayback);
+    };
+    const startPlayback = () => {
+      if (playing || !play) return;
+      const duration = Number(inspector.getAttribute("aria-valuemax") ?? "0");
+      const current = Number(inspector.getAttribute("aria-valuenow") ?? "0");
+      playbackOriginSecond = current >= duration ? 0 : current;
+      playbackOriginMillis = performance.now();
+      playing = true;
+      play.textContent = "Pause";
+      play.setAttribute("aria-pressed", "true");
+      showTimelineInspection(timeline, playbackOriginSecond);
+      playbackFrame = requestAnimationFrame(tickPlayback);
+    };
+    play?.addEventListener("click", () => playing ? stopPlayback() : startPlayback());
+    scrubber?.addEventListener("input", () => {
+      stopPlayback();
+      showTimelineInspection(timeline, Number(scrubber.value));
+    });
+    inspector.addEventListener("pointermove", (event) => {
+      stopPlayback();
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return;
+      const bounds = svg.getBoundingClientRect();
+      const left = Number(svg.dataset.plotLeft), plotWidth = Number(svg.dataset.plotWidth);
+      const viewBoxWidth = svg.viewBox.baseVal.width || bounds.width;
+      const viewX = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * viewBoxWidth;
+      const second = Math.round(((viewX - left) / Math.max(1, plotWidth)) * Number(svg.dataset.durationSeconds));
+      showTimelineInspection(timeline, Math.max(0, Math.min(Number(svg.dataset.durationSeconds), second)));
+    });
+    inspector.addEventListener("focus", () => showTimelineInspection(timeline, Number(inspector.getAttribute("aria-valuenow") ?? "0")));
+    inspector.addEventListener("keydown", (event) => {
+      const duration = Number(inspector.getAttribute("aria-valuemax") ?? "0");
+      const current = Number(inspector.getAttribute("aria-valuenow") ?? "0");
+      const next = event.key === "ArrowLeft" || event.key === "ArrowDown" ? current - 1
+        : event.key === "ArrowRight" || event.key === "ArrowUp" ? current + 1
+        : event.key === "Home" ? 0 : event.key === "End" ? duration : undefined;
+      if (next == null) return;
+      event.preventDefault();
+      stopPlayback();
+      showTimelineInspection(timeline, Math.max(0, Math.min(duration, next)));
+    });
+  });
+}
+
+function refreshTimelineInspection(timeline: HTMLElement): void {
+  const inspector = timeline.querySelector<SVGRectElement>("[data-timeline-inspector]");
+  if (inspector && !timeline.querySelector<SVGGElement>("[data-timeline-crosshair]")?.hasAttribute("hidden")) {
+    showTimelineInspection(timeline, Number(inspector.getAttribute("aria-valuenow") ?? "0"));
+  }
+}
+
+function showTimelineInspection(timeline: HTMLElement, second: number): void {
+  const svg = timeline.querySelector<SVGSVGElement>(".timeline-svg");
+  const inspector = svg?.querySelector<SVGRectElement>("[data-timeline-inspector]");
+  const crosshair = svg?.querySelector<SVGGElement>("[data-timeline-crosshair]");
+  const output = timeline.querySelector<HTMLElement>("[data-timeline-inspection]");
+  if (!svg || !inspector || !crosshair || !output) return;
+  const duration = Number(svg.dataset.durationSeconds), left = Number(svg.dataset.plotLeft), width = Number(svg.dataset.plotWidth);
+  const bounded = Math.max(0, Math.min(duration, Math.round(second)));
+  const x = left + (bounded / Math.max(1, duration)) * width;
+  crosshair.removeAttribute("hidden");
+  crosshair.querySelector("line")?.setAttribute("x1", x.toFixed(1));
+  crosshair.querySelector("line")?.setAttribute("x2", x.toFixed(1));
+  inspector.setAttribute("aria-valuenow", String(bounded));
+  const scrubber = timeline.querySelector<HTMLInputElement>("[data-timeline-scrubber]");
+  if (scrubber) scrubber.value = String(bounded);
+  const active = [...svg.querySelectorAll<SVGPolylineElement>(`[data-series="${timeline.dataset.timelineMetric}"][data-series-window="${timeline.dataset.timelineWindow}"]:not([hidden]) polyline:not([hidden])`)].map((line) => ({
+    participant: line.dataset.participant ?? "",
+    label: line.dataset.label ?? "Player",
+    color: line.getAttribute("stroke") ?? "currentColor",
+    variants: timelineRateVariantsAtSecond({
+      one: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "1", line.dataset.participant ?? ""),
+      five: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "5", line.dataset.participant ?? ""),
+      ten: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "10", line.dataset.participant ?? ""),
+    }, bounded),
+  }));
+  const metric = timeline.dataset.timelineMetric === "effective_healing" ? "HPS" : timeline.dataset.timelineMetric === "damage_taken" ? "TPS" : "DPS";
+  const time = formatDuration(bounded * 1_000_000);
+  const details = active.length ? active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>1s ${formatNumber(row.variants.one)} · 5s ${formatNumber(row.variants.five)} · 10s ${formatNumber(row.variants.ten)} · avg ${formatNumber(row.variants.cumulative)} ${metric}</strong></span>`).join("") : "<span>No participants selected.</span>";
+  output.innerHTML = `<strong>${time}</strong>${details}`;
+  inspector.setAttribute("aria-valuetext", `${time}; ${active.map((row) => `${row.label}: 1 second ${formatNumber(row.variants.one)}, 5 second ${formatNumber(row.variants.five)}, 10 second ${formatNumber(row.variants.ten)}, average to now ${formatNumber(row.variants.cumulative)} ${metric}`).join("; ") || "no participants selected"}`);
+}
+
+function timelineSamplesFor(svg: SVGSVGElement, metric: string, window: string, participant: string): Array<[number, number]> {
+  const line = svg.querySelector<SVGPolylineElement>(`[data-series="${metric}"][data-series-window="${window}"] [data-participant="${participant}"]`);
+  return parseTimelineValues(line?.dataset.values ?? "");
+}
+
+function parseTimelineValues(value: string): Array<[number, number]> {
+  return value ? value.split(",").flatMap((entry) => {
+    const [second, amount] = entry.split(":").map(Number);
+    return Number.isFinite(second) && Number.isFinite(amount) ? [[second, amount] as [number, number]] : [];
+  }) : [];
 }
 
 function renderParticipant(actor: PublicRun["participants"][number]): string {
@@ -411,9 +592,7 @@ function label(value: string, count: number): string {
 }
 
 function escapeHtml(value: string): string {
-  const node = document.createElement("span");
-  node.textContent = value;
-  return node.innerHTML;
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 }
 
 function message(error: unknown): string {
