@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
-import { renderReport, renderTimeline, rollingBucketSeries, selectCanonicalGraph, timelineCumulativeRateLabel, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
+import { hasCompleteRdpsBuckets, renderReport, renderTimeline, rollingBucketSeries, selectCanonicalGraph, timelineCumulativeRateLabel, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(readFileSync(new URL(`../../../public/fixtures/${name}`, import.meta.url), "utf8")) as T;
 
@@ -80,8 +80,31 @@ describe("damage-rate labels", () => {
     expect(html).toContain(`<small>Team aDPS</small><strong>${teamAdps.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong>`);
     expect(html).toContain('<small>eDPS</small><strong>1,661,739.1</strong>');
     expect(html).toContain('<small>aDPS</small><strong>2,871,605.2</strong>');
-    expect(html).toContain('<small>Partial rDPS</small><strong>1,661,739.1</strong>');
+    expect(html).toContain('<small>Partial rDPS</small><strong>1,661,550.5</strong>');
     expect(html).not.toContain('<small>Team DPS</small>');
+  });
+
+  it("plots only complete server-published rDPS buckets without damage fallback", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const html = renderTimeline(graph);
+    expect(html).toContain('data-metric="rdps_damage"');
+    expect(html).toContain('data-series="rdps_damage"');
+    expect(html).toContain('data-values="0:1200000,1:2490000');
+    expect(html).toContain("missing buckets are never replaced with ordinary damage");
+    expect(hasCompleteRdpsBuckets(report.runs[0].participants[0].series)).toBe(true);
+    const rdps = rollingBucketSeries(report.runs[0].participants[0].series, "rdps_damage", 4, 1);
+    expect(timelineRateVariantsAtSecond({ one: rdps, five: rdps, ten: rdps }, 1).one).toBe(2_490_000);
+
+    const unavailable = structuredClone(report.runs[0]);
+    unavailable.participants.forEach((participant) => participant.series.forEach((point) => {
+      delete point.rdps_damage;
+      delete point.rdps_contribution_given;
+      delete point.rdps_contribution_received;
+    }));
+    const legacyHtml = renderTimeline(selectCanonicalGraph(unavailable));
+    expect(legacyHtml).not.toContain('data-metric="rdps_damage"');
+    expect(legacyHtml).not.toContain('data-series="rdps_damage"');
   });
 });
 

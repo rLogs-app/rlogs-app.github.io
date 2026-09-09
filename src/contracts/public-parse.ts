@@ -20,7 +20,7 @@ export interface FacetValue { id: string; count: number }
 export interface SceneFacetValue { id: number; label?: string; count: number }
 
 export interface PublicParseReport {
-  schema_version: 14; projection_revision: 4; report_id: string; visibility: "public" | "unlisted";
+  schema_version: 14; projection_revision: 4 | 5; report_id: string; visibility: "public" | "unlisted";
   created_unix_millis: number; game_plugin_id: string; deployment_id: string; region_id: string;
   world_id: string | null; client_build: string; protocol_pack_digest: string; verification: PublicVerification;
   submission_provenance: PublicSubmissionProvenance; runs: PublicRun[];
@@ -42,15 +42,18 @@ export interface PublicRun {
 export interface PublicRunSegment {
   index: number; kind: string; wall_time_micros: number; active_combat_micros: number; attempt_count: number; retry_count: number;
 }
-export interface PublicSeriesPoint { second: number; damage: number; effective_healing: number; damage_taken: number }
+export interface PublicSeriesPoint {
+  second: number; damage: number; effective_healing: number; damage_taken: number;
+  rdps_damage?: number; rdps_contribution_given?: number; rdps_contribution_received?: number;
+}
 export interface PublicParticipant {
   actor_id: string; character_id: string | null; observed_character_key?: string | null; display_name: string | null;
   actor_kind: string | null; class_id: number | null; class_name: string | null; specialization_id: number | null;
   specialization_name: string | null; damage: number; dps: number; encounter_dps: number; hps: number; tps: number;
-  rdps: number | null; deaths: number; death_seconds: number[]; series: PublicSeriesPoint[];
+  rdps: number | null; rdps_incomplete?: boolean; deaths: number; death_seconds: number[]; series: PublicSeriesPoint[];
 }
 export interface PublicCombatTimeline {
-  schema_version: 1; source: "single_report" | "reconciled_canonical_spine";
+  schema_version: 1 | 2; source: "single_report" | "reconciled_canonical_spine";
   canonical_report_id: string; canonical_run_index: number; contributing_report_ids: string[]; duration_micros: number;
   time_basis: "run_elapsed" | "capture_observed"; series_bucket_micros: number;
   coverage: { authoritative_start: boolean; authoritative_completion: boolean; data_gap_count: number; gap_timing: "no_known_gaps" | "count_only" };
@@ -88,13 +91,17 @@ export function isPublicParseCatalog(value: unknown): value is PublicParseCatalo
     value.entries.every(isCatalogEntry) && isCatalogFacets(value.facets);
 }
 export function isPublicParseReport(value: unknown): value is PublicParseReport {
-  return isRecord(value) && value.schema_version === 14 && value.projection_revision === 4 && typeof value.report_id === "string" &&
+  if (!isRecord(value) || value.schema_version !== 14 || (value.projection_revision !== 4 && value.projection_revision !== 5)) return false;
+  const timelineSchema = value.projection_revision === 4 ? 1 : 2;
+  return typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) && (value.visibility === "public" || value.visibility === "unlisted") &&
     isVerification(value.verification) && Array.isArray(value.runs) &&
-    value.runs.every((run) => isPublicRun(run, value.report_id));
+    value.runs.every((run) => isPublicRun(run, value.report_id, timelineSchema));
 }
 export function isPublicRunReconciliation(value: unknown): value is PublicRunReconciliation {
-  return isRecord(value) && value.schema_version === 15 && typeof value.reconciliation_id === "string" &&
+  if (!isRecord(value) || value.schema_version !== 15 || !isRecord(value.timeline) || (value.timeline.schema_version !== 1 && value.timeline.schema_version !== 2)) return false;
+  const timelineSchema = value.timeline.schema_version;
+  return typeof value.reconciliation_id === "string" &&
     typeof value.run_group_id === "string" && groupIdPattern.test(value.run_group_id) && isReconciliationStatus(value.status) &&
     isCanonicalSpine(value.canonical_spine) && Array.isArray(value.reports) && value.reports.length > 0 &&
     value.reports.every(isReconciliationReport) && unique(value.reports.map((report) => report.report_id)) &&
@@ -105,7 +112,7 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
     typeof value.complete_local_vantage_coverage === "boolean" && replayReadiness.has(value.state_replay_readiness) &&
     Array.isArray(value.state_replay_blockers) && value.state_replay_blockers.every((blocker) => typeof blocker === "string") &&
     typeof value.attribution_replay_completed === "boolean" && isConservation(value.conservation) && isReplayStateConsistent(value) &&
-    Array.isArray(value.reconciled_participants) && value.reconciled_participants.every(isParticipant) &&
+    Array.isArray(value.reconciled_participants) && value.reconciled_participants.every((participant) => isParticipant(participant, timelineSchema)) &&
     isTimeline(value.timeline, value.reconciled_participants, value.attribution_replay_completed) &&
     value.timeline.canonical_report_id === value.canonical_spine.report_id &&
     value.timeline.canonical_run_index === value.canonical_spine.run_index &&
@@ -129,20 +136,21 @@ function isVerification(value: unknown): boolean {
   return isRecord(value) && ["replayed", "corroborated", "ranked"].includes(String(value.tier)) &&
     typeof value.artifact_sha256 === "string" && isNonNegativeInteger(value.event_count);
 }
-function isPublicRun(value: unknown, reportId: string): boolean {
+function isPublicRun(value: unknown, reportId: string, timelineSchema: 1 | 2): boolean {
   return isRecord(value) && isNonNegativeInteger(value.run_index) && typeof value.run_group_id === "string" &&
-    groupIdPattern.test(value.run_group_id) && Array.isArray(value.participants) && value.participants.every(isParticipant) &&
+    groupIdPattern.test(value.run_group_id) && isRecord(value.timeline) && value.timeline.schema_version === timelineSchema &&
+    Array.isArray(value.participants) && value.participants.every((participant) => isParticipant(participant, timelineSchema)) &&
     isTimeline(value.timeline, value.participants, true) && value.timeline.canonical_report_id === reportId &&
     value.timeline.canonical_run_index === value.run_index;
 }
-function isParticipant(value: unknown): boolean {
+function isParticipant(value: unknown, timelineSchema: 1 | 2): boolean {
   return isRecord(value) && typeof value.actor_id === "string" && value.actor_id.length > 0 && isFiniteNumber(value.damage) && isFiniteNumber(value.dps) &&
-    Array.isArray(value.series) && value.series.length <= 604_800 && value.series.every((point) => isRecord(point) &&
-      isNonNegativeInteger(point.second) && isNonNegativeInteger(point.damage) && isNonNegativeInteger(point.effective_healing) &&
-      isNonNegativeInteger(point.damage_taken)) && strictlyAscending(value.series.map((point) => point.second));
+    (timelineSchema === 1 ? value.rdps_incomplete === undefined || typeof value.rdps_incomplete === "boolean" : typeof value.rdps_incomplete === "boolean") &&
+    Array.isArray(value.series) && value.series.length <= 604_800 && value.series.every((point) => isSeriesPoint(point, timelineSchema)) &&
+    strictlyAscending(value.series.map((point) => point.second));
 }
 function isTimeline(value: unknown, participants: readonly unknown[], requireResolvedTracks: boolean): value is PublicCombatTimeline {
-  return isRecord(value) && value.schema_version === 1 && (value.source === "single_report" || value.source === "reconciled_canonical_spine") &&
+  return isRecord(value) && (value.schema_version === 1 || value.schema_version === 2) && (value.source === "single_report" || value.source === "reconciled_canonical_spine") &&
     typeof value.canonical_report_id === "string" && reportIdPattern.test(value.canonical_report_id) &&
     isNonNegativeInteger(value.canonical_run_index) && Array.isArray(value.contributing_report_ids) &&
     value.contributing_report_ids.length > 0 && value.contributing_report_ids.every((id) => typeof id === "string" && reportIdPattern.test(id)) &&
@@ -157,6 +165,14 @@ function isTimeline(value: unknown, participants: readonly unknown[], requireRes
     value.loadout_markers.every((marker) => value.contributing_report_ids.includes(marker.source_report_id)) &&
     Array.isArray(value.rdps_influence_spans) && value.rdps_influence_spans.length <= 65_536 && value.rdps_influence_spans.every((span) => isRdpsSpan(span, value.duration_micros)) &&
     isCoverage(value.coverage) && isOmitted(value.omitted);
+}
+function isSeriesPoint(value: unknown, timelineSchema: 1 | 2): boolean {
+  if (!isRecord(value) || !isNonNegativeInteger(value.second) || !isNonNegativeInteger(value.damage) ||
+      !isNonNegativeInteger(value.effective_healing) || !isNonNegativeInteger(value.damage_taken)) return false;
+  const attribution = [value.rdps_damage, value.rdps_contribution_given, value.rdps_contribution_received];
+  if (timelineSchema === 1) return attribution.every((field) => field === undefined);
+  const present = attribution.filter((field) => field !== undefined).length;
+  return present === 0 || (present === attribution.length && attribution.every(isNonNegativeInteger));
 }
 function isCanonicalSpine(value: unknown): value is PublicRunReconciliation["canonical_spine"] {
   return isRecord(value) && typeof value.report_id === "string" && reportIdPattern.test(value.report_id) &&

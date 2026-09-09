@@ -200,6 +200,7 @@ export interface CanonicalGraphSelection {
   timeline: PublicRun["timeline"];
   reconciled: boolean;
   trustLabel: string;
+  rdpsStatus: string;
 }
 
 export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunReconciliation): CanonicalGraphSelection {
@@ -211,13 +212,13 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
       track.series_point_count <= reconciliation.reconciled_participants[track.canonical_participant_index]!.series.length);
   if (usable) {
     return { participants: reconciliation.reconciled_participants, timeline: reconciliation.timeline, reconciled: true,
-      trustLabel: `${reconciliation.reports.length} POVs / conserved replay` };
+      trustLabel: `${reconciliation.reports.length} POVs / conserved replay`, rdpsStatus: run.rdps_status };
   }
   return { participants: run.participants, timeline: run.timeline, reconciled: false,
-    trustLabel: reconciliation ? "Canonical POV / reconciliation pending" : "Canonical POV / no merged replay" };
+    trustLabel: reconciliation ? "Canonical POV / reconciliation pending" : "Canonical POV / no merged replay", rdpsStatus: run.rdps_status };
 }
 
-type TimelineMetric = "damage" | "effective_healing" | "damage_taken";
+type TimelineMetric = "damage" | "effective_healing" | "damage_taken" | "rdps_damage";
 const palette = ["#52cfff", "#ffcc66", "#91e6a5", "#ff7aa8", "#b8a1ff", "#ff9166", "#7ce3dc", "#d9f06f"];
 
 export function renderTimeline(graph: CanonicalGraphSelection): string {
@@ -228,17 +229,22 @@ export function renderTimeline(graph: CanonicalGraphSelection): string {
     if (!actor || actor.actor_id !== track.actor_id) return [];
     return [{ actor, track, color: palette[trackIndex % palette.length] }];
   });
+  const rdpsTracks = plotted.filter(({ actor, track }) => hasCompleteRdpsBuckets(actor.series.slice(0, track.series_point_count)));
+  const partialRdps = graph.rdpsStatus.startsWith("partial_") || plotted.some(({ actor, track }) =>
+    actor.rdps_incomplete === true || !hasCompleteRdpsBuckets(actor.series.slice(0, track.series_point_count)));
+  const rdpsLabel = partialRdps ? "Partial rDPS" : "rDPS";
   const captureSpans = timeline.rdps_influence_spans.filter((span) => span.time_basis === "capture_observed").length;
   const runAlignedSpans = timeline.rdps_influence_spans.filter((span) => span.time_basis === "run_elapsed").length;
   const omissions = Object.values(timeline.omitted).reduce((sum, value) => sum + value, 0);
   const coverage = timeline.coverage.authoritative_start && timeline.coverage.authoritative_completion ? "Complete run bounds" : "Partial run bounds";
   const gaps = timeline.coverage.data_gap_count ? `${timeline.coverage.data_gap_count} unpositioned gap${timeline.coverage.data_gap_count === 1 ? "" : "s"}` : "No known gaps";
-  return `<section class="combat-timeline" data-timeline-metric="damage" data-timeline-window="5" aria-label="Combat timeline">
+  return `<section class="combat-timeline" data-timeline-metric="damage" data-timeline-window="5" data-timeline-rdps-label="${rdpsLabel}" aria-label="Combat timeline">
     <div class="timeline-heading"><div><strong>Combat timeline</strong><small>${escapeHtml(graph.trustLabel)}</small></div>
       <div class="timeline-controls" role="group" aria-label="Timeline metric">
         <button type="button" data-metric="damage" aria-pressed="true">DPS</button>
         <button type="button" data-metric="effective_healing" aria-pressed="false">HPS</button>
         <button type="button" data-metric="damage_taken" aria-pressed="false" title="Damage taken per second">TPS</button>
+        ${rdpsTracks.length ? `<button type="button" data-metric="rdps_damage" aria-pressed="false" title="Exact server-published rDPS-adjusted damage per run-elapsed second">${rdpsLabel}</button>` : ""}
       </div></div>
     <div class="timeline-window-controls" role="group" aria-label="Trailing average window">
       <span>Trailing average</span>
@@ -251,34 +257,39 @@ export function renderTimeline(graph: CanonicalGraphSelection): string {
       <button type="button" data-timeline-play aria-pressed="false">Play</button>
       <input type="range" data-timeline-scrubber min="0" max="${durationSeconds}" step="1" value="0" aria-label="Timeline position" />
     </div>
-    <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted)}</div>
+    <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, rdpsLabel)}</div>
     <div class="timeline-inspection" data-timeline-inspection aria-live="polite"><strong>Point inspection</strong><span>Hover the graph or focus it and use the arrow keys.</span></div>
     <div class="timeline-legend" role="group" aria-label="Visible participants">${plotted.map(({ actor, color }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i></i><span>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</span></button>`).join("")}</div>
-    ${(captureSpans || runAlignedSpans || omissions) ? `<p class="timeline-note">${runAlignedSpans ? `${runAlignedSpans} verified rDPS affected-damage span${runAlignedSpans === 1 ? " is" : "s are"} shown in the evidence lane. ` : ""}${captureSpans ? `${captureSpans} rDPS influence span${captureSpans === 1 ? " is" : "s are"} capture-clock evidence and ${captureSpans === 1 ? "is" : "are"} intentionally not positioned on this run-elapsed graph. ` : ""}${omissions ? `${omissions} bounded item${omissions === 1 ? " was" : "s were"} omitted by the public projection.` : ""}</p>` : ""}
+    ${(rdpsTracks.length || captureSpans || runAlignedSpans || omissions) ? `<p class="timeline-note">${rdpsTracks.length ? `${rdpsLabel} uses exact server-published adjusted-damage buckets; missing buckets are never replaced with ordinary damage. ` : ""}${runAlignedSpans ? `${runAlignedSpans} verified rDPS affected-damage span${runAlignedSpans === 1 ? " is" : "s are"} shown in the evidence lane. ` : ""}${captureSpans ? `${captureSpans} rDPS influence span${captureSpans === 1 ? " is" : "s are"} capture-clock evidence and ${captureSpans === 1 ? "is" : "are"} intentionally not positioned on this run-elapsed graph. ` : ""}${omissions ? `${omissions} bounded item${omissions === 1 ? " was" : "s were"} omitted by the public projection.` : ""}</p>` : ""}
   </section>`;
 }
 
-function renderTimelineSvg(timeline: PublicRun["timeline"], plotted: Array<{ actor: PublicParticipant; track: PublicRun["timeline"]["participant_tracks"][number]; color: string }>): string {
+function renderTimelineSvg(timeline: PublicRun["timeline"], plotted: Array<{ actor: PublicParticipant; track: PublicRun["timeline"]["participant_tracks"][number]; color: string }>, rdpsLabel: string): string {
   const width = 920, height = 270, left = 48, right = 14, top = 16, bottom = 34;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const seconds = Math.max(1, Math.ceil(timeline.duration_micros / 1_000_000));
-  const metrics: TimelineMetric[] = ["damage", "effective_healing", "damage_taken"];
+  const hasRdps = plotted.some(({ actor, track }) => hasCompleteRdpsBuckets(actor.series.slice(0, track.series_point_count)));
+  const metrics: TimelineMetric[] = ["damage", "effective_healing", "damage_taken", ...(hasRdps ? ["rdps_damage" as const] : [])];
   const windows = [1, 5, 10] as const;
   const groups = metrics.flatMap((metric) => windows.map((windowSeconds) => {
-    const curves = plotted.map(({ actor, track, color }) => ({ actor, track, color,
-      points: rollingBucketSeries(actor.series.slice(0, track.series_point_count), metric, seconds, windowSeconds) }));
+    const curves = plotted.flatMap(({ actor, track, color }, participantIndex) => {
+      const points = actor.series.slice(0, track.series_point_count);
+      if (metric === "rdps_damage" && !hasCompleteRdpsBuckets(points)) return [];
+      return [{ actor, track, color, participantIndex, points: rollingBucketSeries(points, metric, seconds, windowSeconds) }];
+    });
     const max = Math.max(1, ...curves.flatMap(({ points }) => points.map(([, value]) => value)));
-    const lines = curves.map(({ actor, color, points: samples }, participantIndex) => {
+    const lines = curves.map(({ actor, color, participantIndex, points: samples }) => {
       const coords = samples.map(([second, value]) => {
         const x = left + (second / seconds) * plotWidth;
         const y = top + plotHeight - (value / max) * plotHeight;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       });
       const values = samples.map(([second, value]) => `${second}:${value}`).join(",");
-      return `<polyline data-participant="${participantIndex}" data-label="${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}" data-values="${values}" points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actor.display_name ?? actor.actor_id)} ${metric.replaceAll("_", " ")}</title></polyline>`;
+      return `<polyline data-participant="${participantIndex}" data-label="${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}" data-values="${values}" points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actor.display_name ?? actor.actor_id)} ${metric === "rdps_damage" ? rdpsLabel : metric.replaceAll("_", " ")}</title></polyline>`;
     }).join("");
     const visible = metric === "damage" && windowSeconds === 5;
-    return `<g data-series="${metric}" data-series-window="${windowSeconds}"${visible ? "" : " hidden"}>${lines}<text x="6" y="22" class="timeline-axis-label">${metric === "damage" ? "DPS" : metric === "effective_healing" ? "HPS" : "TPS"}</text><text x="6" y="${top + plotHeight}" class="timeline-axis-label">0</text></g>`;
+    const axisLabel = metric === "damage" ? "DPS" : metric === "effective_healing" ? "HPS" : metric === "damage_taken" ? "TPS" : rdpsLabel;
+    return `<g data-series="${metric}" data-series-window="${windowSeconds}"${visible ? "" : " hidden"}>${lines}<text x="6" y="22" class="timeline-axis-label">${axisLabel}</text><text x="6" y="${top + plotHeight}" class="timeline-axis-label">0</text></g>`;
   })).join("");
   const deaths = timeline.death_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", "Death")).join("");
   const loadouts = timeline.loadout_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", "Loadout change")).join("");
@@ -302,7 +313,7 @@ export function rollingBucketSeries(points: readonly PublicParticipant["series"]
   const totals = new Map<number, number>();
   for (const point of points) {
     const amount = point[metric];
-    if (point.second > duration || amount === 0) continue;
+    if (point.second > duration || amount == null || amount === 0) continue;
     for (let second = point.second; second <= Math.min(duration, point.second + window - 1); second += 1) {
       totals.set(second, (totals.get(second) ?? 0) + amount);
     }
@@ -319,6 +330,11 @@ export function rollingBucketSeries(points: readonly PublicParticipant["series"]
   });
   if (samples.at(-1)?.[0] !== duration) samples.push([duration, 0]);
   return samples;
+}
+
+export function hasCompleteRdpsBuckets(points: readonly PublicParticipant["series"][number][]): boolean {
+  return points.length > 0 && points.every((point) => point.rdps_damage !== undefined &&
+    point.rdps_contribution_given !== undefined && point.rdps_contribution_received !== undefined);
 }
 
 export function timelineValueAtSecond(samples: readonly [number, number][], second: number): number {
@@ -497,7 +513,9 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
       ten: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "10", line.dataset.participant ?? ""),
     }, bounded),
   }));
-  const metric = timeline.dataset.timelineMetric === "effective_healing" ? "HPS" : timeline.dataset.timelineMetric === "damage_taken" ? "TPS" : "DPS";
+  const metric = timeline.dataset.timelineMetric === "effective_healing" ? "HPS"
+    : timeline.dataset.timelineMetric === "damage_taken" ? "TPS"
+    : timeline.dataset.timelineMetric === "rdps_damage" ? timeline.dataset.timelineRdpsLabel ?? "rDPS" : "DPS";
   const time = formatDuration(bounded * 1_000_000);
   const cumulativeLabel = timelineCumulativeRateLabel(metric);
   const details = active.length ? active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>1s ${formatNumber(row.variants.one)} · 5s ${formatNumber(row.variants.five)} · 10s ${formatNumber(row.variants.ten)} · ${cumulativeLabel} ${formatNumber(row.variants.cumulative)}</strong></span>`).join("") : "<span>No participants selected.</span>";
@@ -505,7 +523,7 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
   inspector.setAttribute("aria-valuetext", `${time}; ${active.map((row) => `${row.label}: 1 second ${formatNumber(row.variants.one)}, 5 second ${formatNumber(row.variants.five)}, 10 second ${formatNumber(row.variants.ten)}, ${cumulativeLabel} to now ${formatNumber(row.variants.cumulative)}`).join("; ") || "no participants selected"}`);
 }
 
-export function timelineCumulativeRateLabel(metric: "DPS" | "HPS" | "TPS"): string {
+export function timelineCumulativeRateLabel(metric: string): string {
   return `run ${metric}`;
 }
 
@@ -522,7 +540,7 @@ function parseTimelineValues(value: string): Array<[number, number]> {
 }
 
 function renderParticipant(actor: PublicRun["participants"][number], rdpsStatus: string): string {
-  const rdpsLabel = rdpsStatus.startsWith("partial_") ? "Partial rDPS" : "rDPS";
+  const rdpsLabel = rdpsStatus.startsWith("partial_") || actor.rdps_incomplete === true ? "Partial rDPS" : "rDPS";
   return `<div class="parse-party-row"><span><strong>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</strong>
     <small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span>
     <span><small>Damage</small><strong>${formatNumber(actor.damage)}</strong></span>
