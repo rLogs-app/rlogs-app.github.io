@@ -343,7 +343,7 @@ export function renderTimeline(graph: CanonicalGraphSelection): string {
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, rdpsLabel)}</div>
     <div class="timeline-inspection" data-timeline-inspection aria-live="polite"><strong>Point inspection</strong><span>Hover the graph or focus it and use the arrow keys.</span></div>
     <div class="timeline-legend" role="group" aria-label="Visible participants">${plotted.map(({ actor, color }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i></i><span>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</span></button>`).join("")}</div>
-    ${(rdpsTracks.length || captureSpans || runAlignedSpans || omissions || !timeline.rate_clock_complete) ? `<p class="timeline-note">${rdpsTracks.length ? `${rdpsLabel} uses exact server-published adjusted-damage buckets; missing buckets are never replaced with ordinary damage. ` : ""}${runAlignedSpans ? `${runAlignedSpans} verified rDPS affected-damage span${runAlignedSpans === 1 ? " is" : "s are"} shown in the evidence lane. ` : ""}${captureSpans ? `${captureSpans} rDPS influence span${captureSpans === 1 ? " is" : "s are"} capture-clock evidence and ${captureSpans === 1 ? "is" : "are"} intentionally not positioned on this run-elapsed graph. ` : ""}${!timeline.rate_clock_complete ? "Time-local eDPS and aDPS are unavailable because no complete reducer-authored rate clock was published; wall time is not substituted. " : ""}${omissions ? `${omissions} bounded item${omissions === 1 ? " was" : "s were"} omitted by the public projection.` : ""}</p>` : ""}
+    ${(rdpsTracks.length || captureSpans || runAlignedSpans || omissions || !timeline.rate_clock_complete) ? `<p class="timeline-note">${rdpsTracks.length ? `${rdpsLabel} uses exact server-published adjusted-damage buckets; missing buckets are never replaced with ordinary damage. Cumulative rDPS uses the published active-combat clock, not wall time. ` : ""}${runAlignedSpans ? `${runAlignedSpans} verified rDPS affected-damage span${runAlignedSpans === 1 ? " is" : "s are"} shown in the evidence lane. ` : ""}${captureSpans ? `${captureSpans} rDPS influence span${captureSpans === 1 ? " is" : "s are"} capture-clock evidence and ${captureSpans === 1 ? "is" : "are"} intentionally not positioned on this run-elapsed graph. ` : ""}${!timeline.rate_clock_complete ? "Time-local eDPS, aDPS, and cumulative rDPS are unavailable because no complete reducer-authored rate clock was published; wall time is not substituted. " : ""}${timeline.omitted.series_points ? "Time-local cumulative rates are unavailable because the public series numerator was truncated. " : ""}${omissions ? `${omissions} bounded item${omissions === 1 ? " was" : "s were"} omitted by the public projection.` : ""}</p>` : ""}
   </section>`;
 }
 
@@ -373,7 +373,8 @@ function renderTimelineSvg(timeline: PublicRun["timeline"], plotted: Array<{ act
       const values = windowSeconds === 1
         ? ` data-values="${samples.map(([second, value]) => `${second}:${value}`).join(",")}"`
         : "";
-      return `<polyline data-participant="${participantIndex}" data-label="${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}"${values} points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actor.display_name ?? actor.actor_id)} ${metric === "rdps_damage" ? rdpsLabel : metric.replaceAll("_", " ")}</title></polyline>`;
+      const cumulativeComplete = metric !== "rdps_damage" || actor.rdps_incomplete === false;
+      return `<polyline data-participant="${participantIndex}" data-label="${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}" data-cumulative-complete="${cumulativeComplete}"${values} points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actor.display_name ?? actor.actor_id)} ${metric === "rdps_damage" ? rdpsLabel : metric.replaceAll("_", " ")}</title></polyline>`;
     }).join("");
     const visible = metric === "damage" && windowSeconds === 5;
     const axisLabel = metric === "damage" ? "DPS" : metric === "effective_healing" ? "HPS" : metric === "damage_taken" ? "TPS" : rdpsLabel;
@@ -388,7 +389,7 @@ function renderTimelineSvg(timeline: PublicRun["timeline"], plotted: Array<{ act
   }).join("");
   const rateClock = timeline.rate_clock_complete === true && timeline.rate_clock?.length
     ? timeline.rate_clock.map((point) => `${point.second}:${point.edps_elapsed_micros}:${point.adps_elapsed_micros}`).join(",") : "";
-  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="Sparse one-second combat rates over ${formatDuration(timeline.duration_micros)}; death and loadout markers use run elapsed time" data-duration-seconds="${seconds}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
+  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="Sparse one-second combat rates over ${formatDuration(timeline.duration_micros)}; death and loadout markers use run elapsed time" data-duration-seconds="${seconds}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-series-complete="${timeline.omitted.series_points === 0}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
     <line x1="${left}" y1="${top + plotHeight}" x2="${left + plotWidth}" y2="${top + plotHeight}" class="timeline-axis" />
     <text x="${left}" y="${height - 8}" class="timeline-tick">0:00</text><text x="${left + plotWidth}" y="${height - 8}" text-anchor="end" class="timeline-tick">${formatDuration(timeline.duration_micros)}</text>
     ${groups}${rdpsEvidence}${loadouts}${deaths}
@@ -472,6 +473,22 @@ export function timelineDamageRatesAtSecond(
     edps: damage * 1_000_000 / clock.edps_elapsed_micros,
     adps: damage * 1_000_000 / clock.adps_elapsed_micros,
   };
+}
+
+export function timelineRdpsAtSecond(
+  oneSecondAdjustedDamage: readonly [number, number][],
+  rateClock: readonly PublicTimelineRateClockPoint[] | null,
+  second: number,
+): number | null {
+  if (!rateClock?.length) return null;
+  const bounded = Math.max(0, Math.round(second));
+  const clock = rateClock[Math.min(bounded, rateClock.length - 1)];
+  if (!clock || clock.adps_elapsed_micros <= 0) return null;
+  const adjustedDamage = oneSecondAdjustedDamage.reduce(
+    (total, [sampleSecond, value]) => sampleSecond <= bounded ? total + value : total,
+    0,
+  );
+  return adjustedDamage * 1_000_000 / clock.adps_elapsed_micros;
 }
 
 function markerLine(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, kind: string, label: string): string {
@@ -627,20 +644,26 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
       five: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "5", line.dataset.participant ?? ""),
       ten: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "10", line.dataset.participant ?? ""),
     }, bounded),
-    damageRates: timeline.dataset.timelineMetric === "damage" ? timelineDamageRatesAtSecond(
+    damageRates: timeline.dataset.timelineMetric === "damage" && svg.dataset.seriesComplete === "true" ? timelineDamageRatesAtSecond(
       timelineSamplesFor(svg, "damage", "1", line.dataset.participant ?? ""),
       timelineRateClockFor(svg),
       bounded,
     ) : null,
+    rdps: timeline.dataset.timelineMetric === "rdps_damage" && svg.dataset.seriesComplete === "true" && line.dataset.cumulativeComplete === "true"
+      ? timelineRdpsAtSecond(
+        timelineSamplesFor(svg, "rdps_damage", "1", line.dataset.participant ?? ""),
+        timelineRateClockFor(svg),
+        bounded,
+      ) : null,
   }));
   const metric = timeline.dataset.timelineMetric === "effective_healing" ? "HPS"
     : timeline.dataset.timelineMetric === "damage_taken" ? "TPS"
     : timeline.dataset.timelineMetric === "rdps_damage" ? timeline.dataset.timelineRdpsLabel ?? "rDPS" : "DPS";
   const time = formatDuration(bounded * 1_000_000);
   const cumulativeLabel = timelineCumulativeRateLabel(metric);
-  const details = active.length ? active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>1s ${formatNumber(row.variants.one)} · 5s ${formatNumber(row.variants.five)} · 10s ${formatNumber(row.variants.ten)} · ${row.damageRates ? `eDPS ${formatNumber(row.damageRates.edps)} · aDPS ${formatNumber(row.damageRates.adps)}` : timeline.dataset.timelineMetric === "damage" ? "eDPS/aDPS unavailable" : `${cumulativeLabel} ${formatNumber(row.variants.cumulative)}`}</strong></span>`).join("") : "<span>No participants selected.</span>";
+  const details = active.length ? active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>1s ${formatNumber(row.variants.one)} · 5s ${formatNumber(row.variants.five)} · 10s ${formatNumber(row.variants.ten)} · ${row.damageRates ? `eDPS ${formatNumber(row.damageRates.edps)} · aDPS ${formatNumber(row.damageRates.adps)}` : timeline.dataset.timelineMetric === "damage" ? "eDPS/aDPS unavailable" : timeline.dataset.timelineMetric === "rdps_damage" ? row.rdps == null ? "cumulative rDPS unavailable" : `rDPS ${formatNumber(row.rdps)}` : `${cumulativeLabel} ${formatNumber(row.variants.cumulative)}`}</strong></span>`).join("") : "<span>No participants selected.</span>";
   output.innerHTML = `<strong>${time}</strong>${details}`;
-  inspector.setAttribute("aria-valuetext", `${time}; ${active.map((row) => `${row.label}: 1 second ${formatNumber(row.variants.one)}, 5 second ${formatNumber(row.variants.five)}, 10 second ${formatNumber(row.variants.ten)}, ${row.damageRates ? `eDPS ${formatNumber(row.damageRates.edps)}, aDPS ${formatNumber(row.damageRates.adps)}` : timeline.dataset.timelineMetric === "damage" ? "eDPS and aDPS unavailable" : `${cumulativeLabel} to now ${formatNumber(row.variants.cumulative)}`}`).join("; ") || "no participants selected"}`);
+  inspector.setAttribute("aria-valuetext", `${time}; ${active.map((row) => `${row.label}: 1 second ${formatNumber(row.variants.one)}, 5 second ${formatNumber(row.variants.five)}, 10 second ${formatNumber(row.variants.ten)}, ${row.damageRates ? `eDPS ${formatNumber(row.damageRates.edps)}, aDPS ${formatNumber(row.damageRates.adps)}` : timeline.dataset.timelineMetric === "damage" ? "eDPS and aDPS unavailable" : timeline.dataset.timelineMetric === "rdps_damage" ? row.rdps == null ? "cumulative rDPS unavailable" : `rDPS ${formatNumber(row.rdps)}` : `${cumulativeLabel} to now ${formatNumber(row.variants.cumulative)}`}`).join("; ") || "no participants selected"}`);
 }
 
 export function timelineCumulativeRateLabel(metric: string): string {

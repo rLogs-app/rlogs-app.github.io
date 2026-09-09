@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
-import { hasCompleteRdpsBuckets, partyLoadoutSummaries, renderPartyLoadouts, renderReport, renderTimeline, rollingBucketSeries, rollingTimelineSamples, selectCanonicalGraph, timelineCumulativeRateLabel, timelineDamageRatesAtSecond, timelineRateVariantsAtSecond, timelineValueAtSecond } from "./parse-browser";
+import { hasCompleteRdpsBuckets, partyLoadoutSummaries, renderPartyLoadouts, renderReport, renderTimeline, rollingBucketSeries, rollingTimelineSamples, selectCanonicalGraph, timelineCumulativeRateLabel, timelineDamageRatesAtSecond, timelineRateVariantsAtSecond, timelineRdpsAtSecond, timelineValueAtSecond } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(readFileSync(new URL(`../../../public/fixtures/${name}`, import.meta.url), "utf8")) as T;
 
@@ -90,6 +90,19 @@ describe("timeline rolling windows", () => {
     expect(timelineDamageRatesAtSecond([[0, 100]], null, 0)).toBeNull();
 
   });
+
+  it("uses the active-combat clock for cumulative rDPS and never wall time", () => {
+    const fixture = load<{
+      rate_clock: Array<{ second: number; edps_elapsed_micros: number; adps_elapsed_micros: number }>;
+      participants: Array<{ actor_id: string; rdps_incomplete: boolean; rdps_damage: Array<[number, number]> }>;
+    }>("timeline-rdps-cursor.v1.json");
+    const exact = fixture.participants.find((participant) => participant.actor_id === "exact")!;
+    expect(exact.rdps_incomplete).toBe(false);
+    expect(timelineRdpsAtSecond(exact.rdps_damage.slice(0, 2), fixture.rate_clock, 1)).toBe(200);
+    expect(timelineRdpsAtSecond(exact.rdps_damage.slice(0, 2), fixture.rate_clock, 2)).toBe(200);
+    expect(timelineRdpsAtSecond(exact.rdps_damage, fixture.rate_clock, 3)).toBe(150);
+    expect(timelineRdpsAtSecond([[0, 120]], null, 0)).toBeNull();
+  });
 });
 
 describe("damage-rate labels", () => {
@@ -114,8 +127,11 @@ describe("damage-rate labels", () => {
     expect(html).toContain('data-metric="rdps_damage"');
     expect(html).toContain('data-series="rdps_damage"');
     expect(html).toContain('data-rate-clock-complete="true"');
+    expect(html).toContain('data-series-complete="true"');
+    expect(html).toContain('data-cumulative-complete="false"');
     expect(html).toContain('data-rate-clock="0:1000000:1000000,1:2000000:2000000');
     expect(html).toContain("Exact eDPS/aDPS clock");
+    expect(html).toContain("Cumulative rDPS uses the published active-combat clock, not wall time");
     expect(html).toContain('data-values="0:1200000,1:2490000');
     const renderedTracks = html.match(/<polyline /gu) ?? [];
     const inspectionPayloads = html.match(/ data-values="/gu) ?? [];
@@ -148,6 +164,17 @@ describe("damage-rate labels", () => {
     expect(html).toContain('data-rate-clock-complete="false"');
     expect(html).not.toContain(' data-rate-clock="');
     expect(html).toContain("wall time is not substituted");
+  });
+
+  it("fails closed for time-local rates when public series points were omitted", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const html = renderTimeline({
+      ...graph,
+      timeline: { ...graph.timeline, omitted: { ...graph.timeline.omitted, series_points: 1 } },
+    });
+    expect(html).toContain('data-series-complete="false"');
+    expect(html).toContain("public series numerator was truncated");
   });
 
   it("stores one inspection payload per metric and participant for a 20-player raid", () => {
