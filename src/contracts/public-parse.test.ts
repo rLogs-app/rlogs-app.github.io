@@ -290,6 +290,17 @@ describe("public parse contract", () => {
     hit.ability_presentation = { ability_id: "2203292", name: "Published action", provenance: "exact_build_action_catalog" };
     expect(isPublicParseReport(report)).toBe(true);
 
+    const trustedCatalogLabels = structuredClone(report);
+    const trustedHit = trustedCatalogLabels.runs[0].timeline.death_markers[0].cause.final_hit;
+    trustedHit.source_actor_id = "monster-1342";
+    trustedHit.source_presentation = {
+      actor_id: "monster-1342",
+      name: "Tina - Void Reverie",
+      provenance: "trusted_monster_catalog_id",
+    };
+    trustedHit.ability_presentation.provenance = "trusted_action_catalog_id";
+    expect(isPublicParseReport(trustedCatalogLabels)).toBe(true);
+
     const invalidCases = [
       (candidate: any) => { candidate.source_presentation.actor_id = "someone-else"; },
       (candidate: any) => { candidate.source_presentation.name = "x".repeat(97); },
@@ -299,6 +310,8 @@ describe("public parse contract", () => {
       (candidate: any) => { candidate.direct_source_presentation.provenance = "exact_build_action_catalog"; },
       (candidate: any) => { candidate.ability_presentation.ability_id = "different-ability"; },
       (candidate: any) => { candidate.ability_presentation.provenance = "public_participant"; },
+      (candidate: any) => { candidate.source_presentation.provenance = "trusted_action_catalog_id"; },
+      (candidate: any) => { candidate.ability_presentation.provenance = "trusted_monster_catalog_id"; },
     ];
     for (const mutate of invalidCases) {
       const malformed = structuredClone(report);

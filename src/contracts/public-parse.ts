@@ -159,10 +159,10 @@ export interface PublicTimelineDeathHit {
   reported_damage: number; effective_damage: number; critical: boolean;
 }
 export interface PublicTimelineDeathActorPresentation {
-  actor_id: string; name: string; provenance: "public_participant" | "exact_build_monster_catalog";
+  actor_id: string; name: string; provenance: "public_participant" | "exact_build_monster_catalog" | "trusted_monster_catalog_id";
 }
 export interface PublicTimelineDeathAbilityPresentation {
-  ability_id: string; name: string; provenance: "exact_build_action_catalog";
+  ability_id: string; name: string; provenance: "exact_build_action_catalog" | "trusted_action_catalog_id";
 }
 
 export interface PublicReconciledParticipant extends PublicParticipant {
@@ -659,7 +659,8 @@ function isTimelineDeathHit(value: unknown, deathMicros: number, timelineSchema:
 function optionalDeathActorPresentation(value: unknown, actorId: unknown, participants: readonly unknown[]): boolean {
   if (value === undefined) return true;
   if (!isRecord(value) || value.actor_id !== actorId || !isBoundedPresentationName(value.name)) return false;
-  if (value.provenance === "exact_build_monster_catalog") return true;
+  if (value.provenance === "exact_build_monster_catalog" ||
+      value.provenance === "trusted_monster_catalog_id") return true;
   if (value.provenance !== "public_participant") return false;
   const matchingNames = participants.flatMap((participant) =>
     isRecord(participant) && participant.actor_id === actorId ? [participant.display_name] : []);
@@ -668,7 +669,8 @@ function optionalDeathActorPresentation(value: unknown, actorId: unknown, partic
 function optionalDeathAbilityPresentation(value: unknown, abilityId: unknown, breakdownAbilityId: unknown): boolean {
   return value === undefined || (isRecord(value) && isBoundedIdentifierText(value.ability_id) &&
     (value.ability_id === abilityId || value.ability_id === breakdownAbilityId) && isBoundedPresentationName(value.name) &&
-    value.provenance === "exact_build_action_catalog");
+    (value.provenance === "exact_build_action_catalog" ||
+      value.provenance === "trusted_action_catalog_id"));
 }
 function isBoundedPresentationName(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= 96;
