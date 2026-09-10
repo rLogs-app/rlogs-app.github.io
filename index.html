@@ -19,6 +19,7 @@
           "/my-parses": "my-parses",
           "/leaderboards": "leaderboards",
           "/profiles": "profiles",
+          "/profile-lab": "profile-lab",
           "/users": "users",
           "/account": "account",
           "/my-account": "my-account",
@@ -47,6 +48,7 @@
         <a href="/leaderboards/" data-nav-page="leaderboards">Leaderboards</a>
         <a href="/parses/" data-nav-page="parses">Parses</a>
         <a href="/profiles/" data-nav-page="profiles">Profiles</a>
+        <a href="/profile-lab/" data-nav-page="profile-lab" data-developer-only>Profile Lab</a>
         <a href="/my-account/" data-nav-page="my-account" data-authenticated-nav hidden>My Account</a>
         <a href="/optimizer/" data-nav-page="optimizer">Module Optimizer</a>
       </nav>
@@ -195,6 +197,59 @@
           <div id="profile-browser-detail" class="profile-browser-detail" aria-live="polite">
             <p class="empty-state">Choose a profile to view its latest snapshot.</p>
           </div>
+        </div>
+      </section>
+
+      <section id="profile-lab" class="content-section lab-section" data-page="profile-lab">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Developer-only local validation</p>
+            <h2>Character Profile Lab</h2>
+          </div>
+          <span id="profile-lab-status" class="status-chip neutral" role="status">Checking access…</span>
+        </div>
+        <article class="panel profile-lab-locked" data-developer-locked>
+          <p class="empty-state">
+            Character Profile Lab requires a developer-authorized account with website developer mode enabled.
+          </p>
+        </article>
+        <div class="lab-grid" data-developer-only>
+          <article class="panel editor-panel">
+            <div class="panel-heading">
+              <div>
+                <h3>Profile package or WebsitePayload</h3>
+                <p>Validation stays local. Open a native profile package or paste a sanitized public envelope.</p>
+              </div>
+            </div>
+            <textarea id="profile-lab-json" class="json-editor" aria-label="Character profile JSON" spellcheck="false"></textarea>
+            <div class="editor-actions">
+              <button id="profile-lab-validate" class="button primary" type="button">Validate and render</button>
+              <button id="profile-lab-reset" class="button secondary" type="button">Reset demo</button>
+              <label class="button secondary file-button">
+                Open profile JSON
+                <input id="profile-lab-file" type="file" accept=".json,application/json" />
+              </label>
+            </div>
+            <div class="profile-lab-published-controls">
+              <label>
+                <span>Published profile ID or linked character UID</span>
+                <input id="profile-lab-reference" type="text" autocomplete="off" placeholder="prf_… or UID" />
+              </label>
+              <button id="profile-lab-load-published" class="button secondary" type="button">Load published reference</button>
+            </div>
+            <ul id="profile-lab-errors" class="error-list" aria-live="polite"></ul>
+          </article>
+          <article class="panel preview-panel">
+            <div class="panel-heading">
+              <div>
+                <h3>Current profile presentation</h3>
+                <p>The preview uses the same renderer and localization catalog as public and account profiles.</p>
+              </div>
+            </div>
+            <div id="profile-lab-preview" class="profile-preview">
+              <p class="empty-state">A validated character profile will appear here.</p>
+            </div>
+          </article>
         </div>
       </section>
 

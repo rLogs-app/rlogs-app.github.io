@@ -1,7 +1,7 @@
 const sessionKey = "rlogs.web-session.v1";
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
-export type SitePage = "home" | "leaderboards" | "parses" | "my-parses" | "profiles" | "users" | "account" | "my-account" | "optimizer";
+export type SitePage = "home" | "leaderboards" | "parses" | "my-parses" | "profiles" | "profile-lab" | "users" | "account" | "my-account" | "optimizer";
 
 const pageTitles: Record<SitePage, string> = {
   home: "rLogs",
@@ -9,6 +9,7 @@ const pageTitles: Record<SitePage, string> = {
   parses: "Parses · rLogs",
   "my-parses": "My Parses · rLogs",
   profiles: "Profiles · rLogs",
+  "profile-lab": "Character Profile Lab · rLogs",
   users: "Player · rLogs",
   account: "Account · rLogs",
   "my-account": "My Account · rLogs",
@@ -22,6 +23,7 @@ export function pageFromPath(pathname: string, search = ""): SitePage {
   if (route === "/my-parses") return "my-parses";
   if (route === "/profiles" && new URLSearchParams(search).has("user")) return "users";
   if (route === "/profiles" || route.startsWith("/profiles/")) return "profiles";
+  if (route === "/profile-lab") return "profile-lab";
   if (route === "/users" || route.startsWith("/users/")) return "users";
   if (route === "/account") return "account";
   if (route === "/my-account") return "my-account";

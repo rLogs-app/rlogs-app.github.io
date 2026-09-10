@@ -454,6 +454,8 @@ function buildDeveloperModeCard(): HTMLElement {
   input.checked = siteDeveloperModePreference();
   label.append(input, element("span", "", "Enable website developer mode on this browser"));
   const status = element("span", "account-inline-status");
+  const tools = element("a", "button secondary", "Open Character Profile Lab");
+  tools.setAttribute("href", "/profile-lab/");
   status.setAttribute("role", "status");
   const apply = (): void => {
     setSiteDeveloperModePreference(input.checked);
@@ -471,6 +473,7 @@ function buildDeveloperModeCard(): HTMLElement {
       "The server authorizes this account. This local preference cannot grant developer access to another account.",
     ),
     status,
+    tools,
   );
   apply();
   return section;

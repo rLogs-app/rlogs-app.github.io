@@ -34,11 +34,28 @@ html {
   display: none;
 }
 
+[data-developer-only] {
+  display: none !important;
+}
+
+html[data-rlogs-developer-mode] nav [data-developer-only] {
+  display: inline-flex !important;
+}
+
+html[data-rlogs-developer-mode] .lab-grid[data-developer-only] {
+  display: grid !important;
+}
+
+html[data-rlogs-developer-mode] [data-developer-locked] {
+  display: none;
+}
+
 html[data-rlogs-page="home"] [data-page~="home"],
 html[data-rlogs-page="leaderboards"] [data-page~="leaderboards"],
 html[data-rlogs-page="parses"] [data-page~="parses"],
 html[data-rlogs-page="my-parses"] [data-page~="my-parses"],
 html[data-rlogs-page="profiles"] [data-page~="profiles"],
+html[data-rlogs-page="profile-lab"] [data-page~="profile-lab"],
 html[data-rlogs-page="users"] [data-page~="users"],
 html[data-rlogs-page="account"] [data-page~="account"],
 html[data-rlogs-page="my-account"] [data-page~="my-account"],
@@ -2642,6 +2659,42 @@ summary.party-loadout-title {
   margin: 0;
   text-align: right;
   font-size: 12px;
+}
+
+.profile-lab-published-controls {
+  display: grid;
+  gap: 10px;
+  padding: 0 22px 18px;
+}
+
+.profile-lab-published-controls label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profile-lab-published-controls input {
+  min-height: 42px;
+  padding: 0 12px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: 0;
+  background: #080e17;
+}
+
+.profile-lab-published-controls input:focus {
+  border-color: var(--accent);
+}
+
+.profile-lab-published-controls .button {
+  justify-self: start;
+}
+
+.profile-lab-locked {
+  padding: 24px;
 }
 
 .optimizer-local-actions {

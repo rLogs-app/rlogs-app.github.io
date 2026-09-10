@@ -19,7 +19,14 @@ interface ProfileDetailModal {
   show(title: string, content: HTMLElement, trigger: HTMLElement): void;
 }
 
-export async function renderSyncedCharacterProfile(profile: PublishedProfile): Promise<HTMLElement> {
+export interface SyncedCharacterProfileRenderOptions {
+  publishedActions?: boolean;
+}
+
+export async function renderSyncedCharacterProfile(
+  profile: PublishedProfile,
+  options: SyncedCharacterProfileRenderOptions = {},
+): Promise<HTMLElement> {
   presentation = await loadProfilePresentation();
   const body = profile.envelope.body;
   const root = element("article", "synced-character-profile");
@@ -70,7 +77,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
   const showcaseDetails = element("div", "profile-showcase-details");
   const photoWall = photoWallSection(body);
   photoWall.classList.add("profile-showcase-photo-wall");
-  showcaseDetails.append(photoWall, loadoutSelector(profile, body, root));
+  showcaseDetails.append(photoWall, loadoutSelector(profile, body, root, options));
   showcase.append(showcaseDetails);
   if (!halfBodyImageUrl) showcase.classList.add("is-photo-only");
   root.append(showcase);
@@ -109,7 +116,7 @@ export async function renderSyncedCharacterProfile(profile: PublishedProfile): P
     moduleSection(
       inventory,
       equippedSlots,
-      profile.entry.profile_id,
+      options.publishedActions === false ? undefined : profile.entry.profile_id,
       positiveIntegerValue(body.current_profession_project_id),
     ),
   );
@@ -173,6 +180,7 @@ function loadoutSelector(
   profile: PublishedProfile,
   body: JsonRecord,
   root: HTMLElement,
+  options: SyncedCharacterProfileRenderOptions,
 ): HTMLElement {
   const section = element("section", "profile-loadout-selector");
   const heading = element("div", "profile-loadout-selector-heading");
@@ -233,7 +241,7 @@ function loadoutSelector(
       status.textContent = `Loading ${choice.project_name ?? `Loadout ${choice.project_id}`}…`;
       try {
         const envelope = await loadPublishedProfileLoadout(profile, choice.project_id);
-        const replacement = await renderSyncedCharacterProfile({ ...profile, envelope });
+        const replacement = await renderSyncedCharacterProfile({ ...profile, envelope }, options);
         root.replaceWith(replacement);
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : "That loadout could not be loaded.";
@@ -898,7 +906,7 @@ export function summarizeEquippedModuleLinks(
 function moduleSection(
   inventory: JsonValue[],
   slots: JsonRecord | undefined,
-  profileId: string,
+  profileId: string | undefined,
   projectId?: number,
 ): HTMLElement {
   const equipped = slots ? Object.entries(slots) : [];
@@ -976,9 +984,11 @@ function moduleSection(
     list.append(row);
   }
   section.append(equipped.length ? list : empty("No equipped modules were present in the latest snapshot."));
-  const link = element("a", "profile-section-link", "Open this loadout in Module Optimizer →");
-  link.href = optimizerProfileHref(profileId, projectId);
-  section.append(link);
+  if (profileId) {
+    const link = element("a", "profile-section-link", "Open this loadout in Module Optimizer →");
+    link.href = optimizerProfileHref(profileId, projectId);
+    section.append(link);
+  }
   return section;
 }
 

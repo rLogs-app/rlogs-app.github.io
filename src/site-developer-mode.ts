@@ -11,6 +11,13 @@ export function siteDeveloperModePreference(): boolean {
   return localStorage.getItem(preferenceKey) === "1";
 }
 
+export function siteDeveloperModeActive(): boolean {
+  return siteDeveloperModeEnabled(
+    localStorage.getItem(sessionKey),
+    localStorage.getItem(preferenceKey),
+  );
+}
+
 export function setSiteDeveloperModePreference(enabled: boolean): void {
   localStorage.setItem(preferenceKey, enabled ? "1" : "0");
   window.dispatchEvent(new CustomEvent("rlogs:site-developer-mode-changed"));
@@ -19,10 +26,7 @@ export function setSiteDeveloperModePreference(enabled: boolean): void {
 export function applySiteDeveloperMode(): void {
   document.documentElement.toggleAttribute(
     "data-rlogs-developer-mode",
-    siteDeveloperModeEnabled(
-      localStorage.getItem(sessionKey),
-      localStorage.getItem(preferenceKey),
-    ),
+    siteDeveloperModeActive(),
   );
 }
 

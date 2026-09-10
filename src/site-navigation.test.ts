@@ -9,6 +9,7 @@ describe("site navigation", () => {
     ["/my-parses/", "my-parses"],
     ["/profiles/", "profiles"],
     ["/profiles/3296036/", "profiles"],
+    ["/profile-lab/", "profile-lab"],
     ["/users/583104927614/", "users"],
     ["/account", "account"],
     ["/my-account", "my-account"],

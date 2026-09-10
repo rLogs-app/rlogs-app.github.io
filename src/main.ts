@@ -27,6 +27,11 @@ if (page === "profiles") {
     mountProfileBrowser(),
   );
 }
+if (page === "profile-lab") {
+  void import("./features/profile-lab/profile-lab").then(({ mountProfileLab }) =>
+    mountProfileLab(),
+  );
+}
 if (page === "users") {
   void import("./features/profiles/public-account").then(({ mountPublicAccount }) =>
     mountPublicAccount(),
