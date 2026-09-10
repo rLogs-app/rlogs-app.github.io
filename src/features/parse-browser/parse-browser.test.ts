@@ -604,6 +604,44 @@ describe("canonical timeline selection", () => {
     expect(selected.participants).toBe(report.runs[0].participants);
   });
 
+  it.each([
+    ["deployment_id_mismatch:2", "different game deployments", "one exact deployment"],
+    ["client_build_mismatch:2", "different game builds", "one exact client build"],
+    ["protocol_pack_digest_mismatch:2", "different protocol packs", "different protocol identities"],
+  ])("explains blocked synced POV identity evidence for %s", (blocker, cause, boundary) => {
+    const blocked = structuredClone(reconciliation);
+    blocked.state_replay_readiness = "blocked";
+    blocked.state_replay_blockers = [blocker];
+    blocked.reports[1]!.client_build = "24687927";
+    const html = renderReport(report, 0, blocked, null);
+
+    expect(html).toContain("Cross-vantage blocked");
+    expect(html).toContain("Synced POVs cannot be merged");
+    expect(html).toContain(cause);
+    expect(html).toContain(boundary);
+    expect(html).toContain("representative server replay remains shown");
+    expect(html).toContain("damage from the POV logs was not combined");
+    expect(html).toContain("POV merge blocked");
+    expect(html).not.toContain("More evidence needed");
+    expect(html).toContain("Global deployment · build 24687926 · protocol demo-pack");
+    expect(html).toContain("Global deployment · build 24687927 · protocol demo-pack");
+    expect(html).toContain(reconciliation.reports[0]!.report_id);
+    expect(html).toContain(reconciliation.reports[1]!.report_id);
+  });
+
+  it("labels missing schema 16 source identity as legacy instead of inventing it", () => {
+    const legacy = structuredClone(reconciliation);
+    legacy.schema_version = 16;
+    legacy.reports.forEach((source) => {
+      delete source.deployment_id;
+      delete source.client_build;
+    });
+    const html = renderReport(report, 0, legacy, null);
+
+    expect(html).toContain("Runtime identity unavailable (legacy reconciliation)");
+    expect(html).not.toContain("undefined deployment");
+  });
+
   it("uses reconciled participants only after a conserved replay completes", () => {
     const reconciled = {
       ...reconciliation,

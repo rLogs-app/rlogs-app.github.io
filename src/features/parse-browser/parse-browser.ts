@@ -527,6 +527,9 @@ function renderReplayStatus(
   messages: MessageResolver,
 ): string {
   if (reconciled) return '<span class="status-chip success">Cross-vantage reconciled</span>';
+  if (reconciliation?.state_replay_readiness === "blocked") {
+    return '<span class="status-chip warning">Cross-vantage blocked</span>';
+  }
   if (reconciliation && reconciliation.reports.length > 1) {
     return '<span class="status-chip neutral">Cross-vantage pending</span>';
   }
@@ -547,9 +550,30 @@ function renderReconciliationProof(
     return `<div class="reconciliation-proof valid"><strong>Conserved cross-vantage replay</strong><span>${reconciliation.reports.length} reports / ${reconciliation.local_vantage_character_count} local character witnesses / given ${formatNumber(proof.contribution_given)} = received ${formatNumber(proof.contribution_received)} / party damage ${formatNumber(proof.raw_damage)} = rDMG ${formatNumber(proof.rdps_damage)}.</span></div>`;
   }
   const blockers = reconciliation.state_replay_blockers.length
-    ? reconciliation.state_replay_blockers.map(title).join(", ")
+    ? reconciliation.state_replay_blockers.map(reconciliationBlockerMessage).join(" ")
     : title(reconciliation.state_replay_readiness);
+  if (reconciliation.state_replay_readiness === "blocked") {
+    return `<div class="reconciliation-proof pending"><strong>Synced POVs cannot be merged</strong><span>${escapeHtml(blockers)} The representative server replay remains shown, and damage from the POV logs was not combined.</span></div>`;
+  }
   return `<div class="reconciliation-proof pending"><strong>Cross-vantage replay pending</strong><span>${reconciliation.reports.length} reports / ${reconciliation.local_vantage_character_count} local character witnesses. ${escapeHtml(blockers)}. The representative replay is shown without combining damage.</span></div>`;
+}
+
+function reconciliationBlockerMessage(value: string): string {
+  const identityMismatch = /^(deployment_id|client_build|protocol_pack_digest)_mismatch:(\d+)$/u.exec(value);
+  if (identityMismatch) {
+    const [, identity, count] = identityMismatch;
+    if (identity === "deployment_id") {
+      return `The synced POVs report ${count} different game deployments. Only POVs from one exact deployment can be merged.`;
+    }
+    if (identity === "client_build") {
+      return `The synced POVs report ${count} different game builds. Only POVs from one exact client build can be merged.`;
+    }
+    return `The synced POVs report ${count} different protocol packs. State evidence decoded with different protocol identities cannot be merged.`;
+  }
+  if (value === "no_additional_local_vantage") {
+    return "The synced reports do not add another player's local POV.";
+  }
+  return title(value);
 }
 
 function renderSwiftVortexCandidateAudit(reconciliation: PublicRunReconciliation | null): string {
@@ -2069,13 +2093,25 @@ function renderEvidenceCoverage(
   const characters = reconciliation.characters
     .map((character) => `<li><span><strong>${escapeHtml(namesByCharacter.get(character.character_id) ?? `UID ${character.character_id}`)}</strong><small>${escapeHtml(title(character.disposition))}</small></span><span><strong>${character.state_witness_count.toLocaleString()}</strong><small>state witnesses · ${character.game_time_aligned_state_witness_count.toLocaleString()} aligned</small></span></li>`)
     .join("");
+  const blocked = reconciliation.state_replay_readiness === "blocked";
   const blockers = reconciliation.state_replay_blockers.length
-    ? `<div class="evidence-blockers"><strong>Still unresolved</strong><ul>${reconciliation.state_replay_blockers.map((blocker) => `<li>${escapeHtml(title(blocker))}</li>`).join("")}</ul></div>`
+    ? `<div class="evidence-blockers"><strong>${blocked ? "Why these POVs cannot merge" : "Still unresolved"}</strong><ul>${reconciliation.state_replay_blockers.map((blocker) => `<li>${escapeHtml(reconciliationBlockerMessage(blocker))}</li>`).join("")}</ul></div>`
     : "";
   const reports = reconciliation.reports
-    .map((source) => `<li><span>${source.canonical_spine ? '<span class="status-chip success">Canonical spine</span>' : '<span class="status-chip neutral">Evidence witness</span>'}</span><code>${escapeHtml(source.report_id)}</code><small>${source.local_profile_witnesses.length} local profile / ${source.local_state_witnesses.length} state witnesses</small></li>`)
+    .map((source) => `<li><span>${source.canonical_spine ? '<span class="status-chip success">Canonical spine</span>' : '<span class="status-chip neutral">Evidence witness</span>'}</span><span><code>${escapeHtml(source.report_id)}</code><small>${escapeHtml(reconciliationSourceRuntimeIdentity(source))}</small><small>${source.local_profile_witnesses.length} local profile / ${source.local_state_witnesses.length} state witnesses</small></span></li>`)
     .join("");
-  return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">Proof boundary</p><h4>Evidence coverage</h4></div><span class="status-chip ${reconciled ? "success" : "neutral"}">${reconciled ? "Reconciled" : "More evidence needed"}</span></div><div class="evidence-metrics">${metric("Reports", reconciliation.reports.length.toLocaleString())}${metric("Local vantage", `${reconciliation.local_vantage_character_count}/${reconciliation.participant_character_count}`)}${metric("Replay readiness", title(reconciliation.state_replay_readiness))}${metric("Conservation", reconciliation.conservation?.conserved ? "Passed" : "Pending")}</div>${blockers}<div class="evidence-grid"><div><h5>Character coverage</h5><ul class="evidence-character-list">${characters}</ul></div><details><summary>Source reports and provenance</summary><ul class="evidence-report-list">${reports}</ul>${reconciliation.verified_state_input_sha256 ? `<p><small>Verified state input</small><code>${escapeHtml(reconciliation.verified_state_input_sha256)}</code></p>` : ""}</details></div></section>`;
+  const stateClass = reconciled ? "success" : blocked ? "warning" : "neutral";
+  const stateLabel = reconciled ? "Reconciled" : blocked ? "POV merge blocked" : "More evidence needed";
+  return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">Proof boundary</p><h4>Evidence coverage</h4></div><span class="status-chip ${stateClass}">${stateLabel}</span></div><div class="evidence-metrics">${metric("Reports", reconciliation.reports.length.toLocaleString())}${metric("Local vantage", `${reconciliation.local_vantage_character_count}/${reconciliation.participant_character_count}`)}${metric("Replay readiness", title(reconciliation.state_replay_readiness))}${metric("Conservation", reconciliation.conservation?.conserved ? "Passed" : "Pending")}</div>${blockers}<div class="evidence-grid"><div><h5>Character coverage</h5><ul class="evidence-character-list">${characters}</ul></div><details><summary>Source reports and provenance</summary><ul class="evidence-report-list">${reports}</ul>${reconciliation.verified_state_input_sha256 ? `<p><small>Verified state input</small><code>${escapeHtml(reconciliation.verified_state_input_sha256)}</code></p>` : ""}</details></div></section>`;
+}
+
+function reconciliationSourceRuntimeIdentity(source: PublicRunReconciliation["reports"][number]): string {
+  const deployment = source.deployment_id?.trim();
+  const build = source.client_build?.trim();
+  if (!deployment || !build) return "Runtime identity unavailable (legacy reconciliation)";
+  const protocol = source.protocol_pack_digest.trim();
+  const compactProtocol = protocol.length > 24 ? `${protocol.slice(0, 24)}…` : protocol;
+  return `${title(deployment)} deployment · build ${build} · protocol ${compactProtocol || "unavailable"}`;
 }
 
 function analysisPanel(titleText: string, body: string): string {
