@@ -38,7 +38,8 @@ describe("observed character contract", () => {
     const exact = {
       ...character,
       presentation_authority: { deployment_id: "global", client_build: "24687926", protocol_pack_digest: digest },
-      reports: [{ ...report, deployment_id: "global", client_build: "24687926", protocol_pack_digest: digest }],
+      reports: [{ ...report, deployment_id: "global", client_build: "24687926", protocol_pack_digest: digest,
+        difficulty_family: "master", difficulty_tier: 20 }],
     };
     const catalog = { schema_version: 2, generated_unix_millis: 1, total_characters: 1, characters: [exact] };
     expect(isObservedCharacterCatalog(catalog)).toBe(true);
@@ -46,5 +47,9 @@ describe("observed character contract", () => {
     expect(isObservedCharacterCatalog({ ...catalog, characters: [{ ...character, reports: exact.reports }] })).toBe(false);
     expect(isObservedCharacterCatalog({ ...catalog, characters: [{ ...exact, reports: [{ ...report, deployment_id: "global", client_build: null, protocol_pack_digest: null }] }] })).toBe(false);
     expect(isObservedCharacterCatalog({ ...catalog, characters: [{ ...exact, presentation_authority: { ...exact.presentation_authority, protocol_pack_digest: "sha256:nope" } }] })).toBe(false);
+    expect(isObservedCharacterCatalog({ ...catalog, characters: [{ ...exact, reports: [{ ...exact.reports[0], difficulty_tier: -1 }] }] })).toBe(false);
+    expect(isObservedCharacterCatalog({ ...catalog, characters: [{ ...exact, reports: [{ ...exact.reports[0], difficulty_tier: 1.5 }] }] })).toBe(false);
+    expect(isObservedCharacterCatalog({ ...catalog, characters: [{ ...exact, reports: [{ ...exact.reports[0], difficulty_family: 20 }] }] })).toBe(false);
+    expect(isObservedCharacterCatalog({ ...catalog, characters: [{ ...exact, reports: [{ ...exact.reports[0], difficulty_family: null, difficulty_tier: null }] }] })).toBe(true);
   });
 });

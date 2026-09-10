@@ -150,6 +150,20 @@ function checkObservedCharacters(value, claimedProfiles) {
         failures.push(`${name ?? key ?? "unknown character"}: malformed involved-parse protocol identity`);
         continue;
       }
+      const difficultyFamily = report?.difficulty_family;
+      const difficultyTier = report?.difficulty_tier;
+      if (difficultyFamily !== undefined && difficultyFamily !== null &&
+          (typeof difficultyFamily !== "string" || difficultyFamily.length > 64 ||
+            !/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/u.test(difficultyFamily))) {
+        failures.push(`${name ?? key ?? "unknown character"}: malformed involved-parse difficulty family`);
+      }
+      if (difficultyFamily && !completeIdentityTriple(report)) {
+        failures.push(`${name ?? key ?? "unknown character"}: difficulty family has no exact protocol identity`);
+      }
+      if (difficultyTier !== undefined && difficultyTier !== null &&
+          (!Number.isSafeInteger(difficultyTier) || difficultyTier < 0 || difficultyTier > 0xffff_ffff)) {
+        failures.push(`${name ?? key ?? "unknown character"}: malformed involved-parse difficulty tier`);
+      }
       const reportKey = `${reportId}:${runIndex}`;
       if (reportKeys.has(reportKey)) failures.push(`${name ?? key}: duplicate involved parse ${reportKey}`);
       else reportKeys.add(reportKey);

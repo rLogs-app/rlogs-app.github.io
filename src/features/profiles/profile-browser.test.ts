@@ -4,6 +4,7 @@ import {
   loadObservedCharacterCatalog,
   loadProfileCatalog,
   observedClassLabel,
+  observedReportDifficultyLabel,
   observedReportSceneLabel,
   profileUrl,
   requestedProfileReference,
@@ -117,11 +118,14 @@ describe("public profile routes", () => {
         deployment_id: "global",
         client_build: "24687926",
         protocol_pack_digest: digest,
+        difficulty_family: "master",
+        difficulty_tier: 5,
       }],
     };
     const directory = { kind: "observed" as const, character };
     expect(observedClassLabel(character, presentation, 2)).toBe("Wind Knight / Vanguard Spec");
     expect(observedReportSceneLabel(character.reports[0]!, presentation, 2)).toBe("Cursed Radiant Tomb");
+    expect(observedReportDifficultyLabel(character.reports[0]!, presentation, 2)).toBe("Master 5");
     expect(searchableDirectoryEntry(directory, presentation, 2)).toContain("wind knight");
 
     const wrong = {
@@ -137,6 +141,7 @@ describe("public profile routes", () => {
     for (const [candidate, schema] of [[wrong, 2], [unavailable, 2], [character, 1]] as const) {
       expect(observedClassLabel(candidate, presentation, schema)).toBe("Class #4 / Specialization #107");
       expect(observedReportSceneLabel(candidate.reports[0]!, presentation, schema)).toBe("Scene #6515");
+      expect(observedReportDifficultyLabel(candidate.reports[0]!, presentation, schema)).toBe("Tier 5");
       const searchable = searchableDirectoryEntry({ kind: "observed", character: candidate }, presentation, schema);
       expect(searchable).toContain("captured player");
       expect(searchable).toContain("4 107 global north-america");
@@ -146,5 +151,7 @@ describe("public profile routes", () => {
 
     expect(observedClassLabel({ ...character, reports: wrong.reports }, presentation, 2)).toBe("Wind Knight / Vanguard Spec");
     expect(observedReportSceneLabel(wrong.reports[0]!, presentation, 2)).toBe("Scene #6515");
+    expect(observedReportDifficultyLabel({ ...character.reports[0]!, difficulty_tier: null }, presentation, 2)).toBe("Master");
+    expect(observedReportDifficultyLabel({ ...character.reports[0]!, difficulty_family: null, difficulty_tier: null }, presentation, 2)).toBeUndefined();
   });
 });

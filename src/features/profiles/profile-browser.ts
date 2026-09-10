@@ -270,7 +270,11 @@ function renderObservedCharacter(
     link.setAttribute("href", `/parses/?parse=${encodeURIComponent(report.report_id)}&run=${report.run_index}`);
     link.append(
       element("strong", "", observedReportSceneLabel(report, presentation, schemaVersion)),
-      element("small", "", `${humanize(report.terminal_state)} · ${formatDate(report.created_unix_millis)}`),
+      element("small", "", [
+        observedReportDifficultyLabel(report, presentation, schemaVersion),
+        humanize(report.terminal_state),
+        formatDate(report.created_unix_millis),
+      ].filter(Boolean).join(" · ")),
       element("span", "identity-id", report.report_id),
     );
     links.append(link);
@@ -304,6 +308,31 @@ export function observedReportSceneLabel(
   return presentationForIdentity(presentation, identity)
     ? report.scene_name ?? rawObservedSceneLabel(report.scene_id)
     : rawObservedSceneLabel(report.scene_id);
+}
+
+export function observedReportDifficultyLabel(
+  report: ObservedCharacterReportReference,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 1 | 2 = 1,
+): string | undefined {
+  const authorized = presentationForObservedReport(presentation, schemaVersion, report) != null;
+  const family = authorized && report.difficulty_family ? humanize(report.difficulty_family) : undefined;
+  const tier = report.difficulty_tier ?? undefined;
+  if (family && tier !== undefined) return `${family} ${tier}`;
+  if (family) return family;
+  return tier === undefined ? undefined : `Tier ${tier}`;
+}
+
+function presentationForObservedReport(
+  presentation: ParsePresentationCatalog | undefined,
+  schemaVersion: 1 | 2,
+  report: ObservedCharacterReportReference,
+): ParsePresentationCatalog | undefined {
+  return schemaVersion === 2 ? presentationForIdentity(presentation, {
+    deployment_id: report.deployment_id ?? null,
+    client_build: report.client_build ?? null,
+    protocol_pack_digest: report.protocol_pack_digest ?? null,
+  }) : undefined;
 }
 
 function presentationForObservedCharacter(

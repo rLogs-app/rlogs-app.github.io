@@ -8,6 +8,8 @@ export interface ObservedCharacterReportReference {
   deployment_id?: string | null;
   client_build?: string | null;
   protocol_pack_digest?: string | null;
+  difficulty_family?: string | null;
+  difficulty_tier?: number | null;
 }
 
 export interface ObservedPresentationAuthority {
@@ -81,7 +83,9 @@ function isReportReference(value: unknown, schemaVersion: 1 | 2): value is Obser
     && (value.scene_id === null || Number.isSafeInteger(value.scene_id))
     && nullableString(value.scene_name)
     && typeof value.terminal_state === "string"
-    && (schemaVersion === 1 || isNullableIdentityTriple(value));
+    && (schemaVersion === 1 || isNullableIdentityTriple(value))
+    && (value.difficulty_family === undefined || nullableString(value.difficulty_family))
+    && (value.difficulty_tier === undefined || value.difficulty_tier === null || nonnegativeInteger(value.difficulty_tier));
 }
 
 function isNullablePresentationAuthority(value: unknown): boolean {
