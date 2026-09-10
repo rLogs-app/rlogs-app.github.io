@@ -597,6 +597,26 @@ describe("parse search", () => {
 describe("canonical timeline selection", () => {
   const report = load<PublicParseReport>("parse-report.v1.json");
   const reconciliation = load<PublicRunReconciliation>("parse-reconciliation.v1.json");
+  const conservedReconciliation = (): PublicRunReconciliation => {
+    const selected = structuredClone(reconciliation);
+    selected.status = "reconciled";
+    selected.attribution_replay_completed = true;
+    selected.reconciled_participants = report.runs[0].participants.map((participant) => ({
+      ...structuredClone(participant),
+      rdps_damage: participant.damage,
+      contribution_given: 0,
+      contribution_received: 0,
+      rdps_incomplete: false,
+    }));
+    const damage = selected.reconciled_participants.reduce((sum, participant) => sum + participant.damage, 0);
+    selected.conservation = { raw_damage: damage, rdps_damage: damage, contribution_given: 0, contribution_received: 0, conserved: true };
+    selected.timeline = {
+      ...selected.timeline!,
+      source: "reconciled_canonical_spine",
+      participant_tracks: report.runs[0].timeline!.participant_tracks,
+    };
+    return selected;
+  };
 
   it("falls back to one canonical report instead of summing POVs", () => {
     const selected = selectCanonicalGraph(report.runs[0], reconciliation);
@@ -642,16 +662,40 @@ describe("canonical timeline selection", () => {
     expect(html).not.toContain("undefined deployment");
   });
 
+  it("keeps same-run blocked Swift Vortex audit evidence but hides wrong-run evidence", () => {
+    const blocked = structuredClone(reconciliation);
+    blocked.state_replay_readiness = "blocked";
+    blocked.state_replay_blockers = ["provider_identity_unresolved:1"];
+    blocked.swift_vortex_candidate_audit = {
+      schema_version: 1,
+      effect_id: 2110060,
+      candidate_status_event_count: 6,
+      exact_application_transition_count: 3,
+      exact_paired_receipt_count: 2,
+      distinct_provider_entity_count: 1,
+      distinct_recipient_entity_count: 2,
+      incomplete_application_count: 1,
+      incomplete_removal_count: 0,
+      identity_mismatch_event_count: 1,
+      blockers: { provider_identity_unresolved: 1 },
+      magnitude_gate_satisfied: false,
+      production_attribution_enabled: false,
+      receipts: [],
+    };
+
+    const sameRunHtml = renderReport(report, 0, blocked, null);
+    expect(sameRunHtml).toContain("Swift Vortex candidate evidence");
+    expect(sameRunHtml).toContain("6 status events / 2 exact paired receipts");
+    expect(sameRunHtml).toContain("Production attribution remains disabled");
+
+    blocked.run_group_id = `run_${"2".repeat(32)}`;
+    const wrongRunHtml = renderReport(report, 0, blocked, null);
+    expect(wrongRunHtml).not.toContain("Swift Vortex candidate evidence");
+    expect(wrongRunHtml).not.toContain("6 status events / 2 exact paired receipts");
+  });
+
   it("uses reconciled participants only after a conserved replay completes", () => {
-    const reconciled = {
-      ...reconciliation,
-      status: "reconciled",
-      attribution_replay_completed: true,
-      reconciled_participants: report.runs[0].participants.map((participant) => ({
-        ...participant, rdps_damage: participant.damage, contribution_given: 0, contribution_received: 0, rdps_incomplete: false,
-      })),
-      timeline: { ...reconciliation.timeline!, participant_tracks: report.runs[0].timeline!.participant_tracks },
-    } satisfies PublicRunReconciliation;
+    const reconciled = conservedReconciliation();
     expect(selectCanonicalGraph(report.runs[0], reconciled).participants).toBe(reconciled.reconciled_participants);
     expect(selectCanonicalGraph(report.runs[0], { ...reconciled, attribution_replay_completed: false }).reconciled).toBe(false);
     expect(selectCanonicalGraph(report.runs[0], { ...reconciled, conservation: { ...reconciled.conservation!, conserved: false } }).reconciled).toBe(false);
@@ -659,6 +703,73 @@ describe("canonical timeline selection", () => {
       { ...report.runs[0].timeline!.participant_tracks[0], actor_id: "mismatched" },
     ] } } satisfies PublicRunReconciliation;
     expect(selectCanonicalGraph(report.runs[0], mismatched).reconciled).toBe(false);
+  });
+
+  it("uses the canonical timeline Game-time clock for reconciled totals regardless of viewed POV duration", () => {
+    const viewed = structuredClone(report);
+    viewed.runs[0].game_time_micros = 5_000_000;
+    viewed.runs[0].rdps_status = "viewed_pov_status_must_not_leak";
+    const reconciled = conservedReconciliation();
+    const finalGameTime = reconciled.timeline!.rate_clock!.at(-1)!.edps_elapsed_micros;
+    const expectedTeam = reconciled.conservation!.rdps_damage * 1_000_000 / finalGameTime;
+    const first = reconciled.reconciled_participants[0]!;
+    const expectedFirst = first.rdps_damage! * 1_000_000 / finalGameTime;
+
+    const selection = selectCanonicalGraph(viewed.runs[0], reconciled);
+    const html = renderReport(viewed, 0, reconciled);
+    expect(selection.reconciled).toBe(true);
+    expect(selection.rdpsGameTimeMicros).toBe(finalGameTime);
+    expect(selection.rdpsStatus).toBeNull();
+    expect(html).toContain(`<small>Team rDPS</small><strong>${expectedTeam.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong>`);
+    expect(html).toContain(`data-sort-rdps="${expectedFirst}"`);
+    expect(html).not.toContain(String(first.rdps_damage! * 1_000_000 / 5_000_000));
+    expect(html).not.toContain("viewed_pov_status_must_not_leak");
+    expect(html).toContain('data-timeline-rdps-label="Partial rDPS"');
+  });
+
+  it("totally rejects a valid reconciliation for a different run group", () => {
+    const wrongGroup = conservedReconciliation();
+    wrongGroup.run_group_id = `run_${"2".repeat(32)}`;
+    wrongGroup.reconciled_participants[0]!.display_name = "Wrong-group replay participant";
+    const selection = selectCanonicalGraph(report.runs[0], wrongGroup);
+    const html = renderReport(report, 0, wrongGroup);
+
+    expect(selection.reconciled).toBe(false);
+    expect(selection.participants).toBe(report.runs[0].participants);
+    expect(html).not.toContain("Cross-vantage reconciled");
+    expect(html).not.toContain("Team rDPS");
+    expect(html).not.toContain("Wrong-group replay participant");
+    expect(html).not.toContain(wrongGroup.reconciliation_id);
+  });
+
+  it("withholds reconciled aggregate rDPS when the canonical timeline clock is incomplete", () => {
+    const reconciled = conservedReconciliation();
+    reconciled.timeline = { ...reconciled.timeline!, rate_clock_complete: false, rate_clock: [] };
+    const selection = selectCanonicalGraph(report.runs[0], reconciled);
+    const html = renderReport(report, 0, reconciled);
+
+    expect(selection.reconciled).toBe(true);
+    expect(selection.rdpsGameTimeMicros).toBeNull();
+    expect(html).toContain("<small>Team rDPS</small><strong>Unavailable</strong>");
+    expect(html).toContain('data-sort-rdps="-1"');
+    expect(html).not.toContain('data-metric="rdps_damage"');
+  });
+
+  it("accepts a complete floor-count rate clock for a fractional canonical tail", () => {
+    const reconciled = conservedReconciliation();
+    const timeline = reconciled.timeline!;
+    expect(timeline.duration_micros % timeline.series_bucket_micros).not.toBe(0);
+    const floorCount = Math.floor(timeline.duration_micros / timeline.series_bucket_micros);
+    timeline.rate_clock = timeline.rate_clock!.slice(0, floorCount);
+    timeline.rate_clock_complete = true;
+    timeline.omitted.rate_clock_points = 0;
+    const expectedGameTime = timeline.rate_clock.at(-1)!.edps_elapsed_micros;
+
+    const selection = selectCanonicalGraph(report.runs[0], reconciled);
+    expect(selection.reconciled).toBe(true);
+    expect(timeline.rate_clock).toHaveLength(floorCount);
+    expect(selection.rdpsGameTimeMicros).toBe(expectedGameTime);
+    expect(renderReport(report, 0, reconciled)).not.toContain("<small>Team rDPS</small><strong>Unavailable</strong>");
   });
 });
 

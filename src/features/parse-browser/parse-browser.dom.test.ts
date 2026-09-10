@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { Window } from "happy-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PublicParseReport } from "../../contracts/public-parse";
+import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
 import {
   bindParseReportInteractions,
   renderTimeline,
@@ -103,6 +103,46 @@ describe("combat timeline DOM interactions", () => {
 
     participant.dispatchEvent(new window.Event("pointerleave") as unknown as Event);
     expect(root.querySelectorAll(".timeline-trace.is-focused, .timeline-trace.is-dimmed")).toHaveLength(0);
+  });
+
+  it("plays and scrubs conserved reconciliation snapshots on the canonical timeline", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const reconciliation = load<PublicRunReconciliation>("parse-reconciliation.v1.json");
+    reconciliation.status = "reconciled";
+    reconciliation.attribution_replay_completed = true;
+    reconciliation.reconciled_participants = report.runs[0].participants.map((participant) => ({
+      ...participant,
+      rdps_damage: participant.damage,
+      contribution_given: 0,
+      contribution_received: 0,
+      rdps_incomplete: false,
+    }));
+    reconciliation.timeline!.source = "reconciled_canonical_spine";
+    reconciliation.timeline!.participant_tracks = report.runs[0].timeline!.participant_tracks;
+    reconciliation.conservation = {
+      raw_damage: reconciliation.reconciled_participants.reduce((sum, participant) => sum + participant.damage, 0),
+      rdps_damage: reconciliation.reconciled_participants.reduce((sum, participant) => sum + participant.damage, 0),
+      contribution_given: 0,
+      contribution_received: 0,
+      conserved: true,
+    };
+    const selection = selectCanonicalGraph(report.runs[0], reconciliation);
+    expect(selection.reconciled).toBe(true);
+
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selection);
+    bindParseReportInteractions(root)();
+    root.querySelector<HTMLButtonElement>('[data-metric="rdps_damage"]')!.click();
+    const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    scrubber.value = "2";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("Partial rDPS at 0:02");
+    expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("rDPS");
+
+    const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
+    play.click();
+    expect(play.textContent).toBe("Pause");
+    expect(play.getAttribute("aria-pressed")).toBe("true");
   });
 });
 

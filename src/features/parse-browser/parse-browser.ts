@@ -345,24 +345,21 @@ export function renderReport(
     report.deployment_id,
     report.client_build,
   );
-  const graph = selectCanonicalGraph(run, reconciliation ?? undefined);
-  const teamDps = run.participants.reduce((sum, actor) => sum + actor.dps, 0);
-  const teamEdps = run.participants.reduce((sum, actor) => sum + actor.encounter_dps, 0);
-  const reconciled = Boolean(
-    reconciliation?.status === "reconciled" &&
-      reconciliation.attribution_replay_completed &&
-      reconciliation.conservation?.conserved &&
-      reconciliation.reconciled_participants.length,
-  );
-  const participants = reconciled ? reconciliation!.reconciled_participants : run.participants;
+  const associatedReconciliation = reconciliation?.run_group_id === run.run_group_id ? reconciliation : null;
+  const graph = selectCanonicalGraph(run, associatedReconciliation ?? undefined);
+  const reconciled = graph.reconciled;
+  const selectedReconciliation = reconciled ? associatedReconciliation! : null;
+  const participants = graph.participants;
+  const teamDps = participants.reduce((sum, actor) => sum + actor.dps, 0);
+  const teamEdps = participants.reduce((sum, actor) => sum + actor.encounter_dps, 0);
   const skillInfluences = reconciled
-    ? (reconciliation?.rdps_influences ?? [])
+    ? (selectedReconciliation?.rdps_influences ?? [])
     : (run.rdps_influences ?? []);
   const skillEffects = reconciled
-    ? (reconciliation?.rdps_effects ?? [])
+    ? (selectedReconciliation?.rdps_effects ?? [])
     : (run.rdps_effects ?? []);
   const teamRdps = reconciled
-    ? (run.game_time_micros == null ? null : damageRate(reconciliation!.conservation!.rdps_damage, run.game_time_micros))
+    ? (graph.rdpsGameTimeMicros == null ? null : damageRate(selectedReconciliation!.conservation!.rdps_damage, graph.rdpsGameTimeMicros))
     : null;
   const eventCount = messages.number(report.verification.event_count, { maximumFractionDigits: 0 });
   const gapCount = messages.number(run.data_gap_count, { maximumFractionDigits: 0 });
@@ -376,7 +373,7 @@ export function renderReport(
     <div class="parse-report-heading"><div><p class="eyebrow">${escapeHtml(report.region_id)} / ${escapeHtml(report.verification.tier)}</p>
       <h3>${escapeHtml(run.scene_name ?? run.activity_id ?? `Scene ${run.scene_id ?? "?"}`)}</h3>
       <p>${escapeHtml(formatDifficulty(run))} / ${escapeHtml(title(run.terminal_state))}</p></div>
-      ${renderReplayStatus(reconciliation, reconciled, messages)}</div>
+      ${renderReplayStatus(associatedReconciliation, reconciled, messages)}</div>
     <div class="parse-run-identity" aria-label="Run identifiers">
       <span><small>Run ID</small><code>${escapeHtml(run.run_group_id ?? `${report.report_id}:${run.run_index}`)}</code></span>
       <span><small>Report ID</small><code>${escapeHtml(report.report_id)}</code></span>
@@ -390,15 +387,15 @@ export function renderReport(
       ${reconciled ? metric("Team rDPS", teamRdps == null ? "Unavailable" : formatNumber(teamRdps, messages)) : ""}
       ${metric(messages.message("parse.report.metric.retries"), messages.message(run.boss_retry_count === 1 ? "parse.report.retry_summary.one" : "parse.report.retry_summary.other", { retries: run.retry_count, boss: run.boss_retry_count }))}
     </div>
-    ${renderReconciliationProof(reconciliation, reconciliationError, reconciled)}
-    ${renderSwiftVortexCandidateAudit(reconciliation)}
-    ${renderPartyTable(participants, run.game_time_micros, reconciled, run.rdps_status, messages)}
-    ${renderPartyLoadouts(run, graph.participants, reconciliation ?? undefined, messages)}
+    ${renderReconciliationProof(associatedReconciliation, reconciliationError, reconciled)}
+    ${renderSwiftVortexCandidateAudit(associatedReconciliation)}
+    ${renderPartyTable(participants, reconciled ? graph.rdpsGameTimeMicros : run.game_time_micros, reconciled, graph.rdpsStatus ?? messages.message("parse.timeline.rdps.partial"), messages)}
+    ${renderPartyLoadouts(run, graph.participants, associatedReconciliation ?? undefined, messages)}
     ${renderCombatLoadoutPhases(run, participants, reportPresentation)}
     ${graph.timeline ? renderTimeline(graph, messages) : renderRunTimeline(run, participants)}
     ${renderSkillContributions(participants, skillInfluences, skillEffects, reportPresentation)}
-    ${renderRdpsCalculations(run, reconciliation, participants, reconciled, reportPresentation)}
-    ${renderEvidenceCoverage(report, run, reconciliation, participants, reconciled)}
+    ${renderRdpsCalculations(run, selectedReconciliation, participants, reconciled, reportPresentation)}
+    ${renderEvidenceCoverage(report, run, associatedReconciliation, participants, reconciled)}
     <p class="parse-proof">${escapeHtml(run.run_group_id ? messages.message("parse.report.proof_group", { proof, group: run.run_group_id }) : proof)}</p>
   </article>`;
 }
@@ -758,12 +755,16 @@ export interface CanonicalGraphSelection {
   reconciled: boolean;
   trustKind: "reconciled" | "pending" | "single";
   contributingReportCount: number;
-  rdpsStatus: string;
+  /// Reconciliation does not yet publish replay-authored formula coverage.
+  /// Null keeps its rDPS label conservatively partial instead of borrowing a
+  /// status from whichever POV report happens to be open.
+  rdpsStatus: string | null;
+  rdpsGameTimeMicros: number | null;
 }
 
 export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunReconciliation): CanonicalGraphSelection {
   const reconciliationTimeline = reconciliation?.timeline;
-  const usable = Boolean(reconciliation && reconciliationTimeline && reconciliation.status === "reconciled" && reconciliation.attribution_replay_completed &&
+  const usable = Boolean(reconciliation && reconciliation.run_group_id === run.run_group_id && reconciliationTimeline && reconciliation.status === "reconciled" && reconciliation.attribution_replay_completed &&
     reconciliation.conservation?.conserved === true && reconciliation.canonical_spine.report_id === reconciliationTimeline.canonical_report_id &&
     reconciliationTimeline.source === "reconciled_canonical_spine" && reconciliationTimeline.time_basis === "run_elapsed" &&
     reconciliation.reconciled_participants.length > 0 && reconciliationTimeline.participant_tracks.every((track) =>
@@ -771,10 +772,23 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
       track.series_point_count <= (reconciliation.reconciled_participants[track.canonical_participant_index]!.series?.length ?? 0)));
   if (usable && reconciliation && reconciliationTimeline) {
     return { participants: reconciliation.reconciled_participants, timeline: reconciliationTimeline, reconciled: true,
-      trustKind: "reconciled", contributingReportCount: reconciliation.reports.length, rdpsStatus: run.rdps_status };
+      trustKind: "reconciled", contributingReportCount: reconciliation.reports.length, rdpsStatus: null,
+      rdpsGameTimeMicros: completeTimelineGameTimeMicros(reconciliationTimeline) };
   }
   return { participants: run.participants, timeline: run.timeline, reconciled: false,
-    trustKind: reconciliation ? "pending" : "single", contributingReportCount: reconciliation?.reports.length ?? 1, rdpsStatus: run.rdps_status };
+    trustKind: reconciliation ? "pending" : "single", contributingReportCount: reconciliation?.reports.length ?? 1,
+    rdpsStatus: run.rdps_status, rdpsGameTimeMicros: run.game_time_micros };
+}
+
+function completeTimelineGameTimeMicros(timeline: NonNullable<PublicRun["timeline"]>): number | null {
+  const completedPoints = Math.floor(timeline.duration_micros / timeline.series_bucket_micros);
+  const terminalPoints = Math.ceil(timeline.duration_micros / timeline.series_bucket_micros);
+  const rateClock = timeline.rate_clock ?? [];
+  if (!timeline.rate_clock_complete || timeline.omitted.rate_clock_points !== 0 || rateClock.length <= 0 ||
+      (rateClock.length !== completedPoints && rateClock.length !== terminalPoints)) return null;
+  const final = rateClock.at(-1);
+  return final?.second === rateClock.length - 1 && final.edps_elapsed_micros > 0
+    ? final.edps_elapsed_micros : null;
 }
 
 type TimelineMetric = "damage" | "effective_healing" | "damage_taken" | "rdps_damage";
@@ -803,7 +817,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
     ? plotted.filter(({ actor, track }) => hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)))
     : [];
   const exactCumulativeRdpsTracks = rdpsTracks.filter(({ actor }) => actor.rdps_incomplete === false);
-  const partialRdps = graph.rdpsStatus.startsWith("partial_") || plotted.some(({ actor, track }) =>
+  const partialRdps = graph.rdpsStatus == null || graph.rdpsStatus.startsWith("partial_") || plotted.some(({ actor, track }) =>
     actor.rdps_incomplete === true || !hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)));
   const rdpsLabel = messages.message(partialRdps ? "parse.timeline.rdps.partial" : "parse.timeline.rdps.exact");
   const captureSpans = timeline.rdps_influence_spans.filter((span) => span.time_basis === "capture_observed").length;
