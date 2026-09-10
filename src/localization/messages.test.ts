@@ -23,6 +23,17 @@ describe("website message resolver", () => {
     expect(messages.message("parse.timeline.play")).toBe("Play");
   });
 
+  it("localizes timeline event navigation status and announcements", () => {
+    const messages = createMessageResolver("en-US");
+    expect(messages.message("parse.timeline.event_navigation.position", { position: 2, count: 4 }))
+      .toBe("Event 2 of 4");
+    expect(messages.message("parse.timeline.event_navigation.announcement", {
+      position: 2, count: 4, events: "Player died at 0:07.500",
+    })).toBe("Event 2 of 4: Player died at 0:07.500");
+    expect(messages.message("parse.timeline.event_navigation.count.one", { count: 1 }))
+      .toBe("1 event point in the visible range");
+  });
+
   it("localizes death-cause evidence and fallback summaries", () => {
     const messages = createMessageResolver("en-US");
     expect(messages.message("parse.timeline.death.terminal_hit")).toBe("Terminal recorded hit");

@@ -962,6 +962,11 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
       <button type="button" data-timeline-play aria-pressed="false">${escapeHtml(messages.message("parse.timeline.play"))}</button>
       <input type="range" data-timeline-scrubber min="0" max="${durationSeconds}" step="1" value="0" aria-label="${escapeHtml(messages.message("parse.timeline.position"))}" />
     </div>
+    <div class="timeline-event-navigation" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.event_navigation.group"))}">
+      <button type="button" data-timeline-event-previous disabled>${escapeHtml(messages.message("parse.timeline.event_navigation.previous"))}</button>
+      <output data-timeline-event-status>${escapeHtml(messages.message("parse.timeline.event_navigation.none"))}</output>
+      <button type="button" data-timeline-event-next>${escapeHtml(messages.message("parse.timeline.event_navigation.next"))}</button>
+    </div>
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, graph.loadoutPhaseSources, authorizedRateClock, rdpsLabel, partialRdps, messages)}</div>
     <div class="timeline-death-tooltips">${renderTimelineDeathSummaries(timeline, plotted, messages)}</div>
     <div class="timeline-range-scroll" data-timeline-range></div>
@@ -1049,7 +1054,10 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: PlottedTimelinePar
       })
       : messages.message("parse.timeline.event.death_exact", { player, time: formatDuration(marker.at_micros) });
     const triggerLabel = messages.message("parse.timeline.death.trigger", { death: label });
-    return deathMarker(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight,
+    const endMicros = marker.precision === "one_second_bucket"
+      ? Math.min(timeline.duration_micros, marker.at_micros + timeline.series_bucket_micros)
+      : undefined;
+    return deathMarker(marker.at_micros, endMicros, timeline.duration_micros, left, plotWidth, top, plotHeight,
       boundary, label, triggerLabel, match?.color ?? "#ff5e82", timelineDeathSummaryId(timeline, markerIndex), match?.participantIndex);
   }).join("");
   const loadouts = timeline.loadout_markers.map((marker) => {
@@ -1626,7 +1634,7 @@ export function timelineMarkerBoundary(atMicros: number, durationMicros: number,
 function markerLine(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, kind: string, boundary: number, title: string, participant?: number): string {
   const x = left + Math.min(1, atMicros / Math.max(1, durationMicros)) * width;
   const scope = participant === undefined ? "" : ` data-timeline-marker-participant="${participant}"`;
-  return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-label="${escapeHtml(title)}"${scope}><title>${escapeHtml(title)}</title></line>`;
+  return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-at-micros="${atMicros}" data-timeline-marker-label="${escapeHtml(title)}"${scope}><title>${escapeHtml(title)}</title></line>`;
 }
 
 function timelineDeathSummaryId(timeline: CombatTimeline, markerIndex: number): string {
@@ -1754,12 +1762,13 @@ function renderTimelineDeathHit(
   return `<li><strong>${escapeHtml(damage)}</strong><span>${details}</span></li>`;
 }
 
-function deathMarker(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, boundary: number, title: string, triggerTitle: string, color: string, summaryId: string, participant?: number): string {
+function deathMarker(atMicros: number, endMicros: number | undefined, durationMicros: number, left: number, width: number, top: number, height: number, boundary: number, title: string, triggerTitle: string, color: string, summaryId: string, participant?: number): string {
   const x = left + Math.min(1, atMicros / Math.max(1, durationMicros)) * width;
   const scope = participant === undefined ? "" : ` data-timeline-marker-participant="${participant}"`;
+  const interval = endMicros === undefined ? "" : ` data-timeline-marker-end-micros="${endMicros}"`;
   const label = escapeHtml(title);
   const description = escapeHtml(summaryId);
-  return `<g class="timeline-marker death" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(color)}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-label="${label}" data-timeline-death-trigger aria-label="${escapeHtml(triggerTitle)}" aria-describedby="${description}" aria-controls="${description}" aria-expanded="false" role="button" tabindex="0"${scope}><line class="timeline-marker-line" x1="0" y1="${top}" x2="0" y2="${top + height}" vector-effect="non-scaling-stroke"/><g class="timeline-death-icon" data-timeline-marker-symbol transform="translate(0 ${top + 12})"><rect class="timeline-death-hitbox" x="-12" y="-12" width="24" height="24"/><path class="timeline-death-bones" d="M-7-6L7 7M7-6L-7 7"/><circle cx="-7" cy="-6" r="1.5"/><circle cx="7" cy="7" r="1.5"/><circle cx="7" cy="-6" r="1.5"/><circle cx="-7" cy="7" r="1.5"/><path class="timeline-death-skull" d="M-6-3A6 6 0 1 1 6-3C6 1 4 3 3 3V7H-3V3C-4 3-6 1-6-3Z"/><circle class="timeline-death-eye" cx="-2.3" cy="-2" r="1.25"/><circle class="timeline-death-eye" cx="2.3" cy="-2" r="1.25"/><path class="timeline-death-eye" d="M0 0.5L-1.2 2.5H1.2Z"/></g><title>${label}</title></g>`;
+  return `<g class="timeline-marker death" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(color)}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-at-micros="${atMicros}"${interval} data-timeline-marker-label="${label}" data-timeline-death-trigger aria-label="${escapeHtml(triggerTitle)}" aria-describedby="${description}" aria-controls="${description}" aria-expanded="false" role="button" tabindex="0"${scope}><line class="timeline-marker-line" x1="0" y1="${top}" x2="0" y2="${top + height}" vector-effect="non-scaling-stroke"/><g class="timeline-death-icon" data-timeline-marker-symbol transform="translate(0 ${top + 12})"><rect class="timeline-death-hitbox" x="-12" y="-12" width="24" height="24"/><path class="timeline-death-bones" d="M-7-6L7 7M7-6L-7 7"/><circle cx="-7" cy="-6" r="1.5"/><circle cx="7" cy="7" r="1.5"/><circle cx="7" cy="-6" r="1.5"/><circle cx="-7" cy="7" r="1.5"/><path class="timeline-death-skull" d="M-6-3A6 6 0 1 1 6-3C6 1 4 3 3 3V7H-3V3C-4 3-6 1-6-3Z"/><circle class="timeline-death-eye" cx="-2.3" cy="-2" r="1.25"/><circle class="timeline-death-eye" cx="2.3" cy="-2" r="1.25"/><path class="timeline-death-eye" d="M0 0.5L-1.2 2.5H1.2Z"/></g><title>${label}</title></g>`;
 }
 
 function timelineViewportFor(timeline: HTMLElement, durationMicros: number): TimelineViewport {
@@ -1914,6 +1923,62 @@ function refreshTimelineVisibility(timeline: HTMLElement): void {
   refreshTimelineScale(timeline, timelineViewportFor(timeline, durationMicros));
   refreshTimelineRange(timeline);
   refreshTimelineInspection(timeline);
+}
+
+interface TimelineEventGroup {
+  boundary: number;
+  labels: string[];
+}
+
+function visibleTimelineEventGroups(timeline: HTMLElement): TimelineEventGroup[] {
+  const svg = timeline.querySelector<SVGSVGElement>(".timeline-svg");
+  if (!svg) return [];
+  const durationMicros = Number(svg.dataset.durationMicros);
+  const viewport = timelineViewportFor(timeline, durationMicros);
+  const viewportStartMicros = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+  const viewportEndMicros = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+  const grouped = new Map<number, string[]>();
+  svg.querySelectorAll<SVGGraphicsElement>(".timeline-marker[data-timeline-marker-boundary]").forEach((marker) => {
+    const boundary = Number(marker.dataset.timelineMarkerBoundary);
+    const atMicros = Number(marker.dataset.timelineMarkerAtMicros);
+    const endMicrosValue = marker.dataset.timelineMarkerEndMicros;
+    const endMicros = endMicrosValue === undefined ? undefined : Number(endMicrosValue);
+    const label = marker.dataset.timelineMarkerLabel;
+    const isVisiblePoint = endMicros === undefined && Number.isFinite(atMicros) &&
+      atMicros >= viewportStartMicros && atMicros <= viewportEndMicros;
+    // A one-second legacy bucket is a half-open interval [start, end). It remains
+    // indexed whenever some portion intersects the visible time range, but not
+    // when its end merely touches the viewport start.
+    const isVisibleInterval = endMicros !== undefined && Number.isFinite(atMicros) && Number.isFinite(endMicros) &&
+      atMicros <= viewportEndMicros && endMicros > viewportStartMicros;
+    if (marker.hasAttribute("hidden") || !Number.isInteger(boundary) || !label ||
+        (!isVisiblePoint && !isVisibleInterval)) return;
+    const labels = grouped.get(boundary) ?? [];
+    labels.push(label);
+    grouped.set(boundary, labels);
+  });
+  return [...grouped].sort(([left], [right]) => left - right)
+    .map(([boundary, labels]) => ({ boundary, labels }));
+}
+
+function refreshTimelineEventNavigation(timeline: HTMLElement, currentBoundary: number): TimelineEventGroup[] {
+  const groups = visibleTimelineEventGroups(timeline);
+  const currentIndex = groups.findIndex((group) => group.boundary === currentBoundary);
+  const previous = timeline.querySelector<HTMLButtonElement>("[data-timeline-event-previous]");
+  const next = timeline.querySelector<HTMLButtonElement>("[data-timeline-event-next]");
+  if (previous) previous.disabled = !groups.some((group) => group.boundary < currentBoundary);
+  if (next) next.disabled = !groups.some((group) => group.boundary > currentBoundary);
+  const status = timeline.querySelector<HTMLOutputElement>("[data-timeline-event-status]");
+  if (status) {
+    const messages = createMessageResolver(timeline.dataset.locale);
+    status.textContent = currentIndex >= 0
+      ? messages.message("parse.timeline.event_navigation.position", { position: currentIndex + 1, count: groups.length })
+      : groups.length === 0
+        ? messages.message("parse.timeline.event_navigation.none")
+        : messages.message(groups.length === 1
+          ? "parse.timeline.event_navigation.count.one" : "parse.timeline.event_navigation.count.other", { count: groups.length });
+  }
+  return groups;
 }
 
 function wireTimelineControls(root: HTMLElement): void {
@@ -2082,6 +2147,8 @@ function wireTimelineControls(root: HTMLElement): void {
     const messages = createMessageResolver(timeline.dataset.locale);
     const play = timeline.querySelector<HTMLButtonElement>("[data-timeline-play]");
     const scrubber = timeline.querySelector<HTMLInputElement>("[data-timeline-scrubber]");
+    const previousEvent = timeline.querySelector<HTMLButtonElement>("[data-timeline-event-previous]");
+    const nextEvent = timeline.querySelector<HTMLButtonElement>("[data-timeline-event-next]");
     let playing = false;
     let playbackFrame: number | null = null;
     let playbackOriginMillis = 0;
@@ -2141,6 +2208,29 @@ function wireTimelineControls(root: HTMLElement): void {
       stopPlayback();
       showTimelineInspection(timeline, Number(scrubber.value));
     });
+    const navigateEvent = (direction: "previous" | "next") => {
+      const current = Number(inspector.getAttribute("aria-valuenow") ?? "0");
+      const groups = visibleTimelineEventGroups(timeline);
+      const candidates = direction === "previous"
+        ? groups.filter((group) => group.boundary < current)
+        : groups.filter((group) => group.boundary > current);
+      const target = direction === "previous" ? candidates.at(-1) : candidates[0];
+      if (!target) return;
+      stopPlayback();
+      showTimelineInspection(timeline, target.boundary);
+      const refreshed = refreshTimelineEventNavigation(timeline, target.boundary);
+      const position = refreshed.findIndex((group) => group.boundary === target.boundary);
+      const live = timeline.querySelector<HTMLOutputElement>("[data-timeline-live]");
+      if (position >= 0 && live) {
+        live.textContent = messages.message("parse.timeline.event_navigation.announcement", {
+          position: position + 1,
+          count: refreshed.length,
+          events: refreshed[position]!.labels.join("; "),
+        });
+      }
+    };
+    previousEvent?.addEventListener("click", () => navigateEvent("previous"));
+    nextEvent?.addEventListener("click", () => navigateEvent("next"));
     const inspectorSvg = inspector.ownerSVGElement;
     inspectorSvg?.addEventListener("pointermove", (event) => {
       const svg = inspectorSvg;
@@ -2401,6 +2491,7 @@ function showTimelineInspection(timeline: HTMLElement, second: number, announce 
   scrubber?.setAttribute("aria-valuetext", time);
   const live = timeline.querySelector<HTMLOutputElement>("[data-timeline-live]");
   if (announce && live) live.textContent = announcement;
+  refreshTimelineEventNavigation(timeline, bounded);
 }
 
 interface TimelineSnapshotRow extends TimelineCursorRateRow {

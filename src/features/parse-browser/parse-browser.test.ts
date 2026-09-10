@@ -1092,7 +1092,7 @@ describe("timeline rolling windows", () => {
     const exact = renderTimeline({ ...graph, timeline: { ...graph.timeline!, death_markers: [{
       ...graph.timeline!.death_markers[0]!, at_micros: 1_400_000, precision: "exact_microsecond",
     }] } });
-    expect(exact).toContain('data-timeline-marker-boundary="2" data-timeline-marker-label="Marksman died at 0:01.400"');
+    expect(exact).toContain('data-timeline-marker-boundary="2" data-timeline-marker-at-micros="1400000" data-timeline-marker-label="Marksman died at 0:01.400"');
 
     const unresolved = renderTimeline({ ...graph, loadoutPhaseSources: [] });
     expect(unresolved).toContain("MarieRose loadout changed at 0:01");
@@ -1973,13 +1973,20 @@ describe("timeline interaction markup", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const messages = createMessageResolver("fr-CA", {
       ...bundledMessageCatalogs,
-      fr: { "parse.timeline.play": "base-locale-play-marker" },
+      fr: {
+        "parse.timeline.play": "base-locale-play-marker",
+        "parse.timeline.event_navigation.next": "next-<event>-marker",
+      },
       "fr-CA": { "parse.timeline.trailing_average": "exact-locale-window-marker" },
     });
     const html = renderTimeline(selectCanonicalGraph(report.runs[0]), messages);
     expect(html).toContain('data-locale="fr-CA"');
     expect(html).toContain(">base-locale-play-marker</button>");
     expect(html).toContain(">exact-locale-window-marker</span>");
+    expect(html).toContain("data-timeline-event-previous");
+    expect(html).toContain("data-timeline-event-status");
+    expect(html).toContain(">next-&lt;event&gt;-marker</button>");
+    expect(html).not.toContain("next-<event>-marker");
     expect(html).toContain("Combat timeline");
   });
 

@@ -124,6 +124,121 @@ describe("combat timeline DOM interactions", () => {
     expect(inspector.getAttribute("aria-valuenow")).toBe("0");
   });
 
+  it("groups same-boundary markers and navigates without wrapping while announcing every label", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    report.runs[0]!.timeline!.loadout_markers[0]!.at_micros = 3_100_000;
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const previous = root.querySelector<HTMLButtonElement>("[data-timeline-event-previous]")!;
+    const next = root.querySelector<HTMLButtonElement>("[data-timeline-event-next]")!;
+    const status = root.querySelector<HTMLOutputElement>("[data-timeline-event-status]")!;
+    const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+    const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
+
+    expect(status.textContent).toBe("2 event points in the visible range");
+    expect(previous.disabled).toBe(true);
+    expect(next.disabled).toBe(false);
+    play.click();
+    expect(play.textContent).toBe("Pause");
+    next.click();
+    expect(play.textContent).toBe("Play");
+    expect(inspector.getAttribute("aria-valuenow")).toBe("2");
+    expect(status.textContent).toBe("Event 1 of 2");
+    next.click();
+    expect(inspector.getAttribute("aria-valuenow")).toBe("4");
+    expect(root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")?.value).toBe("4");
+    expect(status.textContent).toBe("Event 2 of 2");
+    expect(next.disabled).toBe(true);
+    expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("death observed");
+    expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("loadout changed");
+    expect(root.querySelector("[data-timeline-live]")?.textContent).toContain("Event 2 of 2:");
+    expect(root.querySelector("[data-timeline-live]")?.textContent).toContain("death observed");
+    expect(root.querySelector("[data-timeline-live]")?.textContent).toContain("loadout changed");
+    previous.click();
+    expect(inspector.getAttribute("aria-valuenow")).toBe("2");
+    expect(status.textContent).toBe("Event 1 of 2");
+    expect(previous.disabled).toBe(true);
+  });
+
+  it("filters event navigation to the viewport and visible participant markers", () => {
+    const root = mountedTimeline();
+    const status = root.querySelector<HTMLOutputElement>("[data-timeline-event-status]")!;
+    const next = root.querySelector<HTMLButtonElement>("[data-timeline-event-next]")!;
+    const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+
+    expect(status.textContent).toBe("3 event points in the visible range");
+    root.querySelector<HTMLButtonElement>('[data-participant-toggle="2"]')!.click();
+    expect(status.textContent).toBe("2 event points in the visible range");
+    next.click();
+    next.click();
+    expect(inspector.getAttribute("aria-valuenow")).toBe("2");
+    expect(next.disabled).toBe(true);
+
+    root.querySelector<HTMLButtonElement>('[data-participant-toggle="2"]')!.click();
+    start.value = "3";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(status.textContent).toBe("1 event point in the visible range");
+    expect(inspector.getAttribute("aria-valuenow")).toBe("3");
+    expect(next.disabled).toBe(false);
+    next.click();
+    expect(inspector.getAttribute("aria-valuenow")).toBe("4");
+    expect(status.textContent).toBe("Event 1 of 1");
+    expect(next.disabled).toBe(true);
+  });
+
+  it("excludes an exact 2.1-second marker from a viewport starting at 3 seconds", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    const timeline = report.runs[0]!.timeline!;
+    timeline.death_markers = [{
+      ...timeline.death_markers[0]!,
+      at_micros: 2_100_000,
+      precision: "exact_microsecond",
+    }];
+    timeline.loadout_markers = [];
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const marker = root.querySelector<SVGGraphicsElement>(".timeline-marker.death")!;
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+
+    expect(marker.dataset.timelineMarkerBoundary).toBe("3");
+    expect(marker.dataset.timelineMarkerAtMicros).toBe("2100000");
+    expect(marker.dataset.timelineMarkerEndMicros).toBeUndefined();
+    expect(root.querySelector("[data-timeline-event-status]")?.textContent).toBe("1 event point in the visible range");
+    start.value = "3";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(root.querySelector("[data-timeline-event-status]")?.textContent).toBe("No events in the visible range");
+    expect(root.querySelector<HTMLButtonElement>("[data-timeline-event-next]")?.disabled).toBe(true);
+  });
+
+  it("treats a legacy 2–3-second death bucket as ending before a viewport starting at 3 seconds", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    report.schema_version = 12;
+    report.projection_revision = 1;
+    delete report.runs[0]!.timeline;
+    report.runs[0]!.participants.forEach((participant) => { participant.death_seconds = []; });
+    report.runs[0]!.participants[0]!.death_seconds = [2];
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderReport(report, 0);
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const marker = root.querySelector<SVGGraphicsElement>(".timeline-marker.death")!;
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+
+    expect(marker.dataset.timelineMarkerBoundary).toBe("3");
+    expect(marker.dataset.timelineMarkerAtMicros).toBe("2000000");
+    expect(marker.dataset.timelineMarkerEndMicros).toBe("3000000");
+    expect(root.querySelector("[data-timeline-event-status]")?.textContent).toBe("1 event point in the visible range");
+    start.value = "3";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(root.querySelector("[data-timeline-event-status]")?.textContent).toBe("No events in the visible range");
+    expect(root.querySelector<HTMLButtonElement>("[data-timeline-event-next]")?.disabled).toBe(true);
+  });
+
   it("gives the live legacy route canonical playback and accessible bucket death disclosure", () => {
     const root = mountedLiveLegacyTimeline();
     const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
@@ -137,6 +252,12 @@ describe("combat timeline DOM interactions", () => {
     expect(trigger.getAttribute("style")).toContain("color:");
     expect(summary.textContent).toContain("death observed in the 0:03.000–0:04.000 one-second bucket");
     expect(summary.textContent).toContain("This legacy timeline predates exact death-cause evidence.");
+
+    const nextEvent = root.querySelector<HTMLButtonElement>("[data-timeline-event-next]")!;
+    nextEvent.click();
+    expect(root.querySelector("[data-timeline-inspector]")?.getAttribute("aria-valuenow")).toBe("4");
+    expect(root.querySelector("[data-timeline-event-status]")?.textContent).toBe("Event 1 of 1");
+    expect(root.querySelector("[data-timeline-live]")?.textContent).toContain("one-second bucket");
 
     play.click();
     expect(play.textContent).toBe("Pause");
@@ -203,6 +324,9 @@ describe("combat timeline DOM interactions", () => {
     window.document.body.append(root as never);
     bindParseReportInteractions(root)();
     const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    expect(root.querySelector("[data-timeline-event-status]")?.textContent).toBe("No events in the visible range");
+    expect(root.querySelector<HTMLButtonElement>("[data-timeline-event-previous]")?.disabled).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>("[data-timeline-event-next]")?.disabled).toBe(true);
     scrubber.value = "3";
     scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("1s eDPS / aDPS");
@@ -962,5 +1086,6 @@ describe("combat timeline raid snapshot readability", () => {
     const styles = readFileSync(new URL("../../styles/site.css", import.meta.url), "utf8");
     expect(styles).toMatch(/\.timeline-snapshot-scroll\s*\{[^}]*max-height:\s*340px;[^}]*overflow:\s*auto;/su);
     expect(styles).toMatch(/\.timeline-snapshot-table thead th\s*\{[^}]*position:\s*sticky;/su);
+    expect(styles).toMatch(/@media \(max-width:\s*620px\)[\s\S]*?\.timeline-event-navigation button\s*\{[^}]*min-height:\s*44px;/u);
   });
 });
