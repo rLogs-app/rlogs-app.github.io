@@ -674,6 +674,18 @@ describe("timeline rolling windows", () => {
 });
 
 describe("damage-rate labels", () => {
+  it("preserves the static damage timeline for legacy reports", () => {
+    const legacy = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    legacy.schema_version = 12;
+    legacy.projection_revision = 1;
+    delete legacy.runs[0]!.timeline;
+
+    const html = renderReport(legacy, 0);
+    expect(html).toContain('class="parse-analysis-panel parse-timeline-panel"');
+    expect(html).toContain('class="parse-timeline-chart"');
+    expect(html).not.toContain('class="combat-timeline"');
+  });
+
   it("maps stored history rates to eDPS and aDPS and identifies partial rDPS", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const html = renderReport(report, 0);

@@ -388,7 +388,7 @@ export function renderReport(
     ${renderPartyTable(participants, run.active_combat_micros, reconciled, run.rdps_status, messages)}
     ${renderPartyLoadouts(run, graph.participants, reconciliation ?? undefined, messages)}
     ${renderCombatLoadoutPhases(run, participants, presentation)}
-    ${renderTimeline(graph, messages)}
+    ${graph.timeline ? renderTimeline(graph, messages) : renderRunTimeline(run, participants)}
     ${renderSkillContributions(participants, skillInfluences, skillEffects, presentation)}
     ${renderRdpsCalculations(run, reconciliation, participants, reconciled, presentation)}
     ${renderEvidenceCoverage(report, run, reconciliation, participants, reconciled)}
