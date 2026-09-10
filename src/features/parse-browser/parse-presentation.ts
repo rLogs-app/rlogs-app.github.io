@@ -50,6 +50,20 @@ export function localizedEffectName(
   return humanName(catalog?.effects[effectId] ?? null) ?? humanName(publishedName) ?? unlocalizedLabel("effect", effectId);
 }
 
+export async function renderCoreWithOptionalPresentation<T>(
+  coreRequest: Promise<T>,
+  presentationRequest: Promise<ParsePresentationCatalog | undefined>,
+  render: (core: T, presentation: ParsePresentationCatalog | undefined) => void,
+): Promise<T> {
+  const core = await coreRequest;
+  render(core, undefined);
+  void presentationRequest.then(
+    (presentation) => { if (presentation) render(core, presentation); },
+    () => undefined,
+  );
+  return core;
+}
+
 export function presentationForReport(
   catalog: ParsePresentationCatalog | undefined,
   deploymentId: string,
@@ -80,6 +94,21 @@ export function presentationForCatalogEntry(
 ): ParsePresentationCatalog | undefined {
   return schemaVersion === 7
     ? presentationForReport(catalog, entry.deployment_id, entry.client_build ?? "", entry.protocol_pack_digest ?? undefined)
+    : undefined;
+}
+
+export interface NullablePresentationIdentity {
+  deployment_id: string | null;
+  client_build: string | null;
+  protocol_pack_digest: string | null;
+}
+
+export function presentationForIdentity(
+  catalog: ParsePresentationCatalog | undefined,
+  identity: NullablePresentationIdentity | null | undefined,
+): ParsePresentationCatalog | undefined {
+  return identity?.deployment_id != null && identity.client_build != null && identity.protocol_pack_digest != null
+    ? presentationForReport(catalog, identity.deployment_id, identity.client_build, identity.protocol_pack_digest)
     : undefined;
 }
 

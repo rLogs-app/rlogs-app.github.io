@@ -21,6 +21,8 @@ import { fetchPublicRead } from "../../public-api";
 import {
   loadParsePresentation,
   presentationForCatalogEntry,
+  presentationForIdentity,
+  renderCoreWithOptionalPresentation,
   type ParsePresentationCatalog,
 } from "../parse-browser/parse-presentation";
 import { regionalSeason } from "./regional-seasons";
@@ -50,22 +52,23 @@ export async function mountHome(): Promise<void> {
     setUnavailable("home-ranking-status", rankings, "Scene rankings are available on the published site.");
     setUnavailable("home-photo-status", newestPhotos, "Community photos are available on the published site.");
     popularPhotos.innerHTML = '<p class="empty-state">Popular photos are available on the published site.</p>';
-    setUnavailable("home-milestone-status", milestones, "First-clear milestones are available on the published site.");
+    setUnavailable("home-milestone-status", milestones, "Verified clears are available on the published site.");
     return;
   }
 
   const authorization = activeAccessToken();
+  const presentationRequest = loadParsePresentation().catch(() => undefined);
   const photoHeaders = new Headers({ Accept: "application/json" });
   if (authorization) photoHeaders.set("Authorization", `Bearer ${authorization}`);
-  const presentationRequest = loadParsePresentation().catch(() => undefined);
-  const parseTask = Promise.all([
+  const parseTask = renderCoreWithOptionalPresentation(
     fetchTyped(`${apiBase}/v1/parses?limit=250`, isPublicParseCatalog),
     presentationRequest,
-  ]).then(
-    ([catalog, presentation]) => {
+    (catalog, presentation) => {
       renderRecentParses(catalog, recent, presentation);
       renderRankings(catalog, rankings, presentation);
     },
+  ).then(
+    () => undefined,
     () => {
       setUnavailable("home-parse-status", recent, "Recent parse submissions are temporarily unavailable.");
       setUnavailable("home-ranking-status", rankings, "Scene rankings are temporarily unavailable.");
@@ -92,9 +95,13 @@ export async function mountHome(): Promise<void> {
       popularPhotos.innerHTML = '<p class="empty-state">Popular photos are temporarily unavailable.</p>';
     },
   );
-  const milestoneTask = fetchTyped(`${apiBase}/v1/activity/milestones?limit=10`, isPublicCommunityMilestoneCatalog).then(
-    (catalog) => renderMilestones(catalog, milestones),
-    () => setUnavailable("home-milestone-status", milestones, "First-clear milestones are temporarily unavailable."),
+  const milestoneTask = renderCoreWithOptionalPresentation(
+    fetchTyped(`${apiBase}/v1/activity/milestones?limit=10`, isPublicCommunityMilestoneCatalog),
+    presentationRequest,
+    (catalog, presentation) => renderMilestones(catalog, milestones, presentation),
+  ).then(
+    () => undefined,
+    () => setUnavailable("home-milestone-status", milestones, "Verified clears are temporarily unavailable."),
   );
   await Promise.allSettled([parseTask, profileTask, photoTask, milestoneTask]);
 }
@@ -273,25 +280,54 @@ function photoCard(entry: PublicPhotoCatalogEntry): string {
 function renderMilestones(
   catalog: PublicCommunityMilestoneCatalog,
   target: HTMLElement,
+  presentation?: ParsePresentationCatalog,
 ): void {
   const status = required("home-milestone-status");
   status.textContent = catalog.total_entries
-    ? `${catalog.total_entries.toLocaleString()} first clears`
-    : "Waiting for a first clear";
+    ? `${catalog.total_entries.toLocaleString()} verified clears`
+    : "Waiting for a verified clear";
   status.className = catalog.total_entries ? "status-chip success" : "status-chip neutral";
   target.innerHTML = catalog.entries.length
-    ? catalog.entries.map(milestoneRow).join("")
-    : '<p class="empty-state">Verified first-time M20 dungeon and Nightmare raid clears will appear here.</p>';
+    ? catalog.entries.map((entry) => milestoneRow(entry, presentation, catalog.schema_version)).join("")
+    : '<p class="empty-state">Server-verified public clears will appear here.</p>';
 }
 
-function milestoneRow(entry: PublicCommunityMilestone): string {
+export function milestoneRow(
+  entry: PublicCommunityMilestone,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 1 | 2 = 1,
+): string {
   const player = entry.display_name ?? `UID ${entry.character_id}`;
-  const activity = entry.scene_name ?? `Scene ${entry.scene_id ?? "unknown"}`;
-  const achievement =
-    entry.kind === "master_twenty_dungeon"
-      ? `first M${entry.difficulty_tier ?? 20} clear`
-      : "first Nightmare clear";
+  const { activity, achievement } = milestonePresentationCopy(entry, presentation, schemaVersion);
   return `<a class="home-feed-row milestone-feed-row" href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span><strong>${escapeHtml(player)}</strong><small>${escapeHtml(`${activity} · ${achievement}`)}</small></span><span><small>${escapeHtml(relativeTime(entry.completed_unix_millis))}</small><strong>${formatDuration(entry.total_run_time_micros)}</strong></span></a>`;
+}
+
+export function milestonePresentationCopy(
+  entry: PublicCommunityMilestone,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 1 | 2 = 1,
+): { activity: string; achievement: string } {
+  const identity = schemaVersion === 2 ? {
+    deployment_id: entry.deployment_id ?? null,
+    client_build: entry.client_build ?? null,
+    protocol_pack_digest: entry.protocol_pack_digest ?? null,
+  } : null;
+  const authorized = presentationForIdentity(presentation, identity) != null;
+  const activity = authorized
+    ? entry.scene_name ?? rawMilestoneSceneLabel(entry.scene_id)
+    : rawMilestoneSceneLabel(entry.scene_id);
+  const achievement = authorized
+    ? entry.kind === "master_twenty_dungeon"
+      ? `first M${entry.difficulty_tier ?? 20} clear`
+      : "first Nightmare clear"
+    : [entry.difficulty_tier == null ? undefined : `Tier ${entry.difficulty_tier}`, "verified clear"]
+      .filter(Boolean)
+      .join(" · ");
+  return { activity, achievement };
+}
+
+function rawMilestoneSceneLabel(sceneId: number | null): string {
+  return sceneId == null ? "Scene unresolved" : `Scene #${sceneId}`;
 }
 
 function bindPhotoLikes(): void {

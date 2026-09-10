@@ -9,12 +9,18 @@ import { fetchPublicRead } from "../../public-api";
 import {
   type ObservedCharacterCatalog,
   type ObservedCharacterEntry,
+  type ObservedCharacterReportReference,
   isObservedCharacterCatalog,
 } from "../../contracts/public-characters";
+import {
+  loadParsePresentation,
+  presentationForIdentity,
+  type ParsePresentationCatalog,
+} from "../parse-browser/parse-presentation";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
-type DirectoryEntry =
+export type DirectoryEntry =
   | { kind: "claimed"; profile: PublicProfileCatalogEntry }
   | { kind: "observed"; character: ObservedCharacterEntry };
 
@@ -31,6 +37,8 @@ export async function mountProfileBrowser(): Promise<void> {
 
   let catalog: PublicProfileCatalog;
   let observedCatalog: ObservedCharacterCatalog;
+  let presentation: ParsePresentationCatalog | undefined;
+  const presentationRequest = loadParsePresentation().catch(() => undefined);
   try {
     [catalog, observedCatalog] = await Promise.all([
       loadProfileCatalog(),
@@ -57,7 +65,11 @@ export async function mountProfileBrowser(): Promise<void> {
 
   const renderList = (): void => {
     const query = search.value.trim().toLocaleLowerCase();
-    const visible = directory.filter((entry) => searchableDirectoryEntry(entry).includes(query));
+    const visible = directory.filter((entry) => searchableDirectoryEntry(
+      entry,
+      presentation,
+      observedCatalog.schema_version,
+    ).includes(query));
     list.replaceChildren();
     if (!visible.length) {
       list.append(message(query ? "No public profile matches that search." : "No player has published a profile yet."));
@@ -82,7 +94,7 @@ export async function mountProfileBrowser(): Promise<void> {
         card.append(
           element("strong", "", character.display_name),
           element("span", "identity-id", "Observed in public parses"),
-          element("small", "", [character.class_name, character.specialization_name].filter(Boolean).join(" · ")),
+          element("small", "", observedClassLabel(character, presentation, observedCatalog.schema_version).replace(" / ", " · ")),
           element("small", "", `${character.report_count.toLocaleString()} involved ${character.report_count === 1 ? "parse" : "parses"} · ${humanize(character.region)}`),
         );
       }
@@ -102,8 +114,24 @@ export async function mountProfileBrowser(): Promise<void> {
   if (`${location.pathname}${location.search}` !== canonicalUrl) {
     history.replaceState(null, "", canonicalUrl);
   }
+  void presentationRequest.then((resolved) => {
+    if (!resolved) return;
+    presentation = resolved;
+    renderList();
+    if (selected?.kind === "observed") {
+      detail.replaceChildren(renderObservedCharacter(
+        selected.character,
+        presentation,
+        observedCatalog.schema_version,
+      ));
+    }
+  });
   if (selected.kind === "observed") {
-    detail.replaceChildren(renderObservedCharacter(selected.character));
+    detail.replaceChildren(renderObservedCharacter(
+      selected.character,
+      presentation,
+      observedCatalog.schema_version,
+    ));
   } else {
     detail.replaceChildren(message("Loading the latest verified character snapshot…"));
     try {
@@ -162,10 +190,25 @@ export function profileUrl(characterId: string): string {
   return `/profiles/?profile=${encodeURIComponent(characterId)}`;
 }
 
-function searchableDirectoryEntry(entry: DirectoryEntry): string {
+export function searchableDirectoryEntry(
+  entry: DirectoryEntry,
+  presentation?: ParsePresentationCatalog,
+  observedSchemaVersion: 1 | 2 = 1,
+): string {
+  const observedPresentation = entry.kind === "observed"
+    ? presentationForObservedCharacter(presentation, observedSchemaVersion, entry.character)
+    : undefined;
   const values = entry.kind === "claimed"
     ? [entry.profile.display_name, entry.profile.character_id, entry.profile.deployment, entry.profile.region, entry.profile.realm, entry.profile.world]
-    : [entry.character.display_name, entry.character.class_name, entry.character.specialization_name, entry.character.deployment, entry.character.region];
+    : [
+      entry.character.display_name,
+      observedPresentation ? entry.character.class_name : undefined,
+      observedPresentation ? entry.character.specialization_name : undefined,
+      entry.character.class_id == null ? undefined : String(entry.character.class_id),
+      entry.character.specialization_id == null ? undefined : String(entry.character.specialization_id),
+      entry.character.deployment,
+      entry.character.region,
+    ];
   return values
     .filter((value): value is string => Boolean(value))
     .join(" ")
@@ -190,7 +233,11 @@ function directoryUpdated(entry: DirectoryEntry): number {
   return entry.kind === "claimed" ? entry.profile.updated_unix_millis : entry.character.last_seen_unix_millis;
 }
 
-function renderObservedCharacter(character: ObservedCharacterEntry): HTMLElement {
+function renderObservedCharacter(
+  character: ObservedCharacterEntry,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 1 | 2 = 1,
+): HTMLElement {
   const article = element("article", "panel profile-data-section observed-character-profile");
   const heading = element("div", "profile-data-heading");
   const title = element("div", "");
@@ -204,7 +251,7 @@ function renderObservedCharacter(character: ObservedCharacterEntry): HTMLElement
 
   const facts = element("dl", "profile-facts observed-character-facts");
   for (const [label, value] of [
-    ["Class", [character.class_name, character.specialization_name].filter(Boolean).join(" / ") || "Not observed"],
+    ["Class", observedClassLabel(character, presentation, schemaVersion)],
     ["Region", humanize(character.region)],
     ["Client deployment", humanize(character.deployment)],
     ["First observed", formatDate(character.first_seen_unix_millis)],
@@ -222,7 +269,7 @@ function renderObservedCharacter(character: ObservedCharacterEntry): HTMLElement
     const link = element("a", "linked-profile-card");
     link.setAttribute("href", `/parses/?parse=${encodeURIComponent(report.report_id)}&run=${report.run_index}`);
     link.append(
-      element("strong", "", report.scene_name ?? `Scene ${report.scene_id ?? "unresolved"}`),
+      element("strong", "", observedReportSceneLabel(report, presentation, schemaVersion)),
       element("small", "", `${humanize(report.terminal_state)} · ${formatDate(report.created_unix_millis)}`),
       element("span", "identity-id", report.report_id),
     );
@@ -231,6 +278,53 @@ function renderObservedCharacter(character: ObservedCharacterEntry): HTMLElement
   reports.append(links);
   article.append(reports);
   return article;
+}
+
+export function observedClassLabel(
+  character: ObservedCharacterEntry,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 1 | 2 = 1,
+): string {
+  if (presentationForObservedCharacter(presentation, schemaVersion, character)) {
+    return [character.class_name, character.specialization_name].filter(Boolean).join(" / ") || rawObservedClassLabel(character);
+  }
+  return rawObservedClassLabel(character);
+}
+
+export function observedReportSceneLabel(
+  report: ObservedCharacterReportReference,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 1 | 2 = 1,
+): string {
+  const identity = schemaVersion === 2 ? {
+    deployment_id: report.deployment_id ?? null,
+    client_build: report.client_build ?? null,
+    protocol_pack_digest: report.protocol_pack_digest ?? null,
+  } : null;
+  return presentationForIdentity(presentation, identity)
+    ? report.scene_name ?? rawObservedSceneLabel(report.scene_id)
+    : rawObservedSceneLabel(report.scene_id);
+}
+
+function presentationForObservedCharacter(
+  presentation: ParsePresentationCatalog | undefined,
+  schemaVersion: 1 | 2,
+  character: ObservedCharacterEntry,
+): ParsePresentationCatalog | undefined {
+  return schemaVersion === 2
+    ? presentationForIdentity(presentation, character.presentation_authority)
+    : undefined;
+}
+
+function rawObservedClassLabel(character: ObservedCharacterEntry): string {
+  return [
+    character.class_id == null ? undefined : `Class #${character.class_id}`,
+    character.specialization_id == null ? undefined : `Specialization #${character.specialization_id}`,
+  ].filter(Boolean).join(" / ") || "Class not observed";
+}
+
+function rawObservedSceneLabel(sceneId: number | null): string {
+  return sceneId == null ? "Scene unresolved" : `Scene #${sceneId}`;
 }
 
 function humanize(value: string): string {

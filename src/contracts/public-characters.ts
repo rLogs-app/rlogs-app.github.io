@@ -5,6 +5,15 @@ export interface ObservedCharacterReportReference {
   scene_id: number | null;
   scene_name: string | null;
   terminal_state: string;
+  deployment_id?: string | null;
+  client_build?: string | null;
+  protocol_pack_digest?: string | null;
+}
+
+export interface ObservedPresentationAuthority {
+  deployment_id: string;
+  client_build: string;
+  protocol_pack_digest: string;
 }
 
 export interface ObservedCharacterEntry {
@@ -23,10 +32,11 @@ export interface ObservedCharacterEntry {
   last_seen_unix_millis: number;
   report_count: number;
   reports: ObservedCharacterReportReference[];
+  presentation_authority?: ObservedPresentationAuthority | null;
 }
 
 export interface ObservedCharacterCatalog {
-  schema_version: 1;
+  schema_version: 1 | 2;
   generated_unix_millis: number;
   total_characters: number;
   characters: ObservedCharacterEntry[];
@@ -34,14 +44,14 @@ export interface ObservedCharacterCatalog {
 
 export function isObservedCharacterCatalog(value: unknown): value is ObservedCharacterCatalog {
   return isRecord(value)
-    && value.schema_version === 1
+    && (value.schema_version === 1 || value.schema_version === 2)
     && typeof value.generated_unix_millis === "number"
     && Number.isSafeInteger(value.total_characters)
     && Array.isArray(value.characters)
-    && value.characters.every(isObservedCharacterEntry);
+    && value.characters.every((entry) => isObservedCharacterEntry(entry, value.schema_version as 1 | 2));
 }
 
-function isObservedCharacterEntry(value: unknown): value is ObservedCharacterEntry {
+function isObservedCharacterEntry(value: unknown, schemaVersion: 1 | 2): value is ObservedCharacterEntry {
   return isRecord(value)
     && typeof value.observed_character_key === "string"
     && /^(?:chr|obs)_[0-9a-f]{32}$/u.test(value.observed_character_key)
@@ -59,17 +69,35 @@ function isObservedCharacterEntry(value: unknown): value is ObservedCharacterEnt
     && positiveInteger(value.last_seen_unix_millis)
     && positiveInteger(value.report_count)
     && Array.isArray(value.reports)
-    && value.reports.every(isReportReference);
+    && (schemaVersion === 1 || isNullablePresentationAuthority(value.presentation_authority))
+    && value.reports.every((report) => isReportReference(report, schemaVersion));
 }
 
-function isReportReference(value: unknown): value is ObservedCharacterReportReference {
+function isReportReference(value: unknown, schemaVersion: 1 | 2): value is ObservedCharacterReportReference {
   return isRecord(value)
     && /^rpt_[A-Za-z0-9_-]+$/u.test(String(value.report_id ?? ""))
     && nonnegativeInteger(value.run_index)
     && positiveInteger(value.created_unix_millis)
     && (value.scene_id === null || Number.isSafeInteger(value.scene_id))
     && nullableString(value.scene_name)
-    && typeof value.terminal_state === "string";
+    && typeof value.terminal_state === "string"
+    && (schemaVersion === 1 || isNullableIdentityTriple(value));
+}
+
+function isNullablePresentationAuthority(value: unknown): boolean {
+  return value === null || (isRecord(value) && isCompleteIdentityTriple(value));
+}
+
+function isNullableIdentityTriple(value: Record<string, unknown>): boolean {
+  const fields = [value.deployment_id, value.client_build, value.protocol_pack_digest];
+  return fields.every((field) => field === null) || isCompleteIdentityTriple(value);
+}
+
+function isCompleteIdentityTriple(value: Record<string, unknown>): boolean {
+  return typeof value.deployment_id === "string" && value.deployment_id.length > 0
+    && typeof value.client_build === "string" && value.client_build.length > 0
+    && typeof value.protocol_pack_digest === "string"
+    && /^sha256:[0-9a-f]{64}$/u.test(value.protocol_pack_digest);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

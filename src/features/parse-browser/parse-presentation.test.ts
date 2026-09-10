@@ -4,6 +4,7 @@ import {
   localizedActionName,
   localizedEffectName,
   presentationForReport,
+  renderCoreWithOptionalPresentation,
   type ParsePresentationCatalog,
 } from "./parse-presentation";
 
@@ -86,5 +87,28 @@ describe("parse presentation", () => {
     expect(localizedEffectName(mismatched, "3003052", "Effect 3003052")).toBe(
       "Unlocalized combat effect #3003052",
     );
+  });
+
+  it("renders core data before an optional presentation request settles", async () => {
+    let resolvePresentation: ((value: ParsePresentationCatalog) => void) | undefined;
+    const pendingPresentation = new Promise<ParsePresentationCatalog>((resolve) => {
+      resolvePresentation = resolve;
+    });
+    const renders: Array<ParsePresentationCatalog | undefined> = [];
+
+    await expect(renderCoreWithOptionalPresentation(
+      Promise.resolve("core"),
+      pendingPresentation,
+      (core, presentation) => {
+        expect(core).toBe("core");
+        renders.push(presentation);
+      },
+    )).resolves.toBe("core");
+    expect(renders).toEqual([undefined]);
+
+    resolvePresentation?.(catalog);
+    await pendingPresentation;
+    await Promise.resolve();
+    expect(renders).toEqual([undefined, catalog]);
   });
 });

@@ -1,7 +1,7 @@
 export type CommunityMilestoneKind = "master_twenty_dungeon" | "nightmare_raid";
 
 export interface PublicCommunityMilestoneCatalog {
-  schema_version: 1;
+  schema_version: 1 | 2;
   total_entries: number;
   entries: PublicCommunityMilestone[];
 }
@@ -18,6 +18,9 @@ export interface PublicCommunityMilestone {
   difficulty_family: string;
   difficulty_tier: number | null;
   total_run_time_micros: number | null;
+  deployment_id?: string | null;
+  client_build?: string | null;
+  protocol_pack_digest?: string | null;
 }
 
 const reportIdPattern = /^rpt_[0-9a-f]{32}$/u;
@@ -27,14 +30,14 @@ export function isPublicCommunityMilestoneCatalog(
 ): value is PublicCommunityMilestoneCatalog {
   return (
     isRecord(value) &&
-    value.schema_version === 1 &&
+    (value.schema_version === 1 || value.schema_version === 2) &&
     nonnegativeInteger(value.total_entries) &&
     Array.isArray(value.entries) &&
-    value.entries.every(isPublicCommunityMilestone)
+    value.entries.every((entry) => isPublicCommunityMilestone(entry, value.schema_version as 1 | 2))
   );
 }
 
-function isPublicCommunityMilestone(value: unknown): value is PublicCommunityMilestone {
+function isPublicCommunityMilestone(value: unknown, schemaVersion: 1 | 2): value is PublicCommunityMilestone {
   return (
     isRecord(value) &&
     (value.kind === "master_twenty_dungeon" || value.kind === "nightmare_raid") &&
@@ -49,7 +52,17 @@ function isPublicCommunityMilestone(value: unknown): value is PublicCommunityMil
     (value.scene_name === null || typeof value.scene_name === "string") &&
     typeof value.difficulty_family === "string" &&
     nullableNonnegativeInteger(value.difficulty_tier) &&
-    nullableNonnegativeInteger(value.total_run_time_micros)
+    nullableNonnegativeInteger(value.total_run_time_micros) &&
+    (schemaVersion === 1 || isNullableIdentityTriple(value))
+  );
+}
+
+function isNullableIdentityTriple(value: Record<string, unknown>): boolean {
+  const fields = [value.deployment_id, value.client_build, value.protocol_pack_digest];
+  return fields.every((field) => field === null) || (
+    typeof value.deployment_id === "string" && value.deployment_id.length > 0 &&
+    typeof value.client_build === "string" && value.client_build.length > 0 &&
+    typeof value.protocol_pack_digest === "string" && /^sha256:[0-9a-f]{64}$/u.test(value.protocol_pack_digest)
   );
 }
 

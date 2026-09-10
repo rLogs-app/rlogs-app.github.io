@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import type { PublicParseCatalogEntry } from "../../contracts/public-parse";
+import type { PublicCommunityMilestone } from "../../contracts/public-activity";
 import type { ParsePresentationCatalog } from "../parse-browser/parse-presentation";
-import { buildSceneRankings, catalogEntrySceneLabel } from "./home";
+import { buildSceneRankings, catalogEntrySceneLabel, milestonePresentationCopy } from "./home";
 import { regionalSeason } from "./regional-seasons";
 
 const digest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
@@ -99,5 +100,40 @@ describe("regional seasons", () => {
     expect(regionalSeason("global", "europe", Date.parse("2026-10-08T07:00:00Z")).seasonId).toBe(4);
     expect(regionalSeason("star", "china", Date.parse("2026-09-06T00:00:00Z")).seasonId).toBe(4);
     expect(regionalSeason("starsea-steam", "unknown", Date.parse("2026-09-06T00:00:00Z")).seasonId).toBe(3);
+  });
+});
+
+describe("home milestones", () => {
+  const milestone: PublicCommunityMilestone = {
+    kind: "nightmare_raid",
+    character_id: "3296036",
+    display_name: "MarieRose",
+    report_id: `rpt_${"a".repeat(32)}`,
+    run_index: 0,
+    completed_unix_millis: 1,
+    scene_id: 6500,
+    scene_name: "Chaotic Realm",
+    difficulty_family: "nightmare",
+    difficulty_tier: 20,
+    total_run_time_micros: 90_000_000,
+    deployment_id: "global",
+    client_build: "24687926",
+    protocol_pack_digest: digest,
+  };
+
+  it("uses semantic milestone copy only for an exact schema 2 identity", () => {
+    expect(milestonePresentationCopy(milestone, presentation, 2)).toEqual({
+      activity: "Chaotic Realm",
+      achievement: "first Nightmare clear",
+    });
+
+    const wrong = { ...milestone, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
+    const unavailable = { ...milestone, deployment_id: null, client_build: null, protocol_pack_digest: null };
+    for (const [candidate, schema] of [[wrong, 2], [unavailable, 2], [milestone, 1]] as const) {
+      const copy = milestonePresentationCopy(candidate, presentation, schema);
+      expect(copy).toEqual({ activity: "Scene #6500", achievement: "Tier 20 · verified clear" });
+      expect(`${copy.activity} ${copy.achievement}`).not.toContain("Chaotic Realm");
+      expect(`${copy.activity} ${copy.achievement}`).not.toContain("Nightmare");
+    }
   });
 });
