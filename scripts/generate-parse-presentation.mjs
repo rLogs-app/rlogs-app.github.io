@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const websiteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeRoot = path.resolve(
-  websiteRoot,
-  "../RLogs/plugins/games/blue-protocol-star-resonance/game-data/runtime",
+  process.env.RLOGS_SOURCE_ROOT ?? path.join(websiteRoot, "../RLogs"),
+  "plugins/games/blue-protocol-star-resonance/game-data/runtime",
 );
 const readJson = (file) => JSON.parse(readFileSync(file, "utf8"));
 const localizationRoot = path.join(runtimeRoot, "localization/en-US");
@@ -19,6 +19,14 @@ const statusEffects = readJson(path.join(localizationRoot, "status-effect-names.
 const rdpsEffects = readJson(
   path.join(runtimeRoot, "rdps-attribution-effect-presentation.v1.json"),
 );
+if (
+  typeof rdpsEffects.deployment_id !== "string" ||
+  rdpsEffects.deployment_id.length === 0 ||
+  typeof rdpsEffects.game_build !== "string" ||
+  rdpsEffects.game_build.length === 0
+) {
+  throw new Error("The parse presentation source must declare an exact deployment and game build.");
+}
 
 const actions = Object.fromEntries(directActions.actions.map(([id, name]) => [String(id), name]));
 for (const [id, name] of reviewedActions.actions) actions[String(id)] = name;
@@ -28,6 +36,7 @@ for (const effect of rdpsEffects.effects) effects[String(effect.effect_id)] = ef
 const output = {
   schema_version: 1,
   locale: "en-US",
+  deployment_id: rdpsEffects.deployment_id,
   game_build: rdpsEffects.game_build,
   source: "Reviewed rLogs BPSR runtime presentation catalogs",
   actions,

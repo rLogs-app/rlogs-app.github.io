@@ -1,6 +1,7 @@
 export interface ParsePresentationCatalog {
   schema_version: 1;
   locale: "en-US";
+  deployment_id: string;
   game_build: string;
   source: string;
   actions: Readonly<Record<string, string>>;
@@ -38,6 +39,21 @@ export function localizedEffectName(
   return humanName(publishedName) ?? catalog?.effects[effectId] ?? "Unlocalized combat effect";
 }
 
+export function presentationForReport(
+  catalog: ParsePresentationCatalog | undefined,
+  deploymentId: string,
+  clientBuild: string,
+): ParsePresentationCatalog | undefined {
+  if (
+    !catalog ||
+    catalog.deployment_id !== deploymentId ||
+    catalog.game_build !== clientBuild
+  ) {
+    return undefined;
+  }
+  return catalog;
+}
+
 function humanName(value: string | null): string | undefined {
   if (value == null) return undefined;
   const trimmed = value.trim();
@@ -56,7 +72,10 @@ function isCatalog(value: unknown): value is ParsePresentationCatalog {
     isRecord(value) &&
     value.schema_version === 1 &&
     value.locale === "en-US" &&
+    typeof value.deployment_id === "string" &&
+    value.deployment_id.length > 0 &&
     typeof value.game_build === "string" &&
+    value.game_build.length > 0 &&
     typeof value.source === "string" &&
     isStringRecord(value.actions) &&
     isStringRecord(value.effects)

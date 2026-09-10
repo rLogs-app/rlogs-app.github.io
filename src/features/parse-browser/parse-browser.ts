@@ -21,6 +21,7 @@ import {
   loadParsePresentation,
   localizedActionName,
   localizedEffectName,
+  presentationForReport,
   type ParsePresentationCatalog,
 } from "./parse-presentation";
 import { fetchPublicRead } from "../../public-api";
@@ -339,6 +340,11 @@ export function renderReport(
   }
   const run = report.runs.find((candidate) => candidate.run_index === runIndex) ?? report.runs[0];
   if (!run) return `<p class="empty-state">${escapeHtml(messages.message("parse.report.empty"))}</p>`;
+  const reportPresentation = presentationForReport(
+    presentation,
+    report.deployment_id,
+    report.client_build,
+  );
   const graph = selectCanonicalGraph(run, reconciliation ?? undefined);
   const teamDps = run.participants.reduce((sum, actor) => sum + actor.dps, 0);
   const teamEdps = run.participants.reduce((sum, actor) => sum + actor.encounter_dps, 0);
@@ -388,10 +394,10 @@ export function renderReport(
     ${renderSwiftVortexCandidateAudit(reconciliation)}
     ${renderPartyTable(participants, run.active_combat_micros, reconciled, run.rdps_status, messages)}
     ${renderPartyLoadouts(run, graph.participants, reconciliation ?? undefined, messages)}
-    ${renderCombatLoadoutPhases(run, participants, presentation)}
+    ${renderCombatLoadoutPhases(run, participants, reportPresentation)}
     ${graph.timeline ? renderTimeline(graph, messages) : renderRunTimeline(run, participants)}
-    ${renderSkillContributions(participants, skillInfluences, skillEffects, presentation)}
-    ${renderRdpsCalculations(run, reconciliation, participants, reconciled, presentation)}
+    ${renderSkillContributions(participants, skillInfluences, skillEffects, reportPresentation)}
+    ${renderRdpsCalculations(run, reconciliation, participants, reconciled, reportPresentation)}
     ${renderEvidenceCoverage(report, run, reconciliation, participants, reconciled)}
     <p class="parse-proof">${escapeHtml(run.run_group_id ? messages.message("parse.report.proof_group", { proof, group: run.run_group_id }) : proof)}</p>
   </article>`;

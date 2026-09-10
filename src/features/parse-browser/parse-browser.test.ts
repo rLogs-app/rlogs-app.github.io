@@ -7,6 +7,7 @@ import type {
   PublicRunReconciliation,
 } from "../../contracts/public-parse";
 import { bundledMessageCatalogs, createMessageResolver } from "../../localization/messages";
+import type { ParsePresentationCatalog } from "./parse-presentation";
 import {
   activityCategoryId,
   activityLabel,
@@ -549,6 +550,23 @@ describe("parse search", () => {
     expect(html).toContain("Grouped Skill 7");
     expect(html).toContain("rDPS calculations");
     expect(html).toContain("Harmony Grace");
+
+    const presentation: ParsePresentationCatalog = {
+      schema_version: 1,
+      locale: "en-US",
+      deployment_id: "global",
+      game_build: "24687926",
+      source: "test",
+      actions: { "2900840": "Arcane! Divine Reliance" },
+      effects: {},
+    };
+    expect(renderReport(report, 0, reconciliation, null, presentation)).toContain(
+      "Arcane! Divine Reliance",
+    );
+    const mismatchedBuild = { ...report, client_build: "24687927" };
+    const mismatchedHtml = renderReport(mismatchedBuild, 0, reconciliation, null, presentation);
+    expect(mismatchedHtml).toContain("Unlocalized combat action");
+    expect(mismatchedHtml).not.toContain("Arcane! Divine Reliance");
     expect(html).toContain("Evidence coverage");
     expect(html).toContain("Cross-vantage reconciled");
     expect(html).toContain("Time-gated profile evidence");
