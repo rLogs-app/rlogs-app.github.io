@@ -197,6 +197,52 @@ describe("combat timeline DOM interactions", () => {
     expect(Number(activeSeries.dataset.timelineScaleMaximum)).toBe(originalMaximum);
   });
 
+  it("clears and restores every participant without changing the active timeline state", () => {
+    const root = mountedTimeline();
+    const timeline = root.querySelector<HTMLElement>("[data-timeline-metric]")!;
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    const end = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-end]")!;
+    const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+    const activeSeries = root.querySelector<SVGGElement>('[data-series="damage"][data-series-window="5"]')!;
+
+    start.value = "50";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    end.value = "60";
+    end.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    scrubber.value = "55";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    const visibleMaximum = activeSeries.dataset.timelineScaleMaximum;
+
+    root.querySelector<HTMLButtonElement>("[data-participant-clear]")!.click();
+    expect([...root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]")]
+      .every((button) => button.getAttribute("aria-pressed") === "false")).toBe(true);
+    expect([...root.querySelectorAll<SVGPolylineElement>(".timeline-trace")]
+      .every((track) => track.hasAttribute("hidden"))).toBe(true);
+    expect(activeSeries.dataset.timelineScaleMaximum).toBe("1");
+    expect(root.querySelector("[data-timeline-range]")?.textContent).toContain("No participants selected");
+    expect(root.querySelector("[data-timeline-snapshot]")?.textContent).toContain("No participants selected");
+    expect(timeline.dataset.timelineMetric).toBe("damage");
+    expect(timeline.dataset.timelineWindow).toBe("5");
+    expect(timeline.dataset.timelineViewportStart).toBe("50");
+    expect(timeline.dataset.timelineViewportEnd).toBe("60");
+    expect(inspector.getAttribute("aria-valuenow")).toBe("55");
+
+    root.querySelector<HTMLButtonElement>("[data-participant-show-all]")!.click();
+    expect([...root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]")]
+      .every((button) => button.getAttribute("aria-pressed") === "true")).toBe(true);
+    expect([...root.querySelectorAll<SVGPolylineElement>(".timeline-trace")]
+      .every((track) => !track.hasAttribute("hidden"))).toBe(true);
+    expect(activeSeries.dataset.timelineScaleMaximum).toBe(visibleMaximum);
+    expect(root.querySelector(".timeline-range-table")).not.toBeNull();
+    expect(root.querySelector(".timeline-snapshot-table")).not.toBeNull();
+    expect(timeline.dataset.timelineMetric).toBe("damage");
+    expect(timeline.dataset.timelineWindow).toBe("5");
+    expect(timeline.dataset.timelineViewportStart).toBe("50");
+    expect(timeline.dataset.timelineViewportEnd).toBe("60");
+    expect(inspector.getAttribute("aria-valuenow")).toBe("55");
+  });
+
   it("uses the exact rDPS active clock at a fractional terminal boundary", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const run = report.runs[0]!;

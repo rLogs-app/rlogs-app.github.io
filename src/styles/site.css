@@ -2346,6 +2346,30 @@ summary.party-loadout-title {
   font-weight: 700;
 }
 
+.timeline-participant-toolbar {
+  display: flex;
+  margin-top: 8px;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.timeline-participant-toolbar button {
+  padding: 3px 7px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 3%);
+  cursor: pointer;
+}
+
+.timeline-participant-toolbar button:hover,
+.timeline-participant-toolbar button:focus-visible {
+  color: var(--text);
+  border-color: var(--cyan);
+}
+
 .timeline-legend {
   margin-top: 6px;
   color: var(--muted);

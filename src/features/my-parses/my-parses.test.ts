@@ -85,6 +85,7 @@ describe("My Parses", () => {
       "[data-metric]",
       "[data-window]",
       "[data-participant-toggle]",
+      "[data-participant-show-all], [data-participant-clear]",
       "[data-timeline-inspector]",
     ]);
   });

@@ -55,6 +55,8 @@ const enUsMessages: MessageCatalog = {
   "parse.timeline.inspector_aria": "Timeline point inspector",
   "parse.timeline.player": "Player {id}",
   "parse.timeline.participants": "Visible participants",
+  "parse.timeline.participants_show_all": "Show all",
+  "parse.timeline.participants_clear": "Clear",
   "parse.timeline.graph_aria": "Sparse one-second combat rates over {duration}; death and loadout markers use run elapsed time",
   "parse.timeline.marker.death": "Death",
   "parse.timeline.marker.loadout": "Loadout change",

@@ -928,6 +928,11 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
     <div class="timeline-inspection" data-timeline-inspection><strong>${escapeHtml(messages.message("parse.timeline.inspection.title"))}</strong><span>${escapeHtml(messages.message("parse.timeline.inspection.hint"))}</span></div>
     <output class="timeline-live" data-timeline-live aria-live="polite" aria-atomic="true"></output>
     <div class="timeline-snapshot-scroll" data-timeline-snapshot></div>
+    <div class="timeline-participant-toolbar" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">
+      <span>${escapeHtml(messages.message("parse.timeline.participants"))}</span>
+      <button type="button" data-participant-show-all>${escapeHtml(messages.message("parse.timeline.participants_show_all"))}</button>
+      <button type="button" data-participant-clear>${escapeHtml(messages.message("parse.timeline.participants_clear"))}</button>
+    </div>
     <div class="timeline-legend" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">${plotted.map(({ actor, color, pattern }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i class="line-pattern-${pattern}"></i><span>${escapeHtml(actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id }))}</span></button>`).join("")}</div>
     ${notes ? `<p class="timeline-note">${escapeHtml(notes)}</p>` : ""}
   </section>`;
@@ -1567,6 +1572,22 @@ function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" =
   return viewport;
 }
 
+function setTimelineParticipantVisibility(timeline: HTMLElement, participant: string, visible: boolean): void {
+  timeline.querySelector<HTMLButtonElement>(`[data-participant-toggle="${participant}"]`)
+    ?.setAttribute("aria-pressed", String(visible));
+  timeline.querySelectorAll<SVGPolylineElement>(`[data-participant="${participant}"]`).forEach((track) => {
+    if (visible) track.removeAttribute("hidden");
+    else track.setAttribute("hidden", "");
+  });
+}
+
+function refreshTimelineVisibility(timeline: HTMLElement): void {
+  const durationMicros = Number(timeline.querySelector<SVGSVGElement>(".timeline-svg")?.dataset.durationMicros);
+  refreshTimelineScale(timeline, timelineViewportFor(timeline, durationMicros));
+  refreshTimelineRange(timeline);
+  refreshTimelineInspection(timeline);
+}
+
 function wireTimelineControls(root: HTMLElement): void {
   root.querySelectorAll<HTMLButtonElement>("[data-metric]").forEach((button) => button.addEventListener("click", () => {
     const metric = button.dataset.metric;
@@ -1614,14 +1635,20 @@ function wireTimelineControls(root: HTMLElement): void {
       const participant = button.dataset.participantToggle;
       if (!timeline || participant == null) return;
       const visible = button.getAttribute("aria-pressed") !== "true";
-      button.setAttribute("aria-pressed", String(visible));
-      timeline.querySelectorAll<SVGPolylineElement>(`[data-participant="${participant}"]`).forEach((track) => {
-        if (visible) track.removeAttribute("hidden");
-        else track.setAttribute("hidden", "");
+      setTimelineParticipantVisibility(timeline, participant, visible);
+      refreshTimelineVisibility(timeline);
+    });
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-participant-show-all], [data-participant-clear]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const timeline = button.closest<HTMLElement>("[data-timeline-metric]");
+      if (!timeline) return;
+      const visible = button.hasAttribute("data-participant-show-all");
+      timeline.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]").forEach((participantButton) => {
+        const participant = participantButton.dataset.participantToggle;
+        if (participant != null) setTimelineParticipantVisibility(timeline, participant, visible);
       });
-      refreshTimelineScale(timeline, timelineViewportFor(timeline, Number(timeline.querySelector<SVGSVGElement>(".timeline-svg")?.dataset.durationMicros)));
-      refreshTimelineRange(timeline);
-      refreshTimelineInspection(timeline);
+      refreshTimelineVisibility(timeline);
     });
   });
   root.querySelectorAll<SVGRectElement>("[data-timeline-inspector]").forEach((inspector) => {
