@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
 import { bundledMessageCatalogs, createMessageResolver } from "../../localization/messages";
-import { hasCompleteRdpsBuckets, partyLoadoutSummaries, renderPartyLoadouts, renderReport, renderTimeline, rollingBucketSeries, rollingTimelineSamples, selectCanonicalGraph, timelineCumulativeRateLabel, timelineDamageRatesAtSecond, timelineRateVariantsAtSecond, timelineRdpsAtSecond, timelineValueAtSecond } from "./parse-browser";
+import { hasCompleteRdpsBuckets, partyLoadoutSummaries, renderPartyLoadouts, renderReport, renderTimeline, rollingBucketSeries, rollingTimelineSamples, selectCanonicalGraph, timelineCumulativeRateLabel, timelineDamageRatesAtSecond, timelineRateVariantsAtSecond, timelineRdpsAtSecond, timelineValueAtSecond, timelineVisibleTotalAtSecond } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(readFileSync(new URL(`../../../public/fixtures/${name}`, import.meta.url), "utf8")) as T;
 
@@ -104,6 +104,22 @@ describe("timeline rolling windows", () => {
     expect(timelineRdpsAtSecond(exact.rdps_damage, fixture.rate_clock, 3)).toBe(150);
     expect(timelineRdpsAtSecond([[0, 120]], null, 0)).toBeNull();
   });
+
+  it("aggregates visible party cursor rates and fails closed for partial rDPS", () => {
+    const exactRows = [
+      { variants: { one: 100, five: 80, ten: 70, cumulative: 60 }, damageRates: { edps: 50, adps: 75 }, rdps: 65 },
+      { variants: { one: 200, five: 160, ten: 140, cumulative: 120 }, damageRates: { edps: 100, adps: 150 }, rdps: 130 },
+    ];
+    expect(timelineVisibleTotalAtSecond(exactRows, true)).toEqual({
+      variants: { one: 300, five: 240, ten: 210, cumulative: 180 },
+      damageRates: { edps: 150, adps: 225 },
+      rdps: 195,
+    });
+    expect(timelineVisibleTotalAtSecond(exactRows, false)?.rdps).toBeNull();
+    expect(timelineVisibleTotalAtSecond([{ ...exactRows[0], rdps: null }, exactRows[1]], true)?.rdps).toBeNull();
+    expect(timelineVisibleTotalAtSecond([{ ...exactRows[0], damageRates: null }, exactRows[1]], true)?.damageRates).toBeNull();
+    expect(timelineVisibleTotalAtSecond([])).toBeNull();
+  });
 });
 
 describe("damage-rate labels", () => {
@@ -129,6 +145,8 @@ describe("damage-rate labels", () => {
     expect(html).toContain('data-series="rdps_damage"');
     expect(html).toContain('data-rate-clock-complete="true"');
     expect(html).toContain('data-series-complete="true"');
+    expect(html).toContain('data-timeline-participant-count="5"');
+    expect(html).toContain('data-timeline-exact-rdps-track-count="0"');
     expect(html).toContain('data-cumulative-complete="false"');
     expect(html).toContain('data-rate-clock="0:1000000:1000000,1:2000000:2000000');
     expect(html).toContain("Exact eDPS/aDPS clock");

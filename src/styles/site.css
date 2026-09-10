@@ -694,6 +694,13 @@ summary.party-loadout-title {
   color: var(--text);
 }
 
+.timeline-inspection-total {
+  padding-right: 12px;
+  border-right: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 700;
+}
+
 .timeline-legend {
   margin-top: 6px;
   color: var(--muted);

@@ -23,6 +23,7 @@ const enUsMessages: MessageCatalog = {
   "parse.timeline.inspection.title": "Point inspection",
   "parse.timeline.inspection.hint": "Hover the graph or focus it and use the arrow keys.",
   "parse.timeline.inspection.none": "No participants selected.",
+  "parse.timeline.inspection.visible_total": "Visible total",
   "parse.timeline.inspection.rate_unavailable": "eDPS/aDPS unavailable",
   "parse.timeline.inspection.rdps_unavailable": "cumulative rDPS unavailable",
   "parse.timeline.inspection.edps_adps": "eDPS {edps} · aDPS {adps}",

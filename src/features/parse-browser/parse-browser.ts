@@ -353,6 +353,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
     return [{ actor, track, color: palette[trackIndex % palette.length] }];
   });
   const rdpsTracks = plotted.filter(({ actor, track }) => hasCompleteRdpsBuckets(actor.series.slice(0, track.series_point_count)));
+  const exactCumulativeRdpsTracks = rdpsTracks.filter(({ actor }) => actor.rdps_incomplete === false);
   const partialRdps = graph.rdpsStatus.startsWith("partial_") || plotted.some(({ actor, track }) =>
     actor.rdps_incomplete === true || !hasCompleteRdpsBuckets(actor.series.slice(0, track.series_point_count)));
   const rdpsLabel = messages.message(partialRdps ? "parse.timeline.rdps.partial" : "parse.timeline.rdps.exact");
@@ -379,7 +380,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
     timeline.omitted.series_points ? messages.message("parse.timeline.note.series_truncated") : "",
     omissions ? messages.message(omissions === 1 ? "parse.timeline.note.omissions.one" : "parse.timeline.note.omissions.other", { count: count(omissions) }) : "",
   ].filter(Boolean).join(" ");
-  return `<section class="combat-timeline" data-timeline-metric="damage" data-timeline-window="5" data-timeline-rdps-label="${escapeHtml(rdpsLabel)}" data-locale="${escapeHtml(messages.locale)}" aria-label="${escapeHtml(messages.message("parse.timeline.aria"))}">
+  return `<section class="combat-timeline" data-timeline-metric="damage" data-timeline-window="5" data-timeline-rdps-label="${escapeHtml(rdpsLabel)}" data-timeline-participant-count="${plotted.length}" data-timeline-exact-rdps-track-count="${exactCumulativeRdpsTracks.length}" data-locale="${escapeHtml(messages.locale)}" aria-label="${escapeHtml(messages.message("parse.timeline.aria"))}">
     <div class="timeline-heading"><div><strong>${escapeHtml(messages.message("parse.timeline.title"))}</strong><small>${escapeHtml(trustLabel)}</small></div>
       <div class="timeline-controls" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.metric_group"))}">
         <button type="button" data-metric="damage" aria-pressed="true">${escapeHtml(messages.message("parse.timeline.metric.damage"))}</button>
@@ -554,6 +555,36 @@ export function timelineRdpsAtSecond(
   return adjustedDamage * 1_000_000 / clock.adps_elapsed_micros;
 }
 
+export interface TimelineCursorRateRow {
+  variants: { one: number; five: number; ten: number; cumulative: number };
+  damageRates: { edps: number; adps: number } | null;
+  rdps: number | null;
+}
+
+export function timelineVisibleTotalAtSecond(
+  rows: readonly TimelineCursorRateRow[],
+  rdpsCoverageComplete = false,
+): TimelineCursorRateRow | null {
+  if (!rows.length) return null;
+  const sum = (select: (row: TimelineCursorRateRow) => number) => rows.reduce((total, row) => total + select(row), 0);
+  const damageRates = rows.every((row) => row.damageRates !== null)
+    ? { edps: sum((row) => row.damageRates!.edps), adps: sum((row) => row.damageRates!.adps) }
+    : null;
+  const rdps = !rdpsCoverageComplete || rows.some((row) => row.rdps === null)
+    ? null
+    : sum((row) => row.rdps!);
+  return {
+    variants: {
+      one: sum((row) => row.variants.one),
+      five: sum((row) => row.variants.five),
+      ten: sum((row) => row.variants.ten),
+      cumulative: sum((row) => row.variants.cumulative),
+    },
+    damageRates,
+    rdps,
+  };
+}
+
 function markerLine(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, kind: string, title: string): string {
   const x = left + Math.min(1, atMicros / Math.max(1, durationMicros)) * width;
   return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}"><title>${escapeHtml(title)}</title></line>`;
@@ -725,21 +756,27 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
     : timeline.dataset.timelineMetric === "damage_taken" ? messages.message("parse.timeline.metric.taken")
     : timeline.dataset.timelineMetric === "rdps_damage" ? timeline.dataset.timelineRdpsLabel ?? messages.message("parse.timeline.rdps.exact") : messages.message("parse.timeline.metric.damage");
   const time = formatDuration(bounded * 1_000_000);
-  const cumulative = (row: typeof active[number]): string => row.damageRates
+  const cumulative = (row: TimelineCursorRateRow): string => row.damageRates
     ? messages.message("parse.timeline.inspection.edps_adps", { edps: messages.number(row.damageRates.edps, { maximumFractionDigits: 1 }), adps: messages.number(row.damageRates.adps, { maximumFractionDigits: 1 }) })
     : timeline.dataset.timelineMetric === "damage" ? messages.message("parse.timeline.inspection.rate_unavailable")
     : timeline.dataset.timelineMetric === "rdps_damage"
       ? row.rdps == null ? messages.message("parse.timeline.inspection.rdps_unavailable") : messages.message("parse.timeline.inspection.rdps", { rdps: messages.number(row.rdps, { maximumFractionDigits: 1 }) })
       : messages.message("parse.timeline.inspection.run_rate", { metric, value: messages.number(row.variants.cumulative, { maximumFractionDigits: 1 }) });
-  const rateLine = (row: typeof active[number]): string => messages.message("parse.timeline.inspection.rates", {
+  const rateLine = (row: TimelineCursorRateRow): string => messages.message("parse.timeline.inspection.rates", {
     one: messages.number(row.variants.one, { maximumFractionDigits: 1 }),
     five: messages.number(row.variants.five, { maximumFractionDigits: 1 }),
     ten: messages.number(row.variants.ten, { maximumFractionDigits: 1 }),
     cumulative: cumulative(row),
   });
-  const details = active.length ? active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>${escapeHtml(rateLine(row))}</strong></span>`).join("") : `<span>${escapeHtml(messages.message("parse.timeline.inspection.none"))}</span>`;
+  const allRdpsTracksExact = Number(timeline.dataset.timelineExactRdpsTrackCount) === Number(timeline.dataset.timelineParticipantCount);
+  const visibleTotal = timelineVisibleTotalAtSecond(active, timeline.dataset.timelineMetric === "rdps_damage" && allRdpsTracksExact);
+  const total = visibleTotal && active.length > 1
+    ? `<span class="timeline-inspection-total">${escapeHtml(messages.message("parse.timeline.inspection.visible_total"))} <strong>${escapeHtml(rateLine(visibleTotal))}</strong></span>`
+    : "";
+  const details = active.length ? `${total}${active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>${escapeHtml(rateLine(row))}</strong></span>`).join("")}` : `<span>${escapeHtml(messages.message("parse.timeline.inspection.none"))}</span>`;
   output.innerHTML = `<strong>${time}</strong>${details}`;
-  inspector.setAttribute("aria-valuetext", `${time}; ${active.map((row) => `${row.label}: ${rateLine(row)}`).join("; ") || messages.message("parse.timeline.inspection.none")}`);
+  const totalAria = visibleTotal && active.length > 1 ? `${messages.message("parse.timeline.inspection.visible_total")}: ${rateLine(visibleTotal)}; ` : "";
+  inspector.setAttribute("aria-valuetext", `${time}; ${totalAria}${active.map((row) => `${row.label}: ${rateLine(row)}`).join("; ") || messages.message("parse.timeline.inspection.none")}`);
 }
 
 export function timelineCumulativeRateLabel(metric: string): string {
