@@ -245,6 +245,7 @@ describe("combat timeline DOM interactions", () => {
     const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
     const trigger = root.querySelector<SVGGraphicsElement>("[data-timeline-death-trigger]")!;
     const summary = root.querySelector<HTMLElement>("[data-timeline-death-summary]")!;
+    const zoomIn = root.querySelector<HTMLButtonElement>("[data-timeline-zoom-in]")!;
 
     expect(root.querySelector(".parse-timeline-chart")).toBeNull();
     expect(root.querySelector(".parse-death-marker")).toBeNull();
@@ -252,6 +253,16 @@ describe("combat timeline DOM interactions", () => {
     expect(trigger.getAttribute("style")).toContain("color:");
     expect(summary.textContent).toContain("death observed in the 0:03.000–0:04.000 one-second bucket");
     expect(summary.textContent).toContain("This legacy timeline predates exact death-cause evidence.");
+    expect(root.querySelector(".timeline-svg")?.getAttribute("data-rate-clock-complete")).toBe("false");
+    expect(root.querySelector(".timeline-svg")?.hasAttribute("data-rate-clock")).toBe(false);
+    const fullEnd = root.querySelector<HTMLElement>(".combat-timeline")?.dataset.timelineViewportEnd;
+    zoomIn.click();
+    expect(root.querySelector<HTMLElement>(".combat-timeline")?.dataset.timelineViewportEnd)
+      .not.toBe(fullEnd);
+    expect(root.querySelector(".combat-timeline .timeline-note")?.textContent).toContain("wall time is not substituted");
+    root.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]")!.click();
+    scrubber.value = "0";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
 
     const nextEvent = root.querySelector<HTMLButtonElement>("[data-timeline-event-next]")!;
     nextEvent.click();
@@ -324,6 +335,12 @@ describe("combat timeline DOM interactions", () => {
     window.document.body.append(root as never);
     bindParseReportInteractions(root)();
     const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    root.querySelector<HTMLButtonElement>("[data-timeline-zoom-in]")!.click();
+    expect(root.querySelector(".timeline-range-table")?.textContent).toContain("eDPS");
+    expect(root.querySelector(".timeline-range-table")?.textContent).toContain("aDPS");
+    expect(root.querySelector(".timeline-range-table .timeline-snapshot-total")?.textContent).toContain("150");
+    expect(root.querySelector(".timeline-range-table .timeline-snapshot-total")?.textContent).toContain("300");
+    expect(root.querySelector(".timeline-range-table")?.textContent).not.toContain("unavailable");
     expect(root.querySelector("[data-timeline-event-status]")?.textContent).toBe("No events in the visible range");
     expect(root.querySelector<HTMLButtonElement>("[data-timeline-event-previous]")?.disabled).toBe(true);
     expect(root.querySelector<HTMLButtonElement>("[data-timeline-event-next]")?.disabled).toBe(true);
@@ -877,6 +894,137 @@ describe("combat timeline DOM interactions", () => {
     expect(timeline.dataset.timelineViewportStart).toBe("2");
   });
 
+  it("directly zooms and pans the plot while preserving inspection and interactive markers", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    report.runs[0]!.timeline!.duration_micros = 4_000_000;
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const timeline = root.querySelector<HTMLElement>(".combat-timeline")!;
+    const svg = root.querySelector<SVGSVGElement>(".timeline-svg")!;
+    const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+    const death = root.querySelector<SVGGraphicsElement>("[data-timeline-death-trigger]")!;
+    const loadout = root.querySelector<SVGLineElement>(".timeline-marker.loadout")!;
+    const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
+    const zoomIn = root.querySelector<HTMLButtonElement>("[data-timeline-zoom-in]")!;
+    const zoomOut = root.querySelector<HTMLButtonElement>("[data-timeline-zoom-out]")!;
+    const earlier = root.querySelector<HTMLButtonElement>("[data-timeline-pan-earlier]")!;
+    const later = root.querySelector<HTMLButtonElement>("[data-timeline-pan-later]")!;
+    const setPointerCapture = vi.fn();
+    const releasePointerCapture = vi.fn();
+    Object.assign(svg, {
+      getBoundingClientRect: () => ({ left: 0, right: 1_040, top: 0, bottom: 320, width: 1_040, height: 320, x: 0, y: 0, toJSON: () => ({}) }),
+      setPointerCapture,
+      hasPointerCapture: () => true,
+      releasePointerCapture,
+    });
+
+    const zoomOutAtFull = new window.WheelEvent("wheel", {
+      clientX: 784, clientY: 100, deltaY: 100, cancelable: true, bubbles: true,
+    } as never);
+    svg.dispatchEvent(zoomOutAtFull as unknown as Event);
+    expect(zoomOutAtFull.defaultPrevented).toBe(false);
+    expect(zoomOut.disabled).toBe(true);
+
+    play.click();
+    const zoomAtCursor = new window.WheelEvent("wheel", {
+      clientX: 784, clientY: 100, deltaY: -100, cancelable: true, bubbles: true,
+    } as never);
+    svg.dispatchEvent(zoomAtCursor as unknown as Event);
+    expect(zoomAtCursor.defaultPrevented).toBe(true);
+    expect(play.textContent).toBe("Play");
+    expect(timeline.dataset.timelineViewportStart).toBe("1");
+    expect(timeline.dataset.timelineViewportEnd).toBe("4");
+    expect(earlier.disabled).toBe(false);
+    expect(later.disabled).toBe(true);
+    expect(zoomOut.disabled).toBe(false);
+
+    const markerWheel = new window.WheelEvent("wheel", {
+      clientX: 784, clientY: 100, deltaY: -100, cancelable: true, bubbles: true,
+    } as never);
+    death.dispatchEvent(markerWheel as unknown as Event);
+    expect(markerWheel.defaultPrevented).toBe(false);
+    expect(timeline.dataset.timelineViewportStart).toBe("1");
+
+    const loadoutViewport = `${timeline.dataset.timelineViewportStart}:${timeline.dataset.timelineViewportEnd}`;
+    const loadoutWheel = new window.WheelEvent("wheel", {
+      clientX: 500, clientY: 100, deltaY: -100, cancelable: true, bubbles: true,
+    } as never);
+    loadout.dispatchEvent(loadoutWheel as unknown as Event);
+    expect(loadoutWheel.defaultPrevented).toBe(false);
+    expect(`${timeline.dataset.timelineViewportStart}:${timeline.dataset.timelineViewportEnd}`).toBe(loadoutViewport);
+    const loadoutPan = new window.PointerEvent("pointerdown", {
+      pointerId: 39, button: 0, shiftKey: true, clientX: 500, clientY: 100, cancelable: true, bubbles: true,
+    });
+    loadout.dispatchEvent(loadoutPan as unknown as Event);
+    expect(loadoutPan.defaultPrevented).toBe(false);
+    expect(setPointerCapture).not.toHaveBeenCalledWith(39);
+    const loadoutReset = new window.MouseEvent("dblclick", {
+      clientX: 500, clientY: 100, cancelable: true, bubbles: true,
+    });
+    loadout.dispatchEvent(loadoutReset as unknown as Event);
+    expect(loadoutReset.defaultPrevented).toBe(false);
+    expect(`${timeline.dataset.timelineViewportStart}:${timeline.dataset.timelineViewportEnd}`).toBe(loadoutViewport);
+
+    earlier.click();
+    expect(timeline.dataset.timelineViewportStart).toBe("0");
+    expect(timeline.dataset.timelineViewportEnd).toBe("3");
+    later.click();
+    expect(timeline.dataset.timelineViewportStart).toBe("1");
+    expect(timeline.dataset.timelineViewportEnd).toBe("4");
+
+    earlier.click();
+    const captureCount = setPointerCapture.mock.calls.length;
+    death.dispatchEvent(new window.PointerEvent("pointerdown", {
+      pointerId: 40, button: 0, shiftKey: true, clientX: 500, clientY: 100, cancelable: true, bubbles: true,
+    }) as unknown as Event);
+    expect(setPointerCapture).toHaveBeenCalledTimes(captureCount);
+    svg.dispatchEvent(new window.PointerEvent("pointerdown", {
+      pointerId: 41, button: 0, shiftKey: true, clientX: 500, clientY: 100, cancelable: true, bubbles: true,
+    }) as unknown as Event);
+    svg.dispatchEvent(new window.PointerEvent("pointermove", {
+      pointerId: 41, clientX: 180, clientY: 100, cancelable: true, bubbles: true,
+    }) as unknown as Event);
+    expect(setPointerCapture).toHaveBeenCalledWith(41);
+    expect(timeline.dataset.timelineViewportStart).toBe("1");
+    svg.dispatchEvent(new window.PointerEvent("pointerup", { pointerId: 41, bubbles: true }) as unknown as Event);
+    expect(releasePointerCapture).toHaveBeenCalledWith(41);
+
+    zoomIn.click();
+    svg.dispatchEvent(new window.PointerEvent("pointerdown", {
+      pointerId: 42, button: 1, clientX: 500, clientY: 100, cancelable: true, bubbles: true,
+    }) as unknown as Event);
+    expect(setPointerCapture).toHaveBeenCalledWith(42);
+    const beforeLostCapture = `${timeline.dataset.timelineViewportStart}:${timeline.dataset.timelineViewportEnd}`;
+    svg.dispatchEvent(new window.PointerEvent("lostpointercapture", { pointerId: 42, bubbles: true }) as unknown as Event);
+    expect(releasePointerCapture).toHaveBeenCalledWith(42);
+    svg.dispatchEvent(new window.PointerEvent("pointermove", {
+      pointerId: 42, clientX: 820, clientY: 100, cancelable: true, bubbles: true,
+    }) as unknown as Event);
+    expect(`${timeline.dataset.timelineViewportStart}:${timeline.dataset.timelineViewportEnd}`).toBe(beforeLostCapture);
+
+    svg.dispatchEvent(new window.PointerEvent("pointerdown", {
+      pointerId: 42, button: 1, clientX: 500, clientY: 100, cancelable: true, bubbles: true,
+    }) as unknown as Event);
+    svg.dispatchEvent(new window.PointerEvent("pointermove", {
+      pointerId: 42, clientX: 820, clientY: 100, cancelable: true, bubbles: true,
+    }) as unknown as Event);
+    expect(`${timeline.dataset.timelineViewportStart}:${timeline.dataset.timelineViewportEnd}`).not.toBe(beforeLostCapture);
+    svg.dispatchEvent(new window.PointerEvent("pointerup", { pointerId: 42, bubbles: true }) as unknown as Event);
+
+    svg.dispatchEvent(new window.MouseEvent("dblclick", { clientX: 500, clientY: 100, cancelable: true, bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("0");
+    expect(timeline.dataset.timelineViewportEnd).toBe("4");
+    expect(zoomOut.disabled).toBe(true);
+
+    svg.dispatchEvent(new window.PointerEvent("pointermove", { pointerId: 99, clientX: 545, clientY: 100, bubbles: true }) as unknown as Event);
+    expect(Number(inspector.getAttribute("aria-valuenow"))).toBeGreaterThan(0);
+    death.dispatchEvent(new window.MouseEvent("click", { bubbles: true }) as unknown as Event);
+    expect(death.getAttribute("aria-expanded")).toBe("true");
+    expect(zoomIn.disabled).toBe(false);
+  });
+
   it("rescales the active graph to visible data and restores its full-run maximum", () => {
     const root = mountedTimeline();
     const activeSeries = root.querySelector<SVGGElement>('[data-series="damage"][data-series-window="5"]')!;
@@ -1192,5 +1340,6 @@ describe("combat timeline raid snapshot readability", () => {
     expect(styles).toMatch(/@media \(max-width:\s*620px\)[\s\S]*?\.timeline-event-navigation button\s*\{[^}]*min-height:\s*44px;/u);
     expect(styles).toMatch(/\.timeline-overview-slider\s*\{[^}]*min-height:\s*44px;[^}]*touch-action:\s*pan-y;/su);
     expect(styles).toMatch(/\.timeline-overview-slider:focus-visible\s*\{[^}]*outline:/su);
+    expect(styles).toMatch(/@media \(max-width:\s*620px\)[\s\S]*?\.timeline-viewport-actions button\s*\{[^}]*min-height:\s*44px;/u);
   });
 });

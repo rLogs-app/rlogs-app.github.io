@@ -38,6 +38,9 @@ describe("website message resolver", () => {
     const messages = createMessageResolver("en-US");
     expect(messages.message("parse.timeline.overview.label")).toBe("Run overview");
     expect(messages.message("parse.timeline.overview.aria")).toBe("Visible timeline window");
+    expect(messages.message("parse.timeline.viewport_navigation")).toBe("Timeline viewport navigation");
+    expect(messages.message("parse.timeline.viewport_zoom_in")).toBe("Zoom in");
+    expect(messages.message("parse.timeline.viewport_gesture_hint")).toContain("Shift-drag");
   });
 
   it("localizes death-cause evidence and fallback summaries", () => {

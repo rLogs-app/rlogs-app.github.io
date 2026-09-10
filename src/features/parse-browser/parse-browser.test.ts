@@ -36,7 +36,9 @@ import {
   timelineMaximumBoundary,
   timelineMarkerBoundary,
   clampTimelineViewport,
+  panTimelineViewport,
   timelineViewportAtStart,
+  zoomTimelineViewport,
   timelineDamageRateVariantsAtSecond,
   timelineDamageRatesAtSecond,
   timelineRateVariantsAtSecond,
@@ -1476,6 +1478,22 @@ describe("timeline rolling windows", () => {
       .toEqual({ startBoundary: 1, endBoundary: 3 });
     expect(timelineViewportAtStart(2_200_000, { startBoundary: 1, endBoundary: 3 }, -5))
       .toEqual({ startBoundary: 0, endBoundary: 2 });
+    expect(zoomTimelineViewport(2_200_000, { startBoundary: 0, endBoundary: 3 }, 2, 2_100_000))
+      .toEqual({ startBoundary: 2, endBoundary: 3 });
+  });
+
+  it("zooms around a run-elapsed anchor and pans without changing span", () => {
+    const zoomed = zoomTimelineViewport(10_000_000, { startBoundary: 0, endBoundary: 10 }, 2, 8_000_000);
+    expect(zoomed).toEqual({ startBoundary: 4, endBoundary: 9 });
+    expect((8 - zoomed.startBoundary) / (zoomed.endBoundary - zoomed.startBoundary)).toBe(0.8);
+    expect(zoomTimelineViewport(10_000_000, zoomed, 0.1, 8_000_000))
+      .toEqual({ startBoundary: 0, endBoundary: 10 });
+    expect(panTimelineViewport(10_000_000, { startBoundary: 2, endBoundary: 6 }, 3))
+      .toEqual({ startBoundary: 5, endBoundary: 9 });
+    expect(panTimelineViewport(10_000_000, { startBoundary: 2, endBoundary: 6 }, -20))
+      .toEqual({ startBoundary: 0, endBoundary: 4 });
+    expect(panTimelineViewport(10_000_000, { startBoundary: 2, endBoundary: 6 }, Number.NaN))
+      .toEqual({ startBoundary: 2, endBoundary: 6 });
   });
 
   it("withholds fractional trailing windows that would require invented sub-second damage", () => {
@@ -2078,6 +2096,12 @@ describe("timeline interaction markup", () => {
     expect(html).toContain('tabindex="0" role="slider"');
     expect(html).toContain('class="timeline-viewport-controls"');
     expect(html).toContain('data-timeline-viewport-reset disabled');
+    expect(html).toContain('class="timeline-viewport-actions" role="group" aria-label="Timeline viewport navigation"');
+    expect(html).toContain('data-timeline-pan-earlier disabled>Earlier');
+    expect(html).toContain('data-timeline-zoom-out disabled>Zoom out');
+    expect(html).toContain('data-timeline-zoom-in>Zoom in');
+    expect(html).toContain('data-timeline-pan-later disabled>Later');
+    expect(html).toContain('class="timeline-gesture-hint"');
     expect(html).toContain('data-timeline-inspection><strong>');
     expect(html).toContain('data-timeline-live aria-live="polite"');
   });

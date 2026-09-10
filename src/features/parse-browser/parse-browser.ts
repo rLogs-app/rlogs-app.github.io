@@ -956,7 +956,14 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
       <label><span>${escapeHtml(messages.message("parse.timeline.viewport_start"))}</span><input type="range" data-timeline-viewport-start min="0" max="${Math.max(0, durationSeconds - 1)}" step="1" value="0" aria-valuetext="${escapeHtml(rangeStart)}" /></label>
       <label><span>${escapeHtml(messages.message("parse.timeline.viewport_end"))}</span><input type="range" data-timeline-viewport-end min="1" max="${durationSeconds}" step="1" value="${durationSeconds}" aria-valuetext="${escapeHtml(rangeEnd)}" /></label>
       <button type="button" data-timeline-viewport-reset disabled>${escapeHtml(messages.message("parse.timeline.viewport_reset"))}</button>
+      <div class="timeline-viewport-actions" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.viewport_navigation"))}">
+        <button type="button" data-timeline-pan-earlier disabled>${escapeHtml(messages.message("parse.timeline.viewport_earlier"))}</button>
+        <button type="button" data-timeline-zoom-out disabled>${escapeHtml(messages.message("parse.timeline.viewport_zoom_out"))}</button>
+        <button type="button" data-timeline-zoom-in${durationSeconds <= 1 ? " disabled" : ""}>${escapeHtml(messages.message("parse.timeline.viewport_zoom_in"))}</button>
+        <button type="button" data-timeline-pan-later disabled>${escapeHtml(messages.message("parse.timeline.viewport_later"))}</button>
+      </div>
       <output data-timeline-viewport-status aria-live="polite" aria-atomic="true">${escapeHtml(messages.message("parse.timeline.viewport_full", { start: rangeStart, end: rangeEnd }))}</output>
+      <small class="timeline-gesture-hint">${escapeHtml(messages.message("parse.timeline.viewport_gesture_hint"))}</small>
     </fieldset>
     <div class="timeline-playback" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.playback_group"))}">
       <button type="button" data-timeline-play aria-pressed="false">${escapeHtml(messages.message("parse.timeline.play"))}</button>
@@ -1502,6 +1509,45 @@ export function timelineViewportAtStart(
   return { startBoundary, endBoundary: startBoundary + span };
 }
 
+/** Zooms the published bucket viewport while keeping the run-elapsed anchor
+ * approximately stationary. The result always remains on real published
+ * boundaries; the exact fractional encounter endpoint is used for the anchor
+ * math rather than pretending the final bucket lasts a full second. */
+export function zoomTimelineViewport(
+  durationMicros: number,
+  viewport: TimelineViewport,
+  factor: number,
+  anchorElapsedMicros: number,
+): TimelineViewport {
+  const current = clampTimelineViewport(durationMicros, viewport.startBoundary, viewport.endBoundary);
+  if (!Number.isFinite(factor) || factor <= 0) return current;
+  const maximumBoundary = timelineMaximumBoundary(durationMicros);
+  const currentSpan = current.endBoundary - current.startBoundary;
+  const nextSpan = factor > 1
+    ? Math.max(1, Math.floor(currentSpan / factor))
+    : Math.min(maximumBoundary, Math.ceil(currentSpan / factor));
+  if (nextSpan === currentSpan) return current;
+  const startElapsed = timelineBoundaryElapsedMicros(durationMicros, current.startBoundary);
+  const endElapsed = timelineBoundaryElapsedMicros(durationMicros, current.endBoundary);
+  const boundedAnchor = Math.max(startElapsed, Math.min(endElapsed,
+    Number.isFinite(anchorElapsedMicros) ? anchorElapsedMicros : (startElapsed + endElapsed) / 2));
+  const ratio = (boundedAnchor - startElapsed) / Math.max(1, endElapsed - startElapsed);
+  const anchorBoundary = timelineClosestBoundary(durationMicros, boundedAnchor);
+  return timelineViewportAtStart(durationMicros, { startBoundary: 0, endBoundary: nextSpan },
+    Math.round(anchorBoundary - ratio * nextSpan));
+}
+
+/** Pans by published bucket boundaries without changing the viewport span. */
+export function panTimelineViewport(
+  durationMicros: number,
+  viewport: TimelineViewport,
+  deltaBoundaries: number,
+): TimelineViewport {
+  const current = clampTimelineViewport(durationMicros, viewport.startBoundary, viewport.endBoundary);
+  const delta = Number.isFinite(deltaBoundaries) ? Math.round(deltaBoundaries) : 0;
+  return timelineViewportAtStart(durationMicros, current, current.startBoundary + delta);
+}
+
 export function timelineCursorFrame(durationMicros: number, second: number): {
   boundary: number;
   elapsedMicros: number;
@@ -1927,9 +1973,17 @@ function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" =
   if (status) status.textContent = viewportText;
   const reset = timeline.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]");
   if (reset) reset.disabled = full;
+  const zoomIn = timeline.querySelector<HTMLButtonElement>("[data-timeline-zoom-in]");
+  const zoomOut = timeline.querySelector<HTMLButtonElement>("[data-timeline-zoom-out]");
+  const panEarlier = timeline.querySelector<HTMLButtonElement>("[data-timeline-pan-earlier]");
+  const panLater = timeline.querySelector<HTMLButtonElement>("[data-timeline-pan-later]");
+  const span = viewport.endBoundary - viewport.startBoundary;
+  if (zoomIn) zoomIn.disabled = span <= 1;
+  if (zoomOut) zoomOut.disabled = full;
+  if (panEarlier) panEarlier.disabled = viewport.startBoundary === 0;
+  if (panLater) panLater.disabled = viewport.endBoundary === maximumBoundary;
   const overview = timeline.querySelector<HTMLElement>("[data-timeline-overview-slider]");
   if (overview) {
-    const span = viewport.endBoundary - viewport.startBoundary;
     const maximumStart = maximumBoundary - span;
     overview.style.setProperty("--timeline-overview-left", `${(startElapsed / duration) * 100}%`);
     overview.style.setProperty("--timeline-overview-width", `${((endElapsed - startElapsed) / duration) * 100}%`);
@@ -2296,22 +2350,45 @@ function wireTimelineControls(root: HTMLElement): void {
     previousEvent?.addEventListener("click", () => navigateEvent("previous"));
     nextEvent?.addEventListener("click", () => navigateEvent("next"));
     const inspectorSvg = inspector.ownerSVGElement;
-    inspectorSvg?.addEventListener("pointermove", (event) => {
-      const svg = inspectorSvg;
-      const bounds = svg.getBoundingClientRect();
-      const left = Number(svg.dataset.plotLeft), plotWidth = Number(svg.dataset.plotWidth);
-      const top = Number(svg.dataset.plotTop), plotHeight = Number(svg.dataset.plotHeight);
-      const viewBoxWidth = svg.viewBox.baseVal.width || bounds.width;
-      const viewBoxHeight = svg.viewBox.baseVal.height || bounds.height;
+    const plotPointFor = (event: MouseEvent | PointerEvent | WheelEvent) => {
+      if (!inspectorSvg) return null;
+      const bounds = inspectorSvg.getBoundingClientRect();
+      const left = Number(inspectorSvg.dataset.plotLeft), plotWidth = Number(inspectorSvg.dataset.plotWidth);
+      const top = Number(inspectorSvg.dataset.plotTop), plotHeight = Number(inspectorSvg.dataset.plotHeight);
+      const viewBoxWidth = inspectorSvg.viewBox.baseVal.width || bounds.width;
+      const viewBoxHeight = inspectorSvg.viewBox.baseVal.height || bounds.height;
       const viewX = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * viewBoxWidth;
       const viewY = ((event.clientY - bounds.top) / Math.max(1, bounds.height)) * viewBoxHeight;
-      if (viewX < left || viewX > left + plotWidth || viewY < top || viewY > top + plotHeight) return;
+      if (viewX < left || viewX > left + plotWidth || viewY < top || viewY > top + plotHeight) return null;
+      return { fraction: Math.max(0, Math.min(1, (viewX - left) / Math.max(1, plotWidth))),
+        plotClientWidth: Math.max(1, bounds.width * plotWidth / Math.max(1, viewBoxWidth)) };
+    };
+    const isPlotGestureOrigin = (event: Event) =>
+      !(event.target instanceof Element) || !event.target.closest(".timeline-marker, button, input, [role='button']");
+    let plotPanPointerId: number | null = null;
+    let plotPanStartClientX = 0;
+    let plotPanClientWidth = 1;
+    let plotPanStartViewport: TimelineViewport | null = null;
+    inspectorSvg?.addEventListener("pointermove", (event) => {
+      const point = plotPointFor(event);
+      if (plotPanPointerId === event.pointerId && plotPanStartViewport) {
+        const durationMicros = Number(inspectorSvg.dataset.durationMicros);
+        const startElapsed = timelineBoundaryElapsedMicros(durationMicros, plotPanStartViewport.startBoundary);
+        const endElapsed = timelineBoundaryElapsedMicros(durationMicros, plotPanStartViewport.endBoundary);
+        const deltaElapsed = -((event.clientX - plotPanStartClientX) / plotPanClientWidth) * (endElapsed - startElapsed);
+        const desiredStart = timelineClosestBoundary(durationMicros, startElapsed + deltaElapsed);
+        const next = timelineViewportAtStart(durationMicros, plotPanStartViewport, desiredStart);
+        const current = timelineViewportFor(timeline, durationMicros);
+        if (next.startBoundary !== current.startBoundary || next.endBoundary !== current.endBoundary) commitViewport(next);
+        event.preventDefault();
+        return;
+      }
+      if (!point) return;
       stopPlayback();
-      const viewport = timelineViewportFor(timeline, Number(svg.dataset.durationMicros));
-      const fraction = Math.max(0, Math.min(1, (viewX - left) / Math.max(1, plotWidth)));
-      const startElapsed = timelineBoundaryElapsedMicros(Number(svg.dataset.durationMicros), viewport.startBoundary);
-      const endElapsed = timelineBoundaryElapsedMicros(Number(svg.dataset.durationMicros), viewport.endBoundary);
-      const second = timelineClosestBoundary(Number(svg.dataset.durationMicros), startElapsed + fraction * (endElapsed - startElapsed));
+      const viewport = timelineViewportFor(timeline, Number(inspectorSvg.dataset.durationMicros));
+      const startElapsed = timelineBoundaryElapsedMicros(Number(inspectorSvg.dataset.durationMicros), viewport.startBoundary);
+      const endElapsed = timelineBoundaryElapsedMicros(Number(inspectorSvg.dataset.durationMicros), viewport.endBoundary);
+      const second = timelineClosestBoundary(Number(inspectorSvg.dataset.durationMicros), startElapsed + point.fraction * (endElapsed - startElapsed));
       showTimelineInspection(timeline, second);
     });
     inspector.addEventListener("focus", () => showTimelineInspection(timeline, Number(inspector.getAttribute("aria-valuenow") ?? "0")));
@@ -2331,27 +2408,36 @@ function wireTimelineControls(root: HTMLElement): void {
     const start = timeline.querySelector<HTMLInputElement>("[data-timeline-viewport-start]");
     const end = timeline.querySelector<HTMLInputElement>("[data-timeline-viewport-end]");
     const reset = timeline.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]");
-    const updateViewport = (changed: "start" | "end") => {
+    const zoomIn = timeline.querySelector<HTMLButtonElement>("[data-timeline-zoom-in]");
+    const zoomOut = timeline.querySelector<HTMLButtonElement>("[data-timeline-zoom-out]");
+    const panEarlier = timeline.querySelector<HTMLButtonElement>("[data-timeline-pan-earlier]");
+    const panLater = timeline.querySelector<HTMLButtonElement>("[data-timeline-pan-later]");
+    const commitViewport = (next: TimelineViewport, changed: "start" | "end" = "end") => {
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return null;
       stopPlayback();
-      if (start) timeline.dataset.timelineViewportStart = start.value;
-      if (end) timeline.dataset.timelineViewportEnd = end.value;
-      const viewport = applyTimelineViewport(timeline, changed);
-      if (!viewport) return;
+      timeline.dataset.timelineViewportStart = String(next.startBoundary);
+      timeline.dataset.timelineViewportEnd = String(next.endBoundary);
+      const applied = applyTimelineViewport(timeline, changed);
+      if (!applied) return null;
       const current = Number(inspector.getAttribute("aria-valuenow") ?? "0");
-      showTimelineInspection(timeline, Math.max(viewport.startBoundary, Math.min(viewport.endBoundary, current)));
+      showTimelineInspection(timeline, Math.max(applied.startBoundary, Math.min(applied.endBoundary, current)));
+      return applied;
+    };
+    const updateViewport = (changed: "start" | "end") => {
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return;
+      commitViewport({
+        startBoundary: Number(start?.value ?? timeline.dataset.timelineViewportStart ?? "0"),
+        endBoundary: Number(end?.value ?? timeline.dataset.timelineViewportEnd ?? timelineMaximumBoundary(Number(svg.dataset.durationMicros))),
+      }, changed);
     };
     const moveOverviewToStart = (desiredStartBoundary: number) => {
       const svg = inspector.ownerSVGElement;
       if (!svg) return;
-      stopPlayback();
       const durationMicros = Number(svg.dataset.durationMicros);
       const viewport = timelineViewportAtStart(durationMicros, timelineViewportFor(timeline, durationMicros), desiredStartBoundary);
-      timeline.dataset.timelineViewportStart = String(viewport.startBoundary);
-      timeline.dataset.timelineViewportEnd = String(viewport.endBoundary);
-      const applied = applyTimelineViewport(timeline);
-      if (!applied) return;
-      const current = Number(inspector.getAttribute("aria-valuenow") ?? "0");
-      showTimelineInspection(timeline, Math.max(applied.startBoundary, Math.min(applied.endBoundary, current)));
+      commitViewport(viewport);
     };
     const overviewElapsedAt = (clientX: number): number | null => {
       const svg = inspector.ownerSVGElement;
@@ -2428,14 +2514,92 @@ function wireTimelineControls(root: HTMLElement): void {
     });
     start?.addEventListener("input", () => updateViewport("start"));
     end?.addEventListener("input", () => updateViewport("end"));
+    const zoomBy = (factor: number, anchorElapsedMicros?: number) => {
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return false;
+      const durationMicros = Number(svg.dataset.durationMicros);
+      const viewport = timelineViewportFor(timeline, durationMicros);
+      const startElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+      const endElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+      const next = zoomTimelineViewport(durationMicros, viewport, factor,
+        anchorElapsedMicros ?? (startElapsed + endElapsed) / 2);
+      if (next.startBoundary === viewport.startBoundary && next.endBoundary === viewport.endBoundary) return false;
+      commitViewport(next);
+      return true;
+    };
+    const panBy = (deltaBoundaries: number) => {
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return false;
+      const durationMicros = Number(svg.dataset.durationMicros);
+      const viewport = timelineViewportFor(timeline, durationMicros);
+      const next = panTimelineViewport(durationMicros, viewport, deltaBoundaries);
+      if (next.startBoundary === viewport.startBoundary && next.endBoundary === viewport.endBoundary) return false;
+      commitViewport(next);
+      return true;
+    };
+    inspectorSvg?.addEventListener("wheel", (event) => {
+      if (event.deltaY === 0 || !isPlotGestureOrigin(event)) return;
+      const point = plotPointFor(event);
+      if (!point) return;
+      const durationMicros = Number(inspectorSvg.dataset.durationMicros);
+      const viewport = timelineViewportFor(timeline, durationMicros);
+      const startElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+      const endElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+      const anchorElapsed = startElapsed + point.fraction * (endElapsed - startElapsed);
+      if (zoomBy(event.deltaY < 0 ? 1.25 : 1 / 1.25, anchorElapsed)) event.preventDefault();
+    }, { passive: false });
+    inspectorSvg?.addEventListener("pointerdown", (event) => {
+      const panGesture = event.button === 1 || (event.button === 0 && event.shiftKey);
+      const point = plotPointFor(event);
+      if (!panGesture || !isPlotGestureOrigin(event) || !point) return;
+      const durationMicros = Number(inspectorSvg.dataset.durationMicros);
+      const viewport = timelineViewportFor(timeline, durationMicros);
+      if (timelineMaximumBoundary(durationMicros) === viewport.endBoundary - viewport.startBoundary) return;
+      plotPanPointerId = event.pointerId;
+      plotPanStartClientX = event.clientX;
+      plotPanClientWidth = point.plotClientWidth;
+      plotPanStartViewport = viewport;
+      if (typeof inspectorSvg.setPointerCapture === "function") inspectorSvg.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    const endPlotPan = (event: PointerEvent) => {
+      if (plotPanPointerId !== event.pointerId) return;
+      if (typeof inspectorSvg?.hasPointerCapture === "function" && inspectorSvg.hasPointerCapture(event.pointerId)) {
+        inspectorSvg.releasePointerCapture(event.pointerId);
+      }
+      plotPanPointerId = null;
+      plotPanStartViewport = null;
+    };
+    inspectorSvg?.addEventListener("pointerup", endPlotPan);
+    inspectorSvg?.addEventListener("pointercancel", endPlotPan);
+    inspectorSvg?.addEventListener("lostpointercapture", endPlotPan);
+    inspectorSvg?.addEventListener("dblclick", (event) => {
+      if (!isPlotGestureOrigin(event) || !plotPointFor(event)) return;
+      const durationMicros = Number(inspectorSvg.dataset.durationMicros);
+      const viewport = timelineViewportFor(timeline, durationMicros);
+      const full = viewport.startBoundary === 0 && viewport.endBoundary === timelineMaximumBoundary(durationMicros);
+      if (full) return;
+      event.preventDefault();
+      commitViewport({ startBoundary: 0, endBoundary: timelineMaximumBoundary(durationMicros) });
+    });
+    zoomIn?.addEventListener("click", () => zoomBy(1.25));
+    zoomOut?.addEventListener("click", () => zoomBy(1 / 1.25));
+    panEarlier?.addEventListener("click", () => {
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return;
+      const viewport = timelineViewportFor(timeline, Number(svg.dataset.durationMicros));
+      panBy(-Math.max(1, Math.round((viewport.endBoundary - viewport.startBoundary) / 2)));
+    });
+    panLater?.addEventListener("click", () => {
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return;
+      const viewport = timelineViewportFor(timeline, Number(svg.dataset.durationMicros));
+      panBy(Math.max(1, Math.round((viewport.endBoundary - viewport.startBoundary) / 2)));
+    });
     reset?.addEventListener("click", () => {
       const svg = inspector.ownerSVGElement;
       if (!svg) return;
-      stopPlayback();
-      timeline.dataset.timelineViewportStart = "0";
-      timeline.dataset.timelineViewportEnd = String(timelineMaximumBoundary(Number(svg.dataset.durationMicros)));
-      const viewport = applyTimelineViewport(timeline);
-      if (viewport) showTimelineInspection(timeline, Math.max(viewport.startBoundary, Math.min(viewport.endBoundary, Number(inspector.getAttribute("aria-valuenow") ?? "0"))));
+      commitViewport({ startBoundary: 0, endBoundary: timelineMaximumBoundary(Number(svg.dataset.durationMicros)) });
     });
     applyTimelineViewport(timeline);
     showTimelineInspection(timeline, 0);
