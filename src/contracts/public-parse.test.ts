@@ -43,7 +43,44 @@ describe("public parse contract", () => {
   it("accepts current catalog, projection, timeline, and reconciliation fixtures", () => {
     expect(isPublicParseCatalog(fixture("parse-catalog.v1.json"))).toBe(true);
     expect(isPublicParseReport(fixture("parse-report.v1.json"))).toBe(true);
-    expect(isPublicRunReconciliation(fixture("parse-reconciliation.v1.json"))).toBe(true);
+    const reconciliation = fixture("parse-reconciliation.v1.json") as any;
+    expect(reconciliation.schema_version).toBe(17);
+    expect(reconciliation.reports.every((report: any) => report.deployment_id === "global" && report.client_build === "24687926")).toBe(true);
+    expect(isPublicRunReconciliation(reconciliation)).toBe(true);
+  });
+  it("requires exact non-empty runtime identity on every schema 17 report source", () => {
+    const missingDeployment = fixture("parse-reconciliation.v1.json") as any;
+    delete missingDeployment.reports[0].deployment_id;
+    expect(isPublicRunReconciliation(missingDeployment)).toBe(false);
+
+    const emptyDeployment = fixture("parse-reconciliation.v1.json") as any;
+    emptyDeployment.reports[0].deployment_id = "";
+    expect(isPublicRunReconciliation(emptyDeployment)).toBe(false);
+
+    const missingBuild = fixture("parse-reconciliation.v1.json") as any;
+    delete missingBuild.reports[1].client_build;
+    expect(isPublicRunReconciliation(missingBuild)).toBe(false);
+
+    const emptyBuild = fixture("parse-reconciliation.v1.json") as any;
+    emptyBuild.reports[1].client_build = "";
+    expect(isPublicRunReconciliation(emptyBuild)).toBe(false);
+  });
+  it("keeps schema 15 and 16 reconciliations readable without runtime identity fields", () => {
+    const schema16 = fixture("parse-reconciliation.v1.json") as any;
+    schema16.schema_version = 16;
+    schema16.reports.forEach((report: any) => {
+      delete report.deployment_id;
+      delete report.client_build;
+    });
+    expect(isPublicRunReconciliation(schema16)).toBe(true);
+
+    const schema15 = structuredClone(schema16);
+    schema15.schema_version = 15;
+    schema15.timeline.schema_version = 2;
+    delete schema15.timeline.rate_clock;
+    delete schema15.timeline.rate_clock_complete;
+    delete schema15.timeline.omitted.rate_clock_points;
+    expect(isPublicRunReconciliation(schema15)).toBe(true);
   });
   it("fails closed on stale schema and projection revisions", () => {
     const catalog = fixture("parse-catalog.v1.json") as Record<string, unknown>;

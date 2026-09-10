@@ -128,10 +128,10 @@ export interface PublicCharacterWitnessSource {
   report_id: string; run_index: number; artifact_sha256: string; snapshots: PublicLocalProfileWitness[]; state_snapshots: PublicLocalStateWitness[];
 }
 export interface PublicRunReconciliation {
-  schema_version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15 | 16; reconciliation_id: string; run_group_id: string; status: ReconciliationStatus;
+  schema_version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15 | 16 | 17; reconciliation_id: string; run_group_id: string; status: ReconciliationStatus;
   canonical_spine: { report_id: string; run_index: number; artifact_sha256: string; authoritative_start: boolean;
     authoritative_completion: boolean; data_gap_count: number; event_count: number };
-  reports: Array<{ report_id: string; run_index: number; artifact_sha256: string; protocol_pack_digest: string;
+  reports: Array<{ report_id: string; run_index: number; artifact_sha256: string; deployment_id?: string; client_build?: string; protocol_pack_digest: string;
     created_unix_millis: number; canonical_spine: boolean; local_profile_witnesses: PublicLocalProfileWitness[];
     local_state_witnesses: PublicLocalStateWitness[]; combat_loadout_phases: PublicCombatLoadoutPhase[] }>;
   characters: PublicReconciliationCharacter[];
@@ -217,11 +217,12 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
   if (!isRecord(value.timeline)) return false;
   const timelineSchema = value.timeline.schema_version;
   if (!((value.schema_version === 15 && (timelineSchema === 1 || timelineSchema === 2)) ||
-      (value.schema_version === 16 && timelineSchema === 3))) return false;
+      ((value.schema_version === 16 || value.schema_version === 17) && timelineSchema === 3))) return false;
+  const requireRuntimeIdentity = value.schema_version === 17;
   return typeof value.reconciliation_id === "string" && reconciliationIdPattern.test(value.reconciliation_id) &&
     typeof value.run_group_id === "string" && groupIdPattern.test(value.run_group_id) && isReconciliationStatus(value.status) &&
     isCanonicalSpine(value.canonical_spine) && Array.isArray(value.reports) && value.reports.length > 0 &&
-    value.reports.every(isReconciliationReport) && unique(value.reports.map((report) => report.report_id)) &&
+    value.reports.every((report) => isReconciliationReport(report, requireRuntimeIdentity)) && unique(value.reports.map((report) => report.report_id)) &&
     value.reports.filter((report) => report.canonical_spine).length === 1 &&
     value.reports.some((report) => report.canonical_spine && report.report_id === value.canonical_spine.report_id &&
       report.run_index === value.canonical_spine.run_index) &&
@@ -333,9 +334,14 @@ function isCanonicalSpine(value: unknown): value is PublicRunReconciliation["can
     typeof value.authoritative_start === "boolean" && typeof value.authoritative_completion === "boolean" &&
     isNonNegativeInteger(value.data_gap_count) && isNonNegativeInteger(value.event_count);
 }
-function isReconciliationReport(value: unknown): value is PublicRunReconciliation["reports"][number] {
+function isReconciliationReport(value: unknown, requireRuntimeIdentity: boolean): value is PublicRunReconciliation["reports"][number] {
   return isRecord(value) && typeof value.report_id === "string" && reportIdPattern.test(value.report_id) &&
-    isNonNegativeInteger(value.run_index) && typeof value.artifact_sha256 === "string" && typeof value.protocol_pack_digest === "string" &&
+    isNonNegativeInteger(value.run_index) && typeof value.artifact_sha256 === "string" &&
+    (value.deployment_id === undefined || typeof value.deployment_id === "string") &&
+    (value.client_build === undefined || typeof value.client_build === "string") &&
+    (!requireRuntimeIdentity || (typeof value.deployment_id === "string" && value.deployment_id.length > 0 &&
+      typeof value.client_build === "string" && value.client_build.length > 0)) &&
+    typeof value.protocol_pack_digest === "string" &&
     isNonNegativeInteger(value.created_unix_millis) && typeof value.canonical_spine === "boolean" &&
     Array.isArray(value.local_profile_witnesses) && value.local_profile_witnesses.length <= 65_536 && value.local_profile_witnesses.every(isLocalProfileWitness) &&
     Array.isArray(value.local_state_witnesses) && value.local_state_witnesses.length <= 262_144 && value.local_state_witnesses.every(isLocalStateWitness) &&
