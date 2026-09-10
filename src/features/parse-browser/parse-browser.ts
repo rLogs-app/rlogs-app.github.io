@@ -754,7 +754,16 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
 }
 
 type TimelineMetric = "damage" | "effective_healing" | "damage_taken" | "rdps_damage";
-const palette = ["#52cfff", "#ffcc66", "#91e6a5", "#ff7aa8", "#b8a1ff", "#ff9166", "#7ce3dc", "#d9f06f"];
+// Twenty distinct hues prevent the color cycle from silently aliasing raid
+// members. Four line patterns repeat independently, so color is never the only
+// way to distinguish nearby traces.
+const palette = [
+  "#52cfff", "#ffcc66", "#91e6a5", "#ff7aa8", "#b8a1ff",
+  "#ff9166", "#7ce3dc", "#d9f06f", "#6ea8ff", "#f28bc8",
+  "#42e3a5", "#ffb86b", "#8dd6ff", "#d5a6ff", "#f4e36f",
+  "#67d7c4", "#ff8290", "#9abf72", "#87a0ff", "#e9a0c9",
+] as const;
+const timelineLinePatterns = ["solid", "long", "dot", "dash-dot"] as const;
 
 export function renderTimeline(graph: CanonicalGraphSelection, messages = createMessageResolver()): string {
   const { timeline, participants } = graph;
@@ -763,7 +772,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
   const plotted = timeline.participant_tracks.flatMap((track, trackIndex) => {
     const actor = participants[track.canonical_participant_index];
     if (!actor || actor.actor_id !== track.actor_id) return [];
-    return [{ actor, track, color: palette[trackIndex % palette.length] }];
+    return [{ actor, track, color: palette[trackIndex % palette.length], pattern: timelineLinePatterns[trackIndex % timelineLinePatterns.length] }];
   });
   const hasGameTimeClock = timeline.rate_clock_complete === true && Boolean(timeline.rate_clock?.length);
   const rdpsTracks = hasGameTimeClock
@@ -818,7 +827,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, rdpsLabel, messages)}</div>
     <div class="timeline-inspection" data-timeline-inspection aria-live="polite"><strong>${escapeHtml(messages.message("parse.timeline.inspection.title"))}</strong><span>${escapeHtml(messages.message("parse.timeline.inspection.hint"))}</span></div>
     <div class="timeline-snapshot-scroll" data-timeline-snapshot></div>
-    <div class="timeline-legend" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">${plotted.map(({ actor, color }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i></i><span>${escapeHtml(actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id }))}</span></button>`).join("")}</div>
+    <div class="timeline-legend" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">${plotted.map(({ actor, color, pattern }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i class="line-pattern-${pattern}"></i><span>${escapeHtml(actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id }))}</span></button>`).join("")}</div>
     ${notes ? `<p class="timeline-note">${escapeHtml(notes)}</p>` : ""}
   </section>`;
 }
@@ -827,8 +836,8 @@ type CombatTimeline = NonNullable<PublicRun["timeline"]>;
 type CombatTimelineTrack = CombatTimeline["participant_tracks"][number];
 type ParticipantSeriesPoint = NonNullable<PublicParticipant["series"]>[number];
 
-function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: PublicParticipant; track: CombatTimelineTrack; color: string }>, rdpsLabel: string, messages: MessageResolver): string {
-  const width = 920, height = 270, left = 48, right = 14, top = 16, bottom = 34;
+function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: PublicParticipant; track: CombatTimelineTrack; color: string; pattern: typeof timelineLinePatterns[number] }>, rdpsLabel: string, messages: MessageResolver): string {
+  const width = 1040, height = 320, left = 68, right = 18, top = 22, bottom = 42;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const seconds = Math.max(1, Math.ceil(timeline.duration_micros / 1_000_000));
   const hasRdps = plotted.some(({ actor, track }) => hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)));
@@ -836,7 +845,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
   const windows = [1, 5, 10] as const;
   const groups = metrics.flatMap((metric) => windows.map((windowSeconds) => {
     const metricLabel = metric === "damage" ? messages.message("parse.timeline.metric.damage") : metric === "effective_healing" ? messages.message("parse.timeline.metric.healing") : metric === "damage_taken" ? messages.message("parse.timeline.metric.taken") : rdpsLabel;
-    const curves = plotted.flatMap(({ actor, track, color }, participantIndex) => {
+    const curves = plotted.flatMap(({ actor, track, color, pattern }, participantIndex) => {
       const points = (actor.series ?? []).slice(0, track.series_point_count);
       if (metric === "rdps_damage" && !hasCompleteRdpsBuckets(points)) return [];
       const buckets = points.flatMap((point) => point[metric] == null ? [] : [[point.second + 1, point[metric]!] as [number, number]]);
@@ -844,10 +853,16 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
         ? rollingTimelineRateClockSamples(buckets, seconds, windowSeconds, timeline.duration_micros,
           timeline.rate_clock_complete === true ? timeline.rate_clock ?? null : null)
         : rollingTimelineSamples(buckets, seconds, windowSeconds, timeline.duration_micros);
-      return [{ actor, track, color, participantIndex, buckets, points: samples }];
+      return [{ actor, track, color, pattern, participantIndex, buckets, points: samples }];
     });
-    const max = Math.max(1, ...curves.flatMap(({ points }) => points.map(([, value]) => value)));
-    const lines = curves.map(({ actor, color, participantIndex, buckets, points: samples }) => {
+    const max = niceTimelineScaleMaximum(Math.max(1, ...curves.flatMap(({ points }) => points.map(([, value]) => value))));
+    const grid = Array.from({ length: 5 }, (_, index) => {
+      const fraction = index / 4;
+      const value = max * (1 - fraction);
+      const gridY = top + plotHeight * fraction;
+      return `<line x1="${left}" y1="${gridY.toFixed(1)}" x2="${left + plotWidth}" y2="${gridY.toFixed(1)}" class="timeline-grid"/><text x="${left - 10}" y="${(gridY + 4).toFixed(1)}" text-anchor="end" class="timeline-scale-tick">${escapeHtml(formatCompact(value))}</text>`;
+    }).join("");
+    const lines = curves.map(({ actor, color, pattern, participantIndex, buckets, points: samples }) => {
       const actorLabel = actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id });
       const coords = samples.map(([second, value]) => {
         const x = left + (second / seconds) * plotWidth;
@@ -861,10 +876,10 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
         ? ` data-values="${buckets.map(([second, value]) => `${second}:${value}`).join(",")}"`
         : "";
       const cumulativeComplete = metric !== "rdps_damage" || actor.rdps_incomplete === false;
-      return `<polyline data-participant="${participantIndex}" data-label="${escapeHtml(actorLabel)}" data-cumulative-complete="${cumulativeComplete}"${values} points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actorLabel)} ${escapeHtml(metricLabel)}</title></polyline>`;
+      return `<polyline class="timeline-trace line-pattern-${pattern}" data-participant="${participantIndex}" data-label="${escapeHtml(actorLabel)}" data-cumulative-complete="${cumulativeComplete}"${values} points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2.2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actorLabel)} ${escapeHtml(metricLabel)}</title></polyline>`;
     }).join("");
     const visible = metric === "damage" && windowSeconds === 5;
-    return `<g data-series="${metric}" data-series-window="${windowSeconds}"${visible ? "" : " hidden"}>${lines}<text x="6" y="22" class="timeline-axis-label">${escapeHtml(metricLabel)}</text><text x="6" y="${top + plotHeight}" class="timeline-axis-label">0</text></g>`;
+    return `<g data-series="${metric}" data-series-window="${windowSeconds}"${visible ? "" : " hidden"}>${grid}${lines}<text x="${left}" y="14" class="timeline-axis-label">${escapeHtml(metricLabel)}</text></g>`;
   })).join("");
   const deaths = timeline.death_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.death"), time: formatDuration(marker.at_micros) }))).join("");
   const loadouts = timeline.loadout_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.loadout"), time: formatDuration(marker.at_micros) }))).join("");
@@ -879,13 +894,25 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
   }).join("");
   const rateClock = timeline.rate_clock_complete === true && timeline.rate_clock?.length
     ? timeline.rate_clock.map((point) => `${point.second}:${point.edps_elapsed_micros}:${point.adps_elapsed_micros}`).join(",") : "";
+  const timeTicks = Array.from({ length: 5 }, (_, index) => {
+    const fraction = index / 4;
+    const x = left + plotWidth * fraction;
+    const anchor = index === 0 ? "start" : index === 4 ? "end" : "middle";
+    return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + plotHeight}" class="timeline-time-grid"/><text x="${x.toFixed(1)}" y="${height - 10}" text-anchor="${anchor}" class="timeline-tick">${escapeHtml(formatDuration(timeline.duration_micros * fraction))}</text>`;
+  }).join("");
   return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.graph_aria", { duration: formatDuration(timeline.duration_micros) }))}" data-duration-seconds="${seconds}" data-duration-micros="${timeline.duration_micros}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-series-complete="${timeline.omitted.series_points === 0}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
-    <line x1="${left}" y1="${top + plotHeight}" x2="${left + plotWidth}" y2="${top + plotHeight}" class="timeline-axis" />
-    <text x="${left}" y="${height - 8}" class="timeline-tick">0:00</text><text x="${left + plotWidth}" y="${height - 8}" text-anchor="end" class="timeline-tick">${formatDuration(timeline.duration_micros)}</text>
-    ${groups}${rdpsEvidence}${loadouts}${deaths}
+    ${timeTicks}${groups}${rdpsEvidence}${loadouts}${deaths}
     <g class="timeline-crosshair" data-timeline-crosshair hidden aria-hidden="true"><line x1="${left}" y1="${top}" x2="${left}" y2="${top + plotHeight}" /></g>
     <rect class="timeline-inspector-hitbox" data-timeline-inspector x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" tabindex="0" role="slider" aria-label="${escapeHtml(messages.message("parse.timeline.inspector_aria"))}" aria-valuemin="0" aria-valuemax="${seconds}" aria-valuenow="0" aria-valuetext="0:00" />
   </svg>`;
+}
+
+export function niceTimelineScaleMaximum(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+  const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10;
+  return nice * magnitude;
 }
 
 export function rollingBucketSeries(points: readonly ParticipantSeriesPoint[], metric: TimelineMetric, totalSeconds: number, windowSeconds: number, durationMicros = totalSeconds * 1_000_000): Array<[number, number]> {
@@ -1167,18 +1194,33 @@ function wireTimelineControls(root: HTMLElement): void {
     });
     refreshTimelineInspection(timeline);
   }));
-  root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]").forEach((button) => button.addEventListener("click", () => {
-    const timeline = button.closest<HTMLElement>("[data-timeline-metric]");
-    const participant = button.dataset.participantToggle;
-    if (!timeline || participant == null) return;
-    const visible = button.getAttribute("aria-pressed") !== "true";
-    button.setAttribute("aria-pressed", String(visible));
-    timeline.querySelectorAll<SVGPolylineElement>(`[data-participant="${participant}"]`).forEach((track) => {
-      if (visible) track.removeAttribute("hidden");
-      else track.setAttribute("hidden", "");
+  root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]").forEach((button) => {
+    const setFocus = (focused: boolean) => {
+      const timeline = button.closest<HTMLElement>("[data-timeline-metric]");
+      const participant = button.dataset.participantToggle;
+      if (!timeline || participant == null) return;
+      timeline.querySelectorAll<SVGPolylineElement>(".timeline-trace").forEach((track) => {
+        track.classList.toggle("is-focused", focused && track.dataset.participant === participant);
+        track.classList.toggle("is-dimmed", focused && track.dataset.participant !== participant);
+      });
+    };
+    button.addEventListener("pointerenter", () => setFocus(true));
+    button.addEventListener("pointerleave", () => setFocus(false));
+    button.addEventListener("focus", () => setFocus(true));
+    button.addEventListener("blur", () => setFocus(false));
+    button.addEventListener("click", () => {
+      const timeline = button.closest<HTMLElement>("[data-timeline-metric]");
+      const participant = button.dataset.participantToggle;
+      if (!timeline || participant == null) return;
+      const visible = button.getAttribute("aria-pressed") !== "true";
+      button.setAttribute("aria-pressed", String(visible));
+      timeline.querySelectorAll<SVGPolylineElement>(`[data-participant="${participant}"]`).forEach((track) => {
+        if (visible) track.removeAttribute("hidden");
+        else track.setAttribute("hidden", "");
+      });
+      refreshTimelineInspection(timeline);
     });
-    refreshTimelineInspection(timeline);
-  }));
+  });
   root.querySelectorAll<SVGRectElement>("[data-timeline-inspector]").forEach((inspector) => {
     const timeline = inspector.closest<HTMLElement>("[data-timeline-metric]");
     if (!timeline) return;

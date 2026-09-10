@@ -13,6 +13,7 @@ import {
   activityLabel,
   filterSearch,
   humanizeAttributionComponent,
+  niceTimelineScaleMaximum,
   otherSkillDetailsHtml,
   ownedSkillParticipants,
   renderReport,
@@ -899,6 +900,23 @@ describe("damage-rate labels", () => {
     const html = renderTimeline({ ...graph, participants, timeline });
     expect(html.match(/<polyline /gu)).toHaveLength(20 * 4 * 3);
     expect(html.match(/ data-values="/gu)).toHaveLength(20 * 4);
+    const colors = [...html.matchAll(/data-participant-toggle="\d+"[^>]+style="--track:([^"]+)"/gu)].map((match) => match[1]);
+    expect(new Set(colors)).toHaveLength(20);
+    expect(html).toContain("line-pattern-solid");
+    expect(html).toContain("line-pattern-long");
+    expect(html).toContain("line-pattern-dot");
+    expect(html).toContain("line-pattern-dash-dot");
+    expect(html.match(/class="timeline-time-grid"/gu)).toHaveLength(5);
+    expect(html.match(/class="timeline-grid"/gu)).toHaveLength(5 * 4 * 3);
+    expect(html).toContain('class="timeline-scale-tick"');
+  });
+
+  it("rounds graph maxima upward to stable human-readable scale bounds", () => {
+    expect(niceTimelineScaleMaximum(0)).toBe(1);
+    expect(niceTimelineScaleMaximum(1_001)).toBe(2_000);
+    expect(niceTimelineScaleMaximum(2_001)).toBe(2_500);
+    expect(niceTimelineScaleMaximum(25_001)).toBe(50_000);
+    expect(niceTimelineScaleMaximum(Number.NaN)).toBe(1);
   });
 });
 

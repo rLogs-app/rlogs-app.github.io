@@ -2015,7 +2015,7 @@ summary.party-loadout-title {
 .timeline-svg {
   display: block;
   width: 100%;
-  min-width: 620px;
+  min-width: 760px;
   height: auto;
 }
 
@@ -2023,14 +2023,51 @@ summary.party-loadout-title {
   display: none;
 }
 
-.timeline-axis {
-  stroke: var(--line-bright);
+.timeline-grid,
+.timeline-time-grid {
+  stroke: rgb(140 170 198 / 16%);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-time-grid {
+  stroke-dasharray: 2 5;
 }
 
 .timeline-axis-label,
-.timeline-tick {
-  fill: var(--muted);
-  font: 9px ui-monospace, SFMono-Regular, Consolas, monospace;
+.timeline-tick,
+.timeline-scale-tick {
+  fill: #b8c8d9;
+  font: 600 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  paint-order: stroke;
+  stroke: var(--surface-raised);
+  stroke-linejoin: round;
+  stroke-width: 3px;
+}
+
+.timeline-axis-label {
+  fill: var(--text);
+  font-weight: 800;
+}
+
+.timeline-trace {
+  opacity: 0.82;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: opacity 100ms ease, stroke-width 100ms ease;
+}
+
+.timeline-trace.line-pattern-long { stroke-dasharray: 10 4; }
+.timeline-trace.line-pattern-dot { stroke-dasharray: 1 4; }
+.timeline-trace.line-pattern-dash-dot { stroke-dasharray: 10 4 1 4; }
+
+.timeline-trace.is-dimmed {
+  opacity: 0.08;
+}
+
+.timeline-trace.is-focused {
+  opacity: 1;
+  stroke-width: 4;
 }
 
 .timeline-marker {
@@ -2135,7 +2172,7 @@ summary.party-loadout-title {
   top: 0;
   z-index: 1;
   color: var(--muted);
-  background: var(--panel);
+  background: var(--surface-raised);
 }
 
 .timeline-snapshot-table th:first-child {
@@ -2145,7 +2182,7 @@ summary.party-loadout-title {
 
 .timeline-snapshot-table tbody th:first-child {
   position: sticky;
-  background: var(--panel);
+  background: var(--surface-raised);
 }
 
 .timeline-snapshot-table i {
@@ -2205,9 +2242,21 @@ summary.party-loadout-title {
 }
 
 .timeline-legend button i {
-  width: 14px;
-  height: 2px;
+  width: 22px;
+  height: 3px;
   background: var(--track);
+}
+
+.timeline-legend button i.line-pattern-long {
+  background: repeating-linear-gradient(90deg, var(--track) 0 9px, transparent 9px 12px);
+}
+
+.timeline-legend button i.line-pattern-dot {
+  background: repeating-linear-gradient(90deg, var(--track) 0 2px, transparent 2px 6px);
+}
+
+.timeline-legend button i.line-pattern-dash-dot {
+  background: repeating-linear-gradient(90deg, var(--track) 0 9px, transparent 9px 12px, var(--track) 12px 14px, transparent 14px 18px);
 }
 
 .timeline-note {

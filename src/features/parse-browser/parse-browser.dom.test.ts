@@ -92,6 +92,18 @@ describe("combat timeline DOM interactions", () => {
     expect(table.textContent).not.toContain("eDPS");
     expect(table.textContent).toContain("—");
   });
+
+  it("focuses a legend participant across every metric and window without changing visibility", () => {
+    const root = mountedTimeline();
+    const participant = root.querySelector<HTMLButtonElement>('[data-participant-toggle="1"]')!;
+    participant.dispatchEvent(new window.Event("pointerenter") as unknown as Event);
+    expect(root.querySelectorAll('.timeline-trace[data-participant="1"].is-focused')).toHaveLength(4 * 3);
+    expect(root.querySelectorAll('.timeline-trace[data-participant]:not([data-participant="1"]).is-dimmed').length).toBeGreaterThan(0);
+    expect(participant.getAttribute("aria-pressed")).toBe("true");
+
+    participant.dispatchEvent(new window.Event("pointerleave") as unknown as Event);
+    expect(root.querySelectorAll(".timeline-trace.is-focused, .timeline-trace.is-dimmed")).toHaveLength(0);
+  });
 });
 
 describe("combat timeline raid snapshot readability", () => {
