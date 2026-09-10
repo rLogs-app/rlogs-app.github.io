@@ -2,9 +2,11 @@ import "./styles/site.css";
 import { mountModalViewport } from "./modal-viewport";
 import { mountSiteDeveloperMode } from "./site-developer-mode";
 import { mountSiteNavigation } from "./site-navigation";
+import { mountLatestInstallerLink } from "./latest-installer";
 
 mountModalViewport();
 mountSiteDeveloperMode();
+void mountLatestInstallerLink();
 const page = mountSiteNavigation();
 
 if (page === "home") {
