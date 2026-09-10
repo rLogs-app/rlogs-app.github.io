@@ -56,6 +56,14 @@ function reportWithTimelineV4(): any {
   return report;
 }
 
+function reportWithTimelineV5(): any {
+  const report = reportWithTimelineV4();
+  report.schema_version = 17;
+  report.projection_revision = 9;
+  report.runs[0].timeline.schema_version = 5;
+  return report;
+}
+
 function packetTerminalDeathCause(atMicros: number): any {
   const hit = (hitMicros: number, sourceActorId: string) => ({
     at_micros: hitMicros,
@@ -266,6 +274,68 @@ describe("public parse contract", () => {
       expect(isPublicParseReport(malformed)).toBe(false);
     }
   });
+  it("accepts only ID-bound allowlisted death-hit presentation on timeline 5", () => {
+    const report = reportWithTimelineV5();
+    const marker = report.runs[0].timeline.death_markers[0];
+    marker.precision = "exact_microsecond";
+    marker.cause = packetTerminalDeathCause(marker.at_micros);
+    const hit = marker.cause.final_hit;
+    const sourceParticipant = report.runs[0].participants[0];
+    const directParticipant = report.runs[0].participants[1];
+    hit.source_actor_id = sourceParticipant.actor_id;
+    hit.direct_source_actor_id = directParticipant.actor_id;
+    hit.breakdown_ability_id = "2203292";
+    hit.source_presentation = { actor_id: sourceParticipant.actor_id, name: sourceParticipant.display_name, provenance: "public_participant" };
+    hit.direct_source_presentation = { actor_id: directParticipant.actor_id, name: directParticipant.display_name, provenance: "public_participant" };
+    hit.ability_presentation = { ability_id: "2203292", name: "Published action", provenance: "exact_build_action_catalog" };
+    expect(isPublicParseReport(report)).toBe(true);
+
+    const invalidCases = [
+      (candidate: any) => { candidate.source_presentation.actor_id = "someone-else"; },
+      (candidate: any) => { candidate.source_presentation.name = "x".repeat(97); },
+      (candidate: any) => { candidate.source_presentation.provenance = "untrusted_projection"; },
+      (candidate: any) => { candidate.source_presentation.name = "Mismatched participant name"; },
+      (candidate: any) => { candidate.direct_source_presentation.actor_id = sourceParticipant.actor_id; },
+      (candidate: any) => { candidate.direct_source_presentation.provenance = "exact_build_action_catalog"; },
+      (candidate: any) => { candidate.ability_presentation.ability_id = "different-ability"; },
+      (candidate: any) => { candidate.ability_presentation.provenance = "public_participant"; },
+    ];
+    for (const mutate of invalidCases) {
+      const malformed = structuredClone(report);
+      mutate(malformed.runs[0].timeline.death_markers[0].cause.final_hit);
+      expect(isPublicParseReport(malformed)).toBe(false);
+    }
+
+    const unmatched = structuredClone(report);
+    const unmatchedHit = unmatched.runs[0].timeline.death_markers[0].cause.final_hit;
+    unmatchedHit.source_actor_id = "unmatched-actor";
+    unmatchedHit.source_presentation.actor_id = "unmatched-actor";
+    expect(isPublicParseReport(unmatched)).toBe(false);
+
+    const duplicate = structuredClone(report);
+    duplicate.runs[0].participants.push({
+      ...structuredClone(duplicate.runs[0].participants[0]),
+      display_name: duplicate.runs[0].participants[0].display_name,
+    });
+    expect(isPublicParseReport(duplicate)).toBe(false);
+
+    const noDirectSource = structuredClone(report);
+    const noDirectHit = noDirectSource.runs[0].timeline.death_markers[0].cause.final_hit;
+    noDirectHit.direct_source_actor_id = null;
+    expect(isPublicParseReport(noDirectSource)).toBe(false);
+
+    const timelineV4 = structuredClone(report);
+    timelineV4.schema_version = 16;
+    timelineV4.projection_revision = 8;
+    timelineV4.runs[0].timeline.schema_version = 4;
+    expect(isPublicParseReport(timelineV4)).toBe(false);
+    for (const candidate of [marker.cause.final_hit, ...marker.cause.prior_hits]) {
+      delete candidate.source_presentation;
+      delete candidate.direct_source_presentation;
+      delete candidate.ability_presentation;
+    }
+    expect(isPublicParseReport(report)).toBe(true);
+  });
   it("accepts only reconciliation 19 with timeline 4 while retaining reconciliation 18 with timeline 3", () => {
     const legacy = fixture("parse-reconciliation.v1.json") as any;
     legacy.schema_version = 18;
@@ -279,6 +349,12 @@ describe("public parse contract", () => {
     expect(isPublicRunReconciliation({ ...current, schema_version: 18 })).toBe(false);
     current.timeline.schema_version = 3;
     expect(isPublicRunReconciliation(current)).toBe(false);
+
+    const next = structuredClone(legacy);
+    next.schema_version = 20;
+    next.timeline.schema_version = 5;
+    expect(isPublicRunReconciliation(next)).toBe(true);
+    expect(isPublicRunReconciliation({ ...next, schema_version: 19 })).toBe(false);
   });
   it("requires a complete current report envelope while keeping revision 6 digest-compatible", () => {
     const revision7 = fixture("parse-report.v1.json") as any;

@@ -870,6 +870,20 @@ describe("canonical timeline selection", () => {
     expect(html).toContain('data-timeline-rdps-label="rDPS"');
   });
 
+  it.each([[18, 3], [19, 4], [20, 5]] as const)(
+    "retains replay-clock authority for reconciliation schema %i",
+    (schemaVersion, timelineSchema) => {
+      const reconciled = conservedReconciliation();
+      reconciled.schema_version = schemaVersion;
+      reconciled.timeline!.schema_version = timelineSchema;
+      const selection = selectCanonicalGraph(report.runs[0], reconciled);
+
+      expect(selection.reconciled).toBe(true);
+      expect(selection.rdpsStatus).toBe("complete");
+      expect(selection.rdpsGameTimeMicros).toBe(reconciled.timeline!.rate_clock!.at(-1)!.edps_elapsed_micros);
+    },
+  );
+
   it("keeps legacy reconciliation graphs but fails closed on their POV-local rate clock", () => {
     const legacy = conservedReconciliation();
     legacy.schema_version = 17;
@@ -1178,6 +1192,69 @@ describe("timeline rolling windows", () => {
     expect(html).not.toContain("Raw ability that must not win");
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).not.toContain("<img src=x>");
+  });
+
+  it("prefers independently ID-bound published death-hit presentation", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const participants = structuredClone(graph.participants);
+    participants[0]!.display_name = "UI source fallback";
+    participants[1]!.display_name = "UI direct fallback";
+    participants[0]!.abilities = [{
+      ability_id: "breakdown-ability", presentation_name: "UI ability fallback", presentation_kind: null,
+      icon_asset_path: null, casts: 0, hits: 1, critical_hits: 0, damage: 1, effective_damage: 1,
+      healing: 0, effective_healing: 0, shielding: 0,
+    }];
+    const marker = graph.timeline!.death_markers[0]!;
+    const timeline = {
+      ...graph.timeline!, schema_version: 5 as const, death_markers: [{
+        ...marker, precision: "exact_microsecond" as const, cause: {
+          evidence: "packet_terminal_damage" as const,
+          final_hit: {
+            at_micros: marker.at_micros,
+            source_actor_id: participants[0]!.actor_id,
+            direct_source_actor_id: participants[1]!.actor_id,
+            ability_id: "raw-ability",
+            breakdown_ability_id: "breakdown-ability",
+            source_presentation: {
+              actor_id: participants[0]!.actor_id, name: "Published <source>", provenance: "exact_build_monster_catalog" as const,
+            },
+            direct_source_presentation: {
+              actor_id: participants[1]!.actor_id, name: "Published <direct>", provenance: "exact_build_monster_catalog" as const,
+            },
+            ability_presentation: {
+              ability_id: "raw-ability", name: "Published <action>", provenance: "exact_build_action_catalog" as const,
+            },
+            reported_damage: 100, effective_damage: 100, critical: false,
+          },
+          prior_hits: [{
+            at_micros: marker.at_micros - 100_000,
+            source_actor_id: participants[0]!.actor_id,
+            direct_source_actor_id: "unmatched-direct",
+            source_presentation: {
+              actor_id: participants[0]!.actor_id, name: "Published prior source", provenance: "exact_build_monster_catalog" as const,
+            },
+            reported_damage: 10, effective_damage: 10, critical: false,
+          }], prior_hits_truncated: false,
+        },
+      }],
+    };
+    const html = renderTimeline({ ...graph, participants, timeline });
+    const summary = html.match(/<aside class="timeline-death-tooltip"[\s\S]*?<\/aside>/u)![0];
+
+    expect(summary).toContain("Published &lt;source&gt; (source actor ID 7)");
+    expect(summary).toContain("Published &lt;direct&gt; (direct source actor ID 8)");
+    expect(summary).toContain("Published &lt;action&gt; (ability ID raw-ability)");
+    expect(summary).toContain("breakdown ability ID breakdown-ability");
+    expect(summary).toContain("Published prior source (source actor ID 7)");
+    expect(summary).toContain("direct source actor ID unmatched-direct");
+    expect(summary).not.toContain("Published prior source (direct source actor ID unmatched-direct)");
+    expect(summary).not.toContain("UI source fallback");
+    expect(summary).not.toContain("UI direct fallback");
+    expect(summary).not.toContain("UI ability fallback");
+    expect(summary).not.toContain("<source>");
+    expect(summary).not.toContain("<direct>");
+    expect(summary).not.toContain("<action>");
   });
 
   it("keeps ambiguous and unmatched death sources and abilities numeric", () => {

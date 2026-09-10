@@ -38,6 +38,10 @@ describe("website message resolver", () => {
       .toBe("Powerdraw (ability ID 2203291)");
     expect(messages.message("parse.timeline.death.hit_breakdown_named", { name: "Burst", id: "230401" }))
       .toBe("Burst (breakdown ability ID 230401)");
+    expect(messages.message("parse.timeline.death.hit_source_named", { name: "Exact-build Guardian", id: "monster-9" }))
+      .toBe("Exact-build Guardian (source actor ID monster-9)");
+    expect(messages.message("parse.timeline.death.hit_ability_named", { name: "Exact-build Slash", id: "action-4" }))
+      .toBe("Exact-build Slash (ability ID action-4)");
     expect(messages.message("parse.timeline.death.legacy_unavailable")).toContain("legacy timeline");
     expect(messages.message("parse.timeline.death.cause_unavailable")).toContain("unavailable");
   });

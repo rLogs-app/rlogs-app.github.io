@@ -833,7 +833,7 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
       reconciliation.reconciled_participants[track.canonical_participant_index]?.actor_id === track.actor_id &&
       track.series_point_count <= (reconciliation.reconciled_participants[track.canonical_participant_index]!.series?.length ?? 0)));
   if (usable && reconciliation && reconciliationTimeline) {
-    const replayAuthority = reconciliation.schema_version === 18 &&
+    const replayAuthority = reconciliation.schema_version >= 18 &&
       typeof reconciliation.rdps_status === "string" && reconciliation.rdps_status.length > 0;
     const replayGameTimeMicros = replayAuthority ? completeTimelineGameTimeMicros(reconciliationTimeline) : null;
     return { participants: reconciliation.reconciled_participants, timeline: reconciliationTimeline, reconciled: true,
@@ -1599,13 +1599,22 @@ function exactPlottedParticipant(
 }
 
 function nonemptyPresentationName(value: string | null | undefined): string | undefined {
-  return value && value.trim().length > 0 ? value : undefined;
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function resolveTimelineDeathAbility(
   hit: PublicTimelineDeathHit,
   source: PublicParticipant | undefined,
 ): { id: string; name: string; breakdown: boolean } | undefined {
+  const publishedName = nonemptyPresentationName(hit.ability_presentation?.name);
+  if (hit.ability_presentation && publishedName) {
+    return {
+      id: hit.ability_presentation.ability_id,
+      name: publishedName,
+      breakdown: hit.ability_presentation.ability_id === hit.breakdown_ability_id,
+    };
+  }
   if (!source) return undefined;
   const candidates = [
     hit.breakdown_ability_id ? { id: hit.breakdown_ability_id, breakdown: true } : null,
@@ -1628,11 +1637,13 @@ function renderTimelineDeathHit(
   messages: MessageResolver,
 ): string {
   const source = exactPlottedParticipant(plotted, hit.source_actor_id);
-  const sourceName = nonemptyPresentationName(source?.display_name);
+  const sourceName = nonemptyPresentationName(hit.source_presentation?.name) ??
+    nonemptyPresentationName(source?.display_name);
   const directSource = hit.direct_source_actor_id
     ? exactPlottedParticipant(plotted, hit.direct_source_actor_id)
     : undefined;
-  const directSourceName = nonemptyPresentationName(directSource?.display_name);
+  const directSourceName = nonemptyPresentationName(hit.direct_source_presentation?.name) ??
+    nonemptyPresentationName(directSource?.display_name);
   const ability = resolveTimelineDeathAbility(hit, source);
   const abilityDetails = ability
     ? [

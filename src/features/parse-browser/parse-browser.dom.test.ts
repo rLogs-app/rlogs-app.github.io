@@ -204,6 +204,41 @@ describe("combat timeline DOM interactions", () => {
     expect(summary.hidden).toBe(true);
   });
 
+  it("renders trusted published hit labels as text without creating injected elements", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const timeline = report.runs[0]!.timeline!;
+    timeline.schema_version = 5;
+    const marker = timeline.death_markers[0]!;
+    marker.precision = "exact_microsecond";
+    marker.cause = {
+      evidence: "packet_terminal_damage",
+      final_hit: {
+        at_micros: marker.at_micros,
+        source_actor_id: "monster-9",
+        direct_source_actor_id: "summon-3",
+        ability_id: "action-4",
+        source_presentation: { actor_id: "monster-9", name: "Boss <script>bad()</script>", provenance: "exact_build_monster_catalog" },
+        direct_source_presentation: { actor_id: "summon-3", name: "Summon <img src=x>", provenance: "exact_build_monster_catalog" },
+        ability_presentation: { ability_id: "action-4", name: "Slash <svg onload=bad()>", provenance: "exact_build_action_catalog" },
+        reported_damage: 100,
+        effective_damage: 100,
+        critical: false,
+      },
+      prior_hits: [],
+      prior_hits_truncated: false,
+    };
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    const summary = root.querySelector<HTMLElement>("[data-timeline-death-summary]")!;
+
+    expect(summary.textContent).toContain("Boss <script>bad()</script> (source actor ID monster-9)");
+    expect(summary.textContent).toContain("Summon <img src=x> (direct source actor ID summon-3)");
+    expect(summary.textContent).toContain("Slash <svg onload=bad()> (ability ID action-4)");
+    expect(summary.querySelector("script")).toBeNull();
+    expect(summary.querySelector("img")).toBeNull();
+    expect(summary.querySelector("svg")).toBeNull();
+  });
+
   it("keeps hover details open while crossing the SVG-to-summary gap", () => {
     vi.useFakeTimers();
     try {
