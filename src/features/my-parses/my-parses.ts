@@ -10,6 +10,7 @@ import {
 } from "../../contracts/public-parse";
 import {
   bindOtherSkillDetails,
+  bindParseReportInteractions,
   renderCatalogEntry,
   renderReport,
 } from "../parse-browser/parse-browser";
@@ -43,7 +44,7 @@ export async function mountMyParses(): Promise<void> {
     hostClass: "parse-skill-detail-modal",
     panelClass: "parse-skill-detail-modal-panel",
   });
-  bindMyParseSkillDetails(detailHost, skillDetail);
+  const refreshReportInteractions = bindMyParseReportInteractions(detailHost, skillDetail);
   const detail = createParseDetailModal(detailHost, () => skillDetail.close());
   const presentationRequest = loadParsePresentation().catch(() => undefined);
   const session = activeSession();
@@ -152,6 +153,7 @@ export async function mountMyParses(): Promise<void> {
       }
       const presentation = await presentationRequest;
       detail.show(renderReport(value, runIndex, reconciliation, reconciliationError, presentation));
+      refreshReportInteractions();
       history.replaceState(
         null,
         "",
@@ -205,11 +207,12 @@ export async function mountMyParses(): Promise<void> {
   }
 }
 
-export function bindMyParseSkillDetails(
+export function bindMyParseReportInteractions(
   root: HTMLElement,
   modal: Pick<ReturnType<typeof createParseDetailModal>, "show">,
-): void {
+): () => void {
   bindOtherSkillDetails(root, modal);
+  return bindParseReportInteractions(root);
 }
 
 async function fetchCatalog(session: WebSession, offset = 0): Promise<MyParseCatalog> {

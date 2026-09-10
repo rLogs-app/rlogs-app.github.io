@@ -64,7 +64,7 @@ export async function mountParseBrowser(): Promise<void> {
     panelClass: "parse-skill-detail-modal-panel",
   });
   bindOtherSkillDetails(detailHost, skillDetail);
-  bindParseReportInteractions(detailHost);
+  const refreshReportInteractions = bindParseReportInteractions(detailHost);
   const detail = createParseDetailModal(detailHost, () => {
     skillDetail.close();
     const url = new URL(location.href);
@@ -181,7 +181,7 @@ export async function mountParseBrowser(): Promise<void> {
         }
       }
       detail.show(renderReport(report, runIndex, reconciliation, reconciliationError, presentation));
-      wireTimelineControls(detailHost);
+      refreshReportInteractions();
       history.replaceState(
         null,
         "",
@@ -206,7 +206,7 @@ export function bindOtherSkillDetails(
   });
 }
 
-export function bindParseReportInteractions(root: HTMLElement): void {
+export function bindParseReportInteractions(root: HTMLElement): () => void {
   root.addEventListener("click", (event) => {
     if (!(event.target instanceof Element)) return;
 
@@ -252,6 +252,7 @@ export function bindParseReportInteractions(root: HTMLElement): void {
     table.dataset.partySort = metric;
     table.dataset.partySortDirection = direction;
   });
+  return () => wireTimelineControls(root);
 }
 
 interface ClosestQueryTarget {

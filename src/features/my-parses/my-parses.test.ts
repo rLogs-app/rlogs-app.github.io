@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MyParseCatalogEntry } from "../../contracts/public-parse";
 import {
-  bindMyParseSkillDetails,
+  bindMyParseReportInteractions,
   filterMyParses,
   renderMyParseEntry,
 } from "./my-parses";
@@ -33,26 +33,49 @@ const entry: MyParseCatalogEntry = {
 
 describe("My Parses", () => {
   it("opens grouped Other skill details from authenticated parse reports", () => {
-    let click: ((event: Event) => void) | undefined;
+    const clicks: Array<(event: Event) => void> = [];
     const details = "<article>All remaining skills</article>";
     const template = { innerHTML: details };
     const row = { closest: () => null, querySelector: () => template };
     const button = { closest: (selector: string) => selector === ".parse-skill-other-row" ? row : null };
     const nestedTarget = { closest: () => button };
     const root = {
-      addEventListener: (_type: string, listener: (event: Event) => void) => { click = listener; },
+      addEventListener: (_type: string, listener: (event: Event) => void) => { clicks.push(listener); },
+      querySelectorAll: () => [],
       contains: (node: unknown) => node === button,
     } as unknown as HTMLElement;
     let shown = "";
 
-    bindMyParseSkillDetails(root, { show: (html) => { shown = html; } });
-    click?.({
+    bindMyParseReportInteractions(root, { show: (html) => { shown = html; } });
+    clicks[0]?.({
       target: nestedTarget,
       preventDefault: () => undefined,
       stopPropagation: () => undefined,
     } as unknown as Event);
 
     expect(shown).toBe(details);
+  });
+
+  it("hydrates the shared timeline controls after a private report is rendered", () => {
+    const queried: string[] = [];
+    const root = {
+      addEventListener: () => undefined,
+      querySelectorAll: (selector: string) => {
+        queried.push(selector);
+        return [];
+      },
+    } as unknown as HTMLElement;
+
+    const refresh = bindMyParseReportInteractions(root, { show: () => undefined });
+    expect(queried).toEqual([]);
+
+    refresh();
+    expect(queried).toEqual([
+      "[data-metric]",
+      "[data-window]",
+      "[data-participant-toggle]",
+      "[data-timeline-inspector]",
+    ]);
   });
 
   it("searches verified membership, scene, and visibility", () => {
