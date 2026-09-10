@@ -34,6 +34,8 @@ const enUsMessages: MessageCatalog = {
   "parse.timeline.event_navigation.count.other": "{count} event points in the visible range",
   "parse.timeline.event_navigation.position": "Event {position} of {count}",
   "parse.timeline.event_navigation.announcement": "Event {position} of {count}: {events}",
+  "parse.timeline.overview.label": "Run overview",
+  "parse.timeline.overview.aria": "Visible timeline window",
   "parse.timeline.viewport_group": "Visible range",
   "parse.timeline.viewport_start": "Start",
   "parse.timeline.viewport_end": "End",

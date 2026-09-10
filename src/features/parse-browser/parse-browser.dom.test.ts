@@ -716,6 +716,13 @@ describe("combat timeline DOM interactions", () => {
     animationFrame!(2_200);
     expect(inspector.getAttribute("aria-valuenow")).toBe("3");
     expect(play.textContent).toBe("Play");
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    const overview = root.querySelector<HTMLElement>("[data-timeline-overview-slider]")!;
+    start.value = "1";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(Number.parseFloat(overview.style.getPropertyValue("--timeline-overview-left"))).toBeCloseTo(100 / 2.2, 5);
+    expect(Number.parseFloat(overview.style.getPropertyValue("--timeline-overview-width"))).toBeCloseTo(100 * 1.2 / 2.2, 5);
+    expect(overview.getAttribute("aria-valuetext")).toContain("0:01.000–0:02.200");
   });
 
   it("zooms the visible range, bounds navigation and playback, and resets without rebasing snapshots", () => {
@@ -772,6 +779,102 @@ describe("combat timeline DOM interactions", () => {
     scrubber.value = "2";
     scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toBe(rdpsAtTwo);
+  });
+
+  it("pans the shared viewport from the overview with keyboard, tap, and drag", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    report.runs[0]!.timeline!.duration_micros = 4_000_000;
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const timeline = root.querySelector<HTMLElement>(".combat-timeline")!;
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    const end = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-end]")!;
+    const overview = root.querySelector<HTMLElement>("[data-timeline-overview-slider]")!;
+    const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
+    const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+    const setPointerCapture = vi.fn();
+    const releasePointerCapture = vi.fn();
+    Object.assign(overview, {
+      getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 44, width: 100, height: 44, x: 0, y: 0, toJSON: () => ({}) }),
+      setPointerCapture,
+      hasPointerCapture: () => true,
+      releasePointerCapture,
+    });
+
+    expect(overview.getAttribute("aria-disabled")).toBe("true");
+    expect(overview.getAttribute("aria-valuetext")).toContain("Full run");
+    play.click();
+    overview.dispatchEvent(new window.PointerEvent("pointerdown", { pointerId: 1, button: 0, clientX: 90, bubbles: true }) as unknown as Event);
+    overview.dispatchEvent(new window.PointerEvent("pointerup", { pointerId: 1, button: 0, clientX: 90, bubbles: true }) as unknown as Event);
+    expect(play.textContent).toBe("Pause");
+    expect(play.getAttribute("aria-pressed")).toBe("true");
+    overview.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }) as unknown as Event);
+    expect(play.textContent).toBe("Pause");
+    expect(play.getAttribute("aria-pressed")).toBe("true");
+    expect(setPointerCapture).not.toHaveBeenCalled();
+    play.click();
+    start.value = "1";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    end.value = "3";
+    end.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(overview.getAttribute("aria-valuenow")).toBe("1");
+    expect(overview.getAttribute("aria-valuemax")).toBe("2");
+    expect(overview.getAttribute("aria-valuetext")).toContain("Visible 0:01.000–0:03.000");
+    expect(overview.style.getPropertyValue("--timeline-overview-left")).toBe("25%");
+    expect(overview.style.getPropertyValue("--timeline-overview-width")).toBe("50%");
+
+    overview.dispatchEvent(new window.PointerEvent("pointerdown", { pointerId: 5, button: 0, clientX: 24, bubbles: true }) as unknown as Event);
+    overview.dispatchEvent(new window.PointerEvent("pointerup", { pointerId: 5, button: 0, clientX: 24, bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("0");
+    expect(timeline.dataset.timelineViewportEnd).toBe("2");
+    start.value = "1";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    end.value = "3";
+    end.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    overview.dispatchEvent(new window.PointerEvent("pointerdown", { pointerId: 6, button: 0, clientX: 76, bubbles: true }) as unknown as Event);
+    overview.dispatchEvent(new window.PointerEvent("pointerup", { pointerId: 6, button: 0, clientX: 76, bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("2");
+    expect(timeline.dataset.timelineViewportEnd).toBe("4");
+    start.value = "1";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    end.value = "3";
+    end.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+
+    play.click();
+    expect(play.textContent).toBe("Pause");
+    overview.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }) as unknown as Event);
+    expect(play.textContent).toBe("Play");
+    expect(timeline.dataset.timelineViewportStart).toBe("2");
+    expect(timeline.dataset.timelineViewportEnd).toBe("4");
+    expect(start.value).toBe("2");
+    expect(end.value).toBe("4");
+    expect(inspector.getAttribute("aria-valuenow")).toBe("2");
+    overview.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("2");
+    overview.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Home", bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("0");
+    expect(timeline.dataset.timelineViewportEnd).toBe("2");
+    overview.dispatchEvent(new window.KeyboardEvent("keydown", { key: "PageUp", bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("2");
+    overview.dispatchEvent(new window.KeyboardEvent("keydown", { key: "PageDown", bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("0");
+    overview.dispatchEvent(new window.KeyboardEvent("keydown", { key: "End", bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("2");
+
+    overview.dispatchEvent(new window.PointerEvent("pointerdown", { pointerId: 7, button: 0, clientX: 10, bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("2");
+    overview.dispatchEvent(new window.PointerEvent("pointerup", { pointerId: 7, button: 0, clientX: 10, bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("0");
+    expect(setPointerCapture).toHaveBeenCalledWith(7);
+    overview.dispatchEvent(new window.PointerEvent("pointerdown", { pointerId: 8, button: 0, clientX: 10, bubbles: true }) as unknown as Event);
+    overview.dispatchEvent(new window.PointerEvent("pointermove", { pointerId: 8, clientX: 90, bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("2");
+    overview.dispatchEvent(new window.PointerEvent("pointercancel", { pointerId: 8, bubbles: true }) as unknown as Event);
+    expect(releasePointerCapture).toHaveBeenCalledWith(8);
+    overview.dispatchEvent(new window.PointerEvent("pointermove", { pointerId: 8, clientX: 10, bubbles: true }) as unknown as Event);
+    expect(timeline.dataset.timelineViewportStart).toBe("2");
   });
 
   it("rescales the active graph to visible data and restores its full-run maximum", () => {
@@ -1087,5 +1190,7 @@ describe("combat timeline raid snapshot readability", () => {
     expect(styles).toMatch(/\.timeline-snapshot-scroll\s*\{[^}]*max-height:\s*340px;[^}]*overflow:\s*auto;/su);
     expect(styles).toMatch(/\.timeline-snapshot-table thead th\s*\{[^}]*position:\s*sticky;/su);
     expect(styles).toMatch(/@media \(max-width:\s*620px\)[\s\S]*?\.timeline-event-navigation button\s*\{[^}]*min-height:\s*44px;/u);
+    expect(styles).toMatch(/\.timeline-overview-slider\s*\{[^}]*min-height:\s*44px;[^}]*touch-action:\s*pan-y;/su);
+    expect(styles).toMatch(/\.timeline-overview-slider:focus-visible\s*\{[^}]*outline:/su);
   });
 });

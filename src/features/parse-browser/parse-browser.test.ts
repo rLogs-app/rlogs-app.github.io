@@ -36,6 +36,7 @@ import {
   timelineMaximumBoundary,
   timelineMarkerBoundary,
   clampTimelineViewport,
+  timelineViewportAtStart,
   timelineDamageRateVariantsAtSecond,
   timelineDamageRatesAtSecond,
   timelineRateVariantsAtSecond,
@@ -1471,6 +1472,10 @@ describe("timeline rolling windows", () => {
     expect(timelineClosestBoundary(2_200_000, 2_110_000)).toBe(3);
     expect(clampTimelineViewport(2_200_000, 2, 2, "start")).toEqual({ startBoundary: 1, endBoundary: 2 });
     expect(clampTimelineViewport(2_200_000, 2, 2, "end")).toEqual({ startBoundary: 2, endBoundary: 3 });
+    expect(timelineViewportAtStart(2_200_000, { startBoundary: 0, endBoundary: 2 }, 2))
+      .toEqual({ startBoundary: 1, endBoundary: 3 });
+    expect(timelineViewportAtStart(2_200_000, { startBoundary: 1, endBoundary: 3 }, -5))
+      .toEqual({ startBoundary: 0, endBoundary: 2 });
   });
 
   it("withholds fractional trailing windows that would require invented sub-second damage", () => {
@@ -1976,6 +1981,7 @@ describe("timeline interaction markup", () => {
       fr: {
         "parse.timeline.play": "base-locale-play-marker",
         "parse.timeline.event_navigation.next": "next-<event>-marker",
+        "parse.timeline.overview.aria": "window-<overview>-marker",
       },
       "fr-CA": { "parse.timeline.trailing_average": "exact-locale-window-marker" },
     });
@@ -1987,6 +1993,10 @@ describe("timeline interaction markup", () => {
     expect(html).toContain("data-timeline-event-status");
     expect(html).toContain(">next-&lt;event&gt;-marker</button>");
     expect(html).not.toContain("next-<event>-marker");
+    expect(html).toContain('data-timeline-overview-slider role="slider" tabindex="0"');
+    expect(html).toContain('aria-label="window-&lt;overview&gt;-marker"');
+    expect(html).not.toContain("window-<overview>-marker");
+    expect(html).toContain("<path d=\"M");
     expect(html).toContain("Combat timeline");
   });
 
@@ -2070,6 +2080,19 @@ describe("timeline interaction markup", () => {
     expect(html).toContain('data-timeline-viewport-reset disabled');
     expect(html).toContain('data-timeline-inspection><strong>');
     expect(html).toContain('data-timeline-live aria-live="polite"');
+  });
+
+  it("keeps the full-run overview available when participant series are empty", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const participants = graph.participants.map((participant) => ({ ...participant, series: [] }));
+    const timeline = {
+      ...graph.timeline!,
+      participant_tracks: graph.timeline!.participant_tracks.map((track) => ({ ...track, series_point_count: 0 })),
+    };
+    const html = renderTimeline({ ...graph, participants, timeline });
+    expect(html).toContain('data-timeline-overview-slider role="slider"');
+    expect(html).toContain('<path d="M0.00,52.00');
   });
 
   it("batches more than one thousand exact rDPS spans into a bounded accessible evidence lane", () => {

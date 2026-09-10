@@ -2092,6 +2092,66 @@ summary.party-loadout-title {
   overflow-x: auto;
 }
 
+.timeline-overview {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.timeline-overview-label {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.timeline-overview-slider {
+  position: relative;
+  min-height: 44px;
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 3%);
+  cursor: grab;
+}
+
+.timeline-overview-slider:active {
+  cursor: grabbing;
+}
+
+.timeline-overview-slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.timeline-overview-slider svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.timeline-overview-slider path {
+  fill: none;
+  stroke: rgb(82 207 255 / 55%);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-overview-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--timeline-overview-left);
+  width: var(--timeline-overview-width);
+  pointer-events: none;
+  border: 2px solid var(--accent);
+  background: rgb(82 207 255 / 12%);
+  box-shadow: 0 0 0 9999px rgb(2 6 12 / 24%);
+}
+
 .timeline-live {
   position: absolute;
   width: 1px;

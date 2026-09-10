@@ -968,6 +968,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
       <button type="button" data-timeline-event-next>${escapeHtml(messages.message("parse.timeline.event_navigation.next"))}</button>
     </div>
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, graph.loadoutPhaseSources, authorizedRateClock, rdpsLabel, partialRdps, messages)}</div>
+    ${renderTimelineOverview(timeline, plotted, messages)}
     <div class="timeline-death-tooltips">${renderTimelineDeathSummaries(timeline, plotted, messages)}</div>
     <div class="timeline-range-scroll" data-timeline-range></div>
     <div class="timeline-inspection" data-timeline-inspection><strong>${escapeHtml(messages.message("parse.timeline.inspection.title"))}</strong><span>${escapeHtml(messages.message("parse.timeline.inspection.hint"))}</span></div>
@@ -993,6 +994,43 @@ type PlottedTimelineParticipant = {
   color: string;
   pattern: typeof timelineLinePatterns[number];
 };
+
+function renderTimelineOverview(
+  timeline: CombatTimeline,
+  plotted: PlottedTimelineParticipant[],
+  messages: MessageResolver,
+): string {
+  const width = 1_000, height = 56, top = 4, bottom = 52;
+  const maximumBoundary = timelineMaximumBoundary(timeline.duration_micros);
+  const totals = new Map<number, number>();
+  let maximum = 0;
+  for (const { actor, track } of plotted) {
+    for (const point of (actor.series ?? []).slice(0, track.series_point_count)) {
+      const boundary = point.second + 1;
+      if (!Number.isInteger(boundary) || boundary < 1 || boundary > maximumBoundary || !Number.isFinite(point.damage)) continue;
+      const total = (totals.get(boundary) ?? 0) + point.damage;
+      totals.set(boundary, total);
+      maximum = Math.max(maximum, total);
+    }
+  }
+  const linePath = Array.from({ length: maximumBoundary + 1 }, (_, boundary) => {
+    const elapsed = timelineBoundaryElapsedMicros(timeline.duration_micros, boundary);
+    const x = (elapsed / Math.max(1, timeline.duration_micros)) * width;
+    const value = totals.get(boundary) ?? 0;
+    const y = maximum > 0 ? bottom - (value / maximum) * (bottom - top) : bottom;
+    return `${boundary === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+  const fullRange = messages.message("parse.timeline.viewport_full", {
+    start: formatDuration(0), end: formatDuration(timeline.duration_micros),
+  });
+  return `<div class="timeline-overview">
+    <span class="timeline-overview-label">${escapeHtml(messages.message("parse.timeline.overview.label"))}</span>
+    <div class="timeline-overview-slider" data-timeline-overview-slider role="slider" tabindex="0" aria-orientation="horizontal" aria-label="${escapeHtml(messages.message("parse.timeline.overview.aria"))}" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-valuetext="${escapeHtml(fullRange)}" aria-disabled="true" style="--timeline-overview-left:0%;--timeline-overview-width:100%">
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path d="${linePath}" /></svg>
+      <span class="timeline-overview-window" aria-hidden="true"></span>
+    </div>
+  </div>`;
+}
 
 function renderTimelineSvg(timeline: CombatTimeline, plotted: PlottedTimelineParticipant[], loadoutPhaseSources: TimelineLoadoutPhaseSource[], rdpsRateClock: PublicTimelineRateClockPoint[] | null, rdpsLabel: string, partialRdps: boolean, messages: MessageResolver): string {
   const width = 1040, height = 320, left = 68, right = 18, top = 22, bottom = 42;
@@ -1451,6 +1489,19 @@ export function clampTimelineViewport(
   return { startBoundary: start, endBoundary: end };
 }
 
+export function timelineViewportAtStart(
+  durationMicros: number,
+  viewport: TimelineViewport,
+  desiredStartBoundary: number,
+): TimelineViewport {
+  const current = clampTimelineViewport(durationMicros, viewport.startBoundary, viewport.endBoundary);
+  const span = current.endBoundary - current.startBoundary;
+  const maximumStart = timelineMaximumBoundary(durationMicros) - span;
+  const startBoundary = Math.max(0, Math.min(maximumStart,
+    Math.round(Number.isFinite(desiredStartBoundary) ? desiredStartBoundary : current.startBoundary)));
+  return { startBoundary, endBoundary: startBoundary + span };
+}
+
 export function timelineCursorFrame(durationMicros: number, second: number): {
   boundary: number;
   elapsedMicros: number;
@@ -1872,9 +1923,21 @@ function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" =
   const endText = formatDuration(timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary));
   const full = viewport.startBoundary === 0 && viewport.endBoundary === maximumBoundary;
   const status = timeline.querySelector<HTMLOutputElement>("[data-timeline-viewport-status]");
-  if (status) status.textContent = messages.message(full ? "parse.timeline.viewport_full" : "parse.timeline.viewport_selected", { start: startText, end: endText });
+  const viewportText = messages.message(full ? "parse.timeline.viewport_full" : "parse.timeline.viewport_selected", { start: startText, end: endText });
+  if (status) status.textContent = viewportText;
   const reset = timeline.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]");
   if (reset) reset.disabled = full;
+  const overview = timeline.querySelector<HTMLElement>("[data-timeline-overview-slider]");
+  if (overview) {
+    const span = viewport.endBoundary - viewport.startBoundary;
+    const maximumStart = maximumBoundary - span;
+    overview.style.setProperty("--timeline-overview-left", `${(startElapsed / duration) * 100}%`);
+    overview.style.setProperty("--timeline-overview-width", `${((endElapsed - startElapsed) / duration) * 100}%`);
+    overview.setAttribute("aria-valuemax", String(maximumStart));
+    overview.setAttribute("aria-valuenow", String(viewport.startBoundary));
+    overview.setAttribute("aria-valuetext", viewportText);
+    overview.setAttribute("aria-disabled", String(maximumStart === 0));
+  }
   refreshTimelineScale(timeline, viewport);
   refreshTimelineRange(timeline);
   return viewport;
@@ -2149,6 +2212,7 @@ function wireTimelineControls(root: HTMLElement): void {
     const scrubber = timeline.querySelector<HTMLInputElement>("[data-timeline-scrubber]");
     const previousEvent = timeline.querySelector<HTMLButtonElement>("[data-timeline-event-previous]");
     const nextEvent = timeline.querySelector<HTMLButtonElement>("[data-timeline-event-next]");
+    const overview = timeline.querySelector<HTMLElement>("[data-timeline-overview-slider]");
     let playing = false;
     let playbackFrame: number | null = null;
     let playbackOriginMillis = 0;
@@ -2276,6 +2340,92 @@ function wireTimelineControls(root: HTMLElement): void {
       const current = Number(inspector.getAttribute("aria-valuenow") ?? "0");
       showTimelineInspection(timeline, Math.max(viewport.startBoundary, Math.min(viewport.endBoundary, current)));
     };
+    const moveOverviewToStart = (desiredStartBoundary: number) => {
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return;
+      stopPlayback();
+      const durationMicros = Number(svg.dataset.durationMicros);
+      const viewport = timelineViewportAtStart(durationMicros, timelineViewportFor(timeline, durationMicros), desiredStartBoundary);
+      timeline.dataset.timelineViewportStart = String(viewport.startBoundary);
+      timeline.dataset.timelineViewportEnd = String(viewport.endBoundary);
+      const applied = applyTimelineViewport(timeline);
+      if (!applied) return;
+      const current = Number(inspector.getAttribute("aria-valuenow") ?? "0");
+      showTimelineInspection(timeline, Math.max(applied.startBoundary, Math.min(applied.endBoundary, current)));
+    };
+    const overviewElapsedAt = (clientX: number): number | null => {
+      const svg = inspector.ownerSVGElement;
+      if (!overview || !svg) return null;
+      const bounds = overview.getBoundingClientRect();
+      if (bounds.width <= 0) return null;
+      const ratio = Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width));
+      return ratio * Number(svg.dataset.durationMicros);
+    };
+    let overviewPointerId: number | null = null;
+    let overviewPointerOffsetMicros = 0;
+    let overviewPointerStartX = 0;
+    let overviewPointerMoved = false;
+    overview?.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      const svg = inspector.ownerSVGElement;
+      const targetElapsed = overviewElapsedAt(event.clientX);
+      if (!svg || targetElapsed === null) return;
+      const durationMicros = Number(svg.dataset.durationMicros);
+      const viewport = timelineViewportFor(timeline, durationMicros);
+      const span = viewport.endBoundary - viewport.startBoundary;
+      if (timelineMaximumBoundary(durationMicros) - span === 0) return;
+      const startElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+      const endElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+      overviewPointerOffsetMicros = targetElapsed >= startElapsed && targetElapsed <= endElapsed
+        ? targetElapsed - startElapsed
+        : (endElapsed - startElapsed) / 2;
+      overviewPointerId = event.pointerId;
+      overviewPointerStartX = event.clientX;
+      overviewPointerMoved = false;
+      if (typeof overview.setPointerCapture === "function") overview.setPointerCapture(event.pointerId);
+    });
+    overview?.addEventListener("pointermove", (event) => {
+      if (overviewPointerId !== event.pointerId) return;
+      if (!overviewPointerMoved && Math.abs(event.clientX - overviewPointerStartX) < 4) return;
+      const svg = inspector.ownerSVGElement;
+      const targetElapsed = overviewElapsedAt(event.clientX);
+      if (!svg || targetElapsed === null) return;
+      overviewPointerMoved = true;
+      moveOverviewToStart(timelineClosestBoundary(Number(svg.dataset.durationMicros), targetElapsed - overviewPointerOffsetMicros));
+      event.preventDefault();
+    });
+    const endOverviewDrag = (event: PointerEvent, commitTap: boolean) => {
+      if (overviewPointerId !== event.pointerId) return;
+      if (commitTap && !overviewPointerMoved) {
+        const svg = inspector.ownerSVGElement;
+        const targetElapsed = overviewElapsedAt(event.clientX);
+        if (svg && targetElapsed !== null) {
+          moveOverviewToStart(timelineClosestBoundary(Number(svg.dataset.durationMicros), targetElapsed - overviewPointerOffsetMicros));
+        }
+      }
+      if (typeof overview?.hasPointerCapture === "function" && overview.hasPointerCapture(event.pointerId)) {
+        overview.releasePointerCapture(event.pointerId);
+      }
+      overviewPointerId = null;
+    };
+    overview?.addEventListener("pointerup", (event) => endOverviewDrag(event, true));
+    overview?.addEventListener("pointercancel", (event) => endOverviewDrag(event, false));
+    overview?.addEventListener("keydown", (event) => {
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return;
+      const viewport = timelineViewportFor(timeline, Number(svg.dataset.durationMicros));
+      const span = viewport.endBoundary - viewport.startBoundary;
+      const maximumStart = timelineMaximumBoundary(Number(svg.dataset.durationMicros)) - span;
+      if (maximumStart === 0) return;
+      const nextStart = event.key === "ArrowLeft" || event.key === "ArrowDown" ? viewport.startBoundary - 1
+        : event.key === "ArrowRight" || event.key === "ArrowUp" ? viewport.startBoundary + 1
+        : event.key === "PageDown" ? viewport.startBoundary - span
+        : event.key === "PageUp" ? viewport.startBoundary + span
+        : event.key === "Home" ? 0 : event.key === "End" ? maximumStart : undefined;
+      if (nextStart === undefined) return;
+      event.preventDefault();
+      moveOverviewToStart(nextStart);
+    });
     start?.addEventListener("input", () => updateViewport("start"));
     end?.addEventListener("input", () => updateViewport("end"));
     reset?.addEventListener("click", () => {

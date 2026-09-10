@@ -34,6 +34,12 @@ describe("website message resolver", () => {
       .toBe("1 event point in the visible range");
   });
 
+  it("localizes the timeline overview navigator", () => {
+    const messages = createMessageResolver("en-US");
+    expect(messages.message("parse.timeline.overview.label")).toBe("Run overview");
+    expect(messages.message("parse.timeline.overview.aria")).toBe("Visible timeline window");
+  });
+
   it("localizes death-cause evidence and fallback summaries", () => {
     const messages = createMessageResolver("en-US");
     expect(messages.message("parse.timeline.death.terminal_hit")).toBe("Terminal recorded hit");
