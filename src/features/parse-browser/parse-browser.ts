@@ -959,7 +959,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
       const fraction = index / 4;
       const value = max * (1 - fraction);
       const gridY = top + plotHeight * fraction;
-      return `<line x1="${left}" y1="${gridY.toFixed(1)}" x2="${left + plotWidth}" y2="${gridY.toFixed(1)}" class="timeline-grid"/><text x="${left - 10}" y="${(gridY + 4).toFixed(1)}" text-anchor="end" class="timeline-scale-tick">${escapeHtml(formatCompact(value))}</text>`;
+      return `<line x1="${left}" y1="${gridY.toFixed(1)}" x2="${left + plotWidth}" y2="${gridY.toFixed(1)}" class="timeline-grid"/><text data-timeline-scale-tick="${index}" x="${left - 10}" y="${(gridY + 4).toFixed(1)}" text-anchor="end" class="timeline-scale-tick">${escapeHtml(formatCompact(value))}</text>`;
     }).join("");
     const lines = curves.map(({ actor, color, pattern, participantIndex, buckets, points: samples }) => {
       const actorLabel = actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id });
@@ -978,7 +978,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
       return `<polyline class="timeline-trace line-pattern-${pattern}" data-participant="${participantIndex}" data-label="${escapeHtml(actorLabel)}" data-cumulative-complete="${cumulativeComplete}"${values} points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2.2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actorLabel)} ${escapeHtml(metricLabel)}</title></polyline>`;
     }).join("");
     const visible = metric === "damage" && windowSeconds === 5;
-    return `<g data-series="${metric}" data-series-window="${windowSeconds}"${visible ? "" : " hidden"}>${grid}<g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)">${lines}</g><text x="${left}" y="14" class="timeline-axis-label">${escapeHtml(metricLabel)}</text></g>`;
+    return `<g data-series="${metric}" data-series-window="${windowSeconds}" data-series-scale-maximum="${max}"${visible ? "" : " hidden"}>${grid}<g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)"><g data-timeline-scale-geometry>${lines}</g></g><text x="${left}" y="14" class="timeline-axis-label">${escapeHtml(metricLabel)}</text></g>`;
   })).join("");
   const deaths = timeline.death_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.death"), time: formatDuration(marker.at_micros) }))).join("");
   const loadouts = timeline.loadout_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.loadout"), time: formatDuration(marker.at_micros) }))).join("");
@@ -991,7 +991,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
     const anchor = index === 0 ? "start" : index === 4 ? "end" : "middle";
     return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + plotHeight}" class="timeline-time-grid"/><text data-timeline-time-tick="${index}" x="${x.toFixed(1)}" y="${height - 10}" text-anchor="${anchor}" class="timeline-tick">${escapeHtml(formatDuration(timeline.duration_micros * fraction))}</text>`;
   }).join("");
-  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.graph_aria", { duration: formatDuration(timeline.duration_micros) }))}" data-duration-seconds="${seconds}" data-duration-micros="${timeline.duration_micros}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-series-complete="${timeline.omitted.series_points === 0}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
+  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.graph_aria", { duration: formatDuration(timeline.duration_micros) }))}" data-duration-seconds="${seconds}" data-duration-micros="${timeline.duration_micros}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-plot-top="${top}" data-plot-height="${plotHeight}" data-series-complete="${timeline.omitted.series_points === 0}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
     <defs><clipPath id="timeline-plot-clip"><rect x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" /></clipPath></defs>
     ${timeTicks}${groups}<g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)">${rdpsEvidence}${loadouts}${deaths}</g>
     <g class="timeline-crosshair" data-timeline-crosshair hidden aria-hidden="true"><line x1="${left}" y1="${top}" x2="${left}" y2="${top + plotHeight}" /></g>
@@ -1005,6 +1005,23 @@ export function niceTimelineScaleMaximum(value: number): number {
   const normalized = value / magnitude;
   const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10;
   return nice * magnitude;
+}
+
+export function timelineViewportScaleMaximum(
+  series: ReadonlyArray<{ hidden: boolean; points: readonly [number, number][] }>,
+  startBoundary: number,
+  endBoundary: number,
+): number {
+  let visibleMaximum = 1;
+  for (const track of series) {
+    if (track.hidden) continue;
+    for (const [boundary, value] of track.points) {
+      if (boundary >= startBoundary && boundary <= endBoundary && Number.isFinite(value)) {
+        visibleMaximum = Math.max(visibleMaximum, value);
+      }
+    }
+  }
+  return niceTimelineScaleMaximum(visibleMaximum);
 }
 
 function renderRdpsEvidenceLane(
@@ -1451,6 +1468,38 @@ function timelineViewportFor(timeline: HTMLElement, durationMicros: number): Tim
   );
 }
 
+function refreshTimelineScale(timeline: HTMLElement, viewport: TimelineViewport): void {
+  const svg = timeline.querySelector<SVGSVGElement>(".timeline-svg");
+  if (!svg) return;
+  const top = Number(svg.dataset.plotTop);
+  const height = Number(svg.dataset.plotHeight);
+  const bottom = top + height;
+  if (![top, height].every(Number.isFinite) || height <= 0) return;
+  const metric = timeline.dataset.timelineMetric ?? "damage";
+  const window = timeline.dataset.timelineWindow ?? "5";
+  const series = svg.querySelector<SVGGElement>(`[data-series="${metric}"][data-series-window="${window}"]`);
+  if (!series) return;
+  const originalMaximum = Number(series.dataset.seriesScaleMaximum);
+  if (!Number.isFinite(originalMaximum) || originalMaximum <= 0) return;
+  const tracks = [...series.querySelectorAll<SVGPolylineElement>(".timeline-trace")].map((track) => ({
+    hidden: track.hasAttribute("hidden"),
+    points: timelineGraphSamplesFor(svg, metric, window, track.dataset.participant ?? ""),
+  }));
+  const maximum = Math.min(originalMaximum, timelineViewportScaleMaximum(
+    tracks,
+    viewport.startBoundary,
+    viewport.endBoundary,
+  ));
+  const scale = originalMaximum / Math.max(1, maximum);
+  series.dataset.timelineScaleMaximum = String(maximum);
+  series.querySelector<SVGGElement>("[data-timeline-scale-geometry]")
+    ?.setAttribute("transform", `matrix(1 0 0 ${scale} 0 ${bottom * (1 - scale)})`);
+  series.querySelectorAll<SVGTextElement>("[data-timeline-scale-tick]").forEach((tick) => {
+    const index = Number(tick.dataset.timelineScaleTick ?? "0");
+    tick.textContent = formatCompact(maximum * (1 - index / 4));
+  });
+}
+
 function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" = "end"): TimelineViewport | null {
   const svg = timeline.querySelector<SVGSVGElement>(".timeline-svg");
   if (!svg) return null;
@@ -1511,6 +1560,7 @@ function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" =
   if (status) status.textContent = messages.message(full ? "parse.timeline.viewport_full" : "parse.timeline.viewport_selected", { start: startText, end: endText });
   const reset = timeline.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]");
   if (reset) reset.disabled = full;
+  refreshTimelineScale(timeline, viewport);
   refreshTimelineRange(timeline);
   return viewport;
 }
@@ -1526,6 +1576,7 @@ function wireTimelineControls(root: HTMLElement): void {
       if (series.dataset.series === metric && series.dataset.seriesWindow === timeline.dataset.timelineWindow) series.removeAttribute("hidden");
       else series.setAttribute("hidden", "");
     });
+    refreshTimelineScale(timeline, timelineViewportFor(timeline, Number(timeline.querySelector<SVGSVGElement>(".timeline-svg")?.dataset.durationMicros)));
     refreshTimelineRange(timeline);
     refreshTimelineInspection(timeline);
   }));
@@ -1539,6 +1590,7 @@ function wireTimelineControls(root: HTMLElement): void {
       if (series.dataset.series === timeline.dataset.timelineMetric && series.dataset.seriesWindow === window) series.removeAttribute("hidden");
       else series.setAttribute("hidden", "");
     });
+    refreshTimelineScale(timeline, timelineViewportFor(timeline, Number(timeline.querySelector<SVGSVGElement>(".timeline-svg")?.dataset.durationMicros)));
     refreshTimelineInspection(timeline);
   }));
   root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]").forEach((button) => {
@@ -1565,6 +1617,7 @@ function wireTimelineControls(root: HTMLElement): void {
         if (visible) track.removeAttribute("hidden");
         else track.setAttribute("hidden", "");
       });
+      refreshTimelineScale(timeline, timelineViewportFor(timeline, Number(timeline.querySelector<SVGSVGElement>(".timeline-svg")?.dataset.durationMicros)));
       refreshTimelineRange(timeline);
       refreshTimelineInspection(timeline);
     });
@@ -1901,6 +1954,7 @@ export function timelineCumulativeRateLabel(metric: string): string {
 }
 
 const timelineSampleCache = new WeakMap<SVGSVGElement, Map<string, Array<[number, number]>>>();
+const timelineGraphSampleCache = new WeakMap<SVGSVGElement, Map<string, Array<[number, number]>>>();
 const timelineRateClockCache = new WeakMap<SVGSVGElement, PublicTimelineRateClockPoint[] | null>();
 
 function timelineRateClockFor(svg: SVGSVGElement): PublicTimelineRateClockPoint[] | null {
@@ -1937,6 +1991,34 @@ function timelineSamplesFor(svg: SVGSVGElement, metric: string, window: string, 
     Number(window),
     Number(svg.dataset.durationMicros),
   );
+  cache.set(key, samples);
+  return samples;
+}
+
+function timelineGraphSamplesFor(svg: SVGSVGElement, metric: string, window: string, participant: string): Array<[number, number]> {
+  let cache = timelineGraphSampleCache.get(svg);
+  if (!cache) {
+    cache = new Map();
+    timelineGraphSampleCache.set(svg, cache);
+  }
+  const key = `${metric}:${window}:${participant}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const oneSecond = timelineSamplesFor(svg, metric, "1", participant);
+  const samples = metric === "rdps_damage"
+    ? rollingTimelineRateClockSamples(
+      oneSecond,
+      Number(svg.dataset.durationSeconds),
+      Number(window),
+      Number(svg.dataset.durationMicros),
+      timelineRateClockFor(svg),
+    )
+    : rollingTimelineSamples(
+      oneSecond,
+      Number(svg.dataset.durationSeconds),
+      Number(window),
+      Number(svg.dataset.durationMicros),
+    );
   cache.set(key, samples);
   return samples;
 }

@@ -154,6 +154,91 @@ describe("combat timeline DOM interactions", () => {
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toBe(rdpsAtTwo);
   });
 
+  it("rescales the active graph to visible data and restores its full-run maximum", () => {
+    const root = mountedTimeline();
+    const activeSeries = root.querySelector<SVGGElement>('[data-series="damage"][data-series-window="5"]')!;
+    const originalMaximum = activeSeries.dataset.seriesScaleMaximum;
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    const end = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-end]")!;
+    const reset = root.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]")!;
+
+    start.value = "50";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    end.value = "60";
+    end.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+
+    expect(activeSeries.dataset.timelineScaleMaximum).toBe("1");
+    expect(activeSeries.querySelector("[data-timeline-scale-geometry]")?.getAttribute("transform"))
+      .not.toBe("matrix(1 0 0 1 0 0)");
+    expect(activeSeries.querySelector('[data-timeline-scale-tick="0"]')?.textContent).toBe("1");
+
+    root.querySelector<HTMLButtonElement>('[data-metric="effective_healing"]')!.click();
+    const healingSeries = root.querySelector<SVGGElement>('[data-series="effective_healing"][data-series-window="5"]')!;
+    expect(healingSeries.dataset.timelineScaleMaximum).toBe("1");
+    root.querySelector<HTMLButtonElement>('[data-window="1"]')!.click();
+    expect(root.querySelector<SVGGElement>('[data-series="effective_healing"][data-series-window="1"]')!
+      .dataset.timelineScaleMaximum).toBe("1");
+
+    reset.click();
+    root.querySelector<HTMLButtonElement>('[data-metric="damage"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-window="5"]')!.click();
+    expect(activeSeries.dataset.timelineScaleMaximum).toBe(originalMaximum);
+  });
+
+  it("removes hidden participants from the visible scale immediately", () => {
+    const root = mountedTimeline();
+    const activeSeries = root.querySelector<SVGGElement>('[data-series="damage"][data-series-window="5"]')!;
+    const originalMaximum = Number(activeSeries.dataset.timelineScaleMaximum);
+    const largestParticipant = root.querySelector<HTMLButtonElement>('[data-participant-toggle="0"]')!;
+
+    largestParticipant.click();
+    expect(Number(activeSeries.dataset.timelineScaleMaximum)).toBeLessThan(originalMaximum);
+    largestParticipant.click();
+    expect(Number(activeSeries.dataset.timelineScaleMaximum)).toBe(originalMaximum);
+  });
+
+  it("uses the exact rDPS active clock at a fractional terminal boundary", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const run = report.runs[0]!;
+    const participant = run.participants[0]!;
+    participant.series = [
+      { second: 0, damage: 0, effective_healing: 0, damage_taken: 0, rdps_damage: 10, rdps_contribution_given: 0, rdps_contribution_received: 0 },
+      { second: 1, damage: 0, effective_healing: 0, damage_taken: 0, rdps_damage: 10, rdps_contribution_given: 0, rdps_contribution_received: 0 },
+      { second: 2, damage: 0, effective_healing: 0, damage_taken: 0, rdps_damage: 120, rdps_contribution_given: 0, rdps_contribution_received: 0 },
+    ];
+    run.participants = [participant];
+    run.timeline!.duration_micros = 2_200_000;
+    run.timeline!.participant_tracks = [{
+      actor_id: participant.actor_id,
+      character_id: participant.character_id,
+      observed_character_key: participant.observed_character_key ?? null,
+      display_name: participant.display_name,
+      canonical_participant_index: 0,
+      series_point_count: 3,
+    }];
+    run.timeline!.rate_clock_complete = true;
+    run.timeline!.omitted.rate_clock_points = 0;
+    run.timeline!.rate_clock = [
+      { second: 0, edps_elapsed_micros: 100_000, adps_elapsed_micros: 100_000 },
+      { second: 1, edps_elapsed_micros: 200_000, adps_elapsed_micros: 200_000 },
+      { second: 2, edps_elapsed_micros: 300_000, adps_elapsed_micros: 300_000 },
+    ];
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(run));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    start.value = "2";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    root.querySelector<HTMLButtonElement>('[data-metric="rdps_damage"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-window="1"]')!.click();
+    const rdpsSeries = root.querySelector<SVGGElement>('[data-series="rdps_damage"][data-series-window="1"]')!;
+
+    expect(rdpsSeries.dataset.timelineScaleMaximum).toBe("2000");
+    expect(rdpsSeries.querySelector('[data-timeline-scale-tick="0"]')?.textContent).toBe("2K");
+  });
+
   it("updates snapshot rows when participants or metrics change and keeps partial rDPS unavailable", () => {
     const root = mountedTimeline();
     const rowsBefore = root.querySelectorAll(".timeline-snapshot-table tbody tr").length;

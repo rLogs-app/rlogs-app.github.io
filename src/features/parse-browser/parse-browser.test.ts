@@ -42,6 +42,7 @@ import {
   timelineValueAtSecond,
   timelineVisibleTotalAtSecond,
   timelineVisibleRangeTotal,
+  timelineViewportScaleMaximum,
 } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(
@@ -1257,6 +1258,23 @@ describe("damage-rate labels", () => {
     expect(niceTimelineScaleMaximum(2_001)).toBe(2_500);
     expect(niceTimelineScaleMaximum(25_001)).toBe(50_000);
     expect(niceTimelineScaleMaximum(Number.NaN)).toBe(1);
+  });
+
+  it("scales a viewport from visible samples without hidden participant spikes", () => {
+    expect(timelineViewportScaleMaximum([
+      { hidden: false, points: [[0, 0], [1, 980], [3, 1_500], [8, 50_000]] },
+      { hidden: true, points: [[2, 80_000]] },
+    ], 1, 3)).toBe(2_000);
+    expect(timelineViewportScaleMaximum([
+      { hidden: false, points: [[1, -4], [2, Number.NaN], [3, Number.POSITIVE_INFINITY]] },
+      { hidden: true, points: [[2, 80_000]] },
+    ], 1, 3)).toBe(1);
+  });
+
+  it("scales the maximum published timeline without spreading its points", () => {
+    const points = Array.from({ length: 262_144 }, (_, boundary) =>
+      [boundary, boundary === 200_000 ? 12_345 : 1] as [number, number]);
+    expect(timelineViewportScaleMaximum([{ hidden: false, points }], 100_000, 220_000)).toBe(20_000);
   });
 });
 
