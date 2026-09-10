@@ -108,6 +108,8 @@ describe("combat timeline DOM interactions", () => {
   it("plays and scrubs conserved reconciliation snapshots on the canonical timeline", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const reconciliation = load<PublicRunReconciliation>("parse-reconciliation.v1.json");
+    reconciliation.schema_version = 18;
+    reconciliation.rdps_status = "complete";
     reconciliation.status = "reconciled";
     reconciliation.attribution_replay_completed = true;
     reconciliation.reconciled_participants = report.runs[0].participants.map((participant) => ({
@@ -136,13 +138,38 @@ describe("combat timeline DOM interactions", () => {
     const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
     scrubber.value = "2";
     scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
-    expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("Partial rDPS at 0:02");
+    expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("rDPS at 0:02");
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("rDPS");
 
     const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
     play.click();
     expect(play.textContent).toBe("Pause");
     expect(play.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("does not expose legacy reconciliation clocks to rDPS playback", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const reconciliation = load<PublicRunReconciliation>("parse-reconciliation.v1.json");
+    reconciliation.status = "reconciled";
+    reconciliation.attribution_replay_completed = true;
+    reconciliation.reconciled_participants = report.runs[0].participants.map((participant) => ({
+      ...participant, rdps_damage: participant.damage, contribution_given: 0,
+      contribution_received: 0, rdps_incomplete: false,
+    }));
+    reconciliation.timeline!.source = "reconciled_canonical_spine";
+    reconciliation.timeline!.participant_tracks = report.runs[0].timeline!.participant_tracks;
+    const damage = reconciliation.reconciled_participants.reduce((sum, participant) => sum + participant.damage, 0);
+    reconciliation.conservation = {
+      raw_damage: damage, rdps_damage: damage, contribution_given: 0, contribution_received: 0, conserved: true,
+    };
+
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0], reconciliation));
+    bindParseReportInteractions(root)();
+
+    expect(root.querySelector('[data-metric="rdps_damage"]')).toBeNull();
+    expect(root.querySelector(".timeline-svg")?.getAttribute("data-rate-clock-complete")).toBe("false");
+    expect(root.querySelector(".timeline-svg")?.hasAttribute("data-rate-clock")).toBe(false);
   });
 });
 

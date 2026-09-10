@@ -128,7 +128,7 @@ export interface PublicCharacterWitnessSource {
   report_id: string; run_index: number; artifact_sha256: string; snapshots: PublicLocalProfileWitness[]; state_snapshots: PublicLocalStateWitness[];
 }
 export interface PublicRunReconciliation {
-  schema_version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15 | 16 | 17; reconciliation_id: string; run_group_id: string; status: ReconciliationStatus;
+  schema_version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15 | 16 | 17 | 18; reconciliation_id: string; run_group_id: string; status: ReconciliationStatus;
   canonical_spine: { report_id: string; run_index: number; artifact_sha256: string; authoritative_start: boolean;
     authoritative_completion: boolean; data_gap_count: number; event_count: number };
   reports: Array<{ report_id: string; run_index: number; artifact_sha256: string; deployment_id?: string; client_build?: string; protocol_pack_digest: string;
@@ -141,6 +141,8 @@ export interface PublicRunReconciliation {
   conservation?: PublicAttributionConservation;
   rdps_influences?: PublicRdpsInfluence[]; rdps_effects?: PublicRdpsEffectPresentation[];
   swift_vortex_candidate_audit?: SwiftVortexCandidateAuditReport;
+  /** Required in schema 18. Null until conserved replay authors formula coverage. */
+  rdps_status?: string | null;
   attribution_replay_completed: boolean; timeline?: PublicCombatTimeline;
 }
 
@@ -223,8 +225,10 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
   if (!isRecord(value.timeline)) return false;
   const timelineSchema = value.timeline.schema_version;
   if (!((value.schema_version === 15 && (timelineSchema === 1 || timelineSchema === 2)) ||
-      ((value.schema_version === 16 || value.schema_version === 17) && timelineSchema === 3))) return false;
-  const requireRuntimeIdentity = value.schema_version === 17;
+      ((value.schema_version === 16 || value.schema_version === 17 || value.schema_version === 18) && timelineSchema === 3))) return false;
+  const requireRuntimeIdentity = value.schema_version === 17 || value.schema_version === 18;
+  const replayRdpsStatusValid = value.schema_version !== 18 || value.rdps_status === null ||
+    (typeof value.rdps_status === "string" && value.rdps_status.length > 0);
   return typeof value.reconciliation_id === "string" && reconciliationIdPattern.test(value.reconciliation_id) &&
     typeof value.run_group_id === "string" && groupIdPattern.test(value.run_group_id) && isReconciliationStatus(value.status) &&
     isCanonicalSpine(value.canonical_spine) && Array.isArray(value.reports) && value.reports.length > 0 &&
@@ -235,7 +239,8 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
     isNonNegativeInteger(value.participant_character_count) && isNonNegativeInteger(value.local_vantage_character_count) &&
     typeof value.complete_local_vantage_coverage === "boolean" && replayReadiness.has(value.state_replay_readiness) &&
     Array.isArray(value.state_replay_blockers) && value.state_replay_blockers.every((blocker) => typeof blocker === "string") &&
-    typeof value.attribution_replay_completed === "boolean" && isConservation(value.conservation) && isReplayStateConsistent(value) &&
+    typeof value.attribution_replay_completed === "boolean" && replayRdpsStatusValid &&
+    isConservation(value.conservation) && isReplayStateConsistent(value) &&
     (value.swift_vortex_candidate_audit == null || isSwiftVortexCandidateAudit(value.swift_vortex_candidate_audit)) &&
     Array.isArray(value.characters) && value.characters.length <= 256 && value.characters.every((character) => isReconciliationCharacter(character, value.reports)) &&
     unique(value.characters.map((character: unknown) => isRecord(character) ? character.character_id : character)) &&
@@ -446,7 +451,8 @@ function isReplayStateConsistent(value: Record<string, any>): boolean {
   if (!value.attribution_replay_completed) return true;
   return value.status === "reconciled" && isRecord(value.conservation) && value.conservation.conserved === true &&
     Array.isArray(value.reconciled_participants) && value.reconciled_participants.length > 0 &&
-    value.timeline?.source === "reconciled_canonical_spine";
+    value.timeline?.source === "reconciled_canonical_spine" &&
+    (value.schema_version !== 18 || (typeof value.rdps_status === "string" && value.rdps_status.length > 0));
 }
 function isLegacyRunReconciliation(value: Record<string, any>): boolean {
   if (typeof value.reconciliation_id !== "string" || !reconciliationIdPattern.test(value.reconciliation_id) ||

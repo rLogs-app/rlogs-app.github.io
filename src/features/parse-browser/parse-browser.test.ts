@@ -659,6 +659,8 @@ describe("canonical timeline selection", () => {
   const reconciliation = load<PublicRunReconciliation>("parse-reconciliation.v1.json");
   const conservedReconciliation = (): PublicRunReconciliation => {
     const selected = structuredClone(reconciliation);
+    selected.schema_version = 18;
+    selected.rdps_status = "complete";
     selected.status = "reconciled";
     selected.attribution_replay_completed = true;
     selected.reconciled_participants = report.runs[0].participants.map((participant) => ({
@@ -779,12 +781,31 @@ describe("canonical timeline selection", () => {
     const html = renderReport(viewed, 0, reconciled);
     expect(selection.reconciled).toBe(true);
     expect(selection.rdpsGameTimeMicros).toBe(finalGameTime);
-    expect(selection.rdpsStatus).toBeNull();
+    expect(selection.rdpsStatus).toBe("complete");
     expect(html).toContain(`<small>Team rDPS</small><strong>${expectedTeam.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong>`);
     expect(html).toContain(`data-sort-rdps="${expectedFirst}"`);
     expect(html).not.toContain(String(first.rdps_damage! * 1_000_000 / 5_000_000));
     expect(html).not.toContain("viewed_pov_status_must_not_leak");
-    expect(html).toContain('data-timeline-rdps-label="Partial rDPS"');
+    expect(html).toContain('data-timeline-rdps-label="rDPS"');
+  });
+
+  it("keeps legacy reconciliation graphs but fails closed on their POV-local rate clock", () => {
+    const legacy = conservedReconciliation();
+    legacy.schema_version = 17;
+    delete legacy.rdps_status;
+    const selection = selectCanonicalGraph(report.runs[0], legacy);
+    const html = renderReport(report, 0, legacy);
+
+    expect(selection.reconciled).toBe(true);
+    expect(selection.participants).toBe(legacy.reconciled_participants);
+    expect(selection.rdpsStatus).toBeNull();
+    expect(selection.rdpsGameTimeMicros).toBeNull();
+    expect(selection.rdpsRateClock).toBeNull();
+    expect(html).toContain("<small>Team rDPS</small><strong>Unavailable</strong>");
+    expect(html).toContain('data-sort-rdps="-1"');
+    expect(html).not.toContain('data-metric="rdps_damage"');
+    expect(html).toContain('data-rate-clock-complete="false"');
+    expect(html).not.toContain("data-rate-clock=");
   });
 
   it("totally rejects a valid reconciliation for a different run group", () => {

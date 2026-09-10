@@ -816,11 +816,13 @@ export interface CanonicalGraphSelection {
   reconciled: boolean;
   trustKind: "reconciled" | "pending" | "single";
   contributingReportCount: number;
-  /// Reconciliation does not yet publish replay-authored formula coverage.
-  /// Null keeps its rDPS label conservatively partial instead of borrowing a
-  /// status from whichever POV report happens to be open.
+  /// Null for legacy reconciliation keeps its rDPS label conservatively
+  /// partial instead of borrowing status from whichever POV is open.
   rdpsStatus: string | null;
   rdpsGameTimeMicros: number | null;
+  /// The clock authorized for rDPS graph rates and cursor playback. Legacy
+  /// reconciliations may contain a canonical-POV clock, so they expose none.
+  rdpsRateClock: PublicTimelineRateClockPoint[] | null;
 }
 
 export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunReconciliation): CanonicalGraphSelection {
@@ -832,13 +834,20 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
       reconciliation.reconciled_participants[track.canonical_participant_index]?.actor_id === track.actor_id &&
       track.series_point_count <= (reconciliation.reconciled_participants[track.canonical_participant_index]!.series?.length ?? 0)));
   if (usable && reconciliation && reconciliationTimeline) {
+    const replayAuthority = reconciliation.schema_version === 18 &&
+      typeof reconciliation.rdps_status === "string" && reconciliation.rdps_status.length > 0;
+    const replayGameTimeMicros = replayAuthority ? completeTimelineGameTimeMicros(reconciliationTimeline) : null;
     return { participants: reconciliation.reconciled_participants, timeline: reconciliationTimeline, reconciled: true,
-      trustKind: "reconciled", contributingReportCount: reconciliation.reports.length, rdpsStatus: null,
-      rdpsGameTimeMicros: completeTimelineGameTimeMicros(reconciliationTimeline) };
+      trustKind: "reconciled", contributingReportCount: reconciliation.reports.length,
+      rdpsStatus: replayAuthority ? reconciliation.rdps_status! : null,
+      rdpsGameTimeMicros: replayGameTimeMicros,
+      rdpsRateClock: replayGameTimeMicros != null
+        ? reconciliationTimeline.rate_clock ?? null : null };
   }
   return { participants: run.participants, timeline: run.timeline, reconciled: false,
     trustKind: reconciliation ? "pending" : "single", contributingReportCount: reconciliation?.reports.length ?? 1,
-    rdpsStatus: run.rdps_status, rdpsGameTimeMicros: run.game_time_micros };
+    rdpsStatus: run.rdps_status, rdpsGameTimeMicros: run.game_time_micros,
+    rdpsRateClock: run.timeline?.rate_clock_complete ? run.timeline.rate_clock ?? null : null };
 }
 
 function completeTimelineGameTimeMicros(timeline: NonNullable<PublicRun["timeline"]>): number | null {
@@ -873,12 +882,13 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
     if (!actor || actor.actor_id !== track.actor_id) return [];
     return [{ actor, track, color: palette[trackIndex % palette.length], pattern: timelineLinePatterns[trackIndex % timelineLinePatterns.length] }];
   });
-  const hasGameTimeClock = timeline.rate_clock_complete === true && Boolean(timeline.rate_clock?.length);
+  const authorizedRateClock = timeline.rate_clock_complete === true ? graph.rdpsRateClock : null;
+  const hasGameTimeClock = Boolean(authorizedRateClock?.length);
   const rdpsTracks = hasGameTimeClock
     ? plotted.filter(({ actor, track }) => hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)))
     : [];
   const exactCumulativeRdpsTracks = rdpsTracks.filter(({ actor }) => actor.rdps_incomplete === false);
-  const partialRdps = graph.rdpsStatus == null || graph.rdpsStatus.startsWith("partial_") || plotted.some(({ actor, track }) =>
+  const partialRdps = graph.rdpsStatus !== "complete" || plotted.some(({ actor, track }) =>
     actor.rdps_incomplete === true || !hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)));
   const rdpsLabel = messages.message(partialRdps ? "parse.timeline.rdps.partial" : "parse.timeline.rdps.exact");
   const captureSpans = timeline.rdps_influence_spans.filter((span) => span.time_basis === "capture_observed").length;
@@ -894,13 +904,13 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
   const gaps = timeline.coverage.data_gap_count
     ? messages.message(timeline.coverage.data_gap_count === 1 ? "parse.timeline.gaps.one" : "parse.timeline.gaps.other", { count: count(timeline.coverage.data_gap_count) })
     : messages.message("parse.timeline.gaps.none");
-  const rateClock = messages.message(timeline.rate_clock_complete === true && timeline.rate_clock?.length
+  const rateClock = messages.message(hasGameTimeClock
     ? "parse.timeline.clock.exact" : "parse.timeline.clock.unavailable");
   const notes = [
     rdpsTracks.length ? messages.message("parse.timeline.note.rdps_buckets", { label: rdpsLabel }) : "",
     runAlignedSpans ? messages.message(runAlignedSpans === 1 ? "parse.timeline.note.run_span.one" : "parse.timeline.note.run_span.other", { count: count(runAlignedSpans) }) : "",
     captureSpans ? messages.message(captureSpans === 1 ? "parse.timeline.note.capture_span.one" : "parse.timeline.note.capture_span.other", { count: count(captureSpans) }) : "",
-    !timeline.rate_clock_complete ? messages.message("parse.timeline.note.clock_unavailable") : "",
+    !hasGameTimeClock ? messages.message("parse.timeline.note.clock_unavailable") : "",
     timeline.omitted.series_points ? messages.message("parse.timeline.note.series_truncated") : "",
     omissions ? messages.message(omissions === 1 ? "parse.timeline.note.omissions.one" : "parse.timeline.note.omissions.other", { count: count(omissions) }) : "",
   ].filter(Boolean).join(" ");
@@ -923,7 +933,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
       <button type="button" data-timeline-play aria-pressed="false">${escapeHtml(messages.message("parse.timeline.play"))}</button>
       <input type="range" data-timeline-scrubber min="0" max="${durationSeconds}" step="1" value="0" aria-label="${escapeHtml(messages.message("parse.timeline.position"))}" />
     </div>
-    <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, rdpsLabel, messages)}</div>
+    <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, authorizedRateClock, rdpsLabel, messages)}</div>
     <div class="timeline-inspection" data-timeline-inspection aria-live="polite"><strong>${escapeHtml(messages.message("parse.timeline.inspection.title"))}</strong><span>${escapeHtml(messages.message("parse.timeline.inspection.hint"))}</span></div>
     <div class="timeline-snapshot-scroll" data-timeline-snapshot></div>
     <div class="timeline-legend" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">${plotted.map(({ actor, color, pattern }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i class="line-pattern-${pattern}"></i><span>${escapeHtml(actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id }))}</span></button>`).join("")}</div>
@@ -935,11 +945,11 @@ type CombatTimeline = NonNullable<PublicRun["timeline"]>;
 type CombatTimelineTrack = CombatTimeline["participant_tracks"][number];
 type ParticipantSeriesPoint = NonNullable<PublicParticipant["series"]>[number];
 
-function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: PublicParticipant; track: CombatTimelineTrack; color: string; pattern: typeof timelineLinePatterns[number] }>, rdpsLabel: string, messages: MessageResolver): string {
+function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: PublicParticipant; track: CombatTimelineTrack; color: string; pattern: typeof timelineLinePatterns[number] }>, rdpsRateClock: PublicTimelineRateClockPoint[] | null, rdpsLabel: string, messages: MessageResolver): string {
   const width = 1040, height = 320, left = 68, right = 18, top = 22, bottom = 42;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const seconds = Math.max(1, Math.ceil(timeline.duration_micros / 1_000_000));
-  const hasRdps = plotted.some(({ actor, track }) => hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)));
+  const hasRdps = Boolean(rdpsRateClock?.length) && plotted.some(({ actor, track }) => hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)));
   const metrics: TimelineMetric[] = ["damage", "effective_healing", "damage_taken", ...(hasRdps ? ["rdps_damage" as const] : [])];
   const windows = [1, 5, 10] as const;
   const groups = metrics.flatMap((metric) => windows.map((windowSeconds) => {
@@ -950,7 +960,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
       const buckets = points.flatMap((point) => point[metric] == null ? [] : [[point.second + 1, point[metric]!] as [number, number]]);
       const samples = metric === "rdps_damage"
         ? rollingTimelineRateClockSamples(buckets, seconds, windowSeconds, timeline.duration_micros,
-          timeline.rate_clock_complete === true ? timeline.rate_clock ?? null : null)
+          rdpsRateClock)
         : rollingTimelineSamples(buckets, seconds, windowSeconds, timeline.duration_micros);
       return [{ actor, track, color, pattern, participantIndex, buckets, points: samples }];
     });
@@ -983,8 +993,8 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
   const deaths = timeline.death_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.death"), time: formatDuration(marker.at_micros) }))).join("");
   const loadouts = timeline.loadout_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.loadout"), time: formatDuration(marker.at_micros) }))).join("");
   const rdpsEvidence = renderRdpsEvidenceLane(timeline, left, plotWidth, top + plotHeight, messages);
-  const rateClock = timeline.rate_clock_complete === true && timeline.rate_clock?.length
-    ? timeline.rate_clock.map((point) => `${point.second}:${point.edps_elapsed_micros}:${point.adps_elapsed_micros}`).join(",") : "";
+  const rateClock = rdpsRateClock?.length
+    ? rdpsRateClock.map((point) => `${point.second}:${point.edps_elapsed_micros}:${point.adps_elapsed_micros}`).join(",") : "";
   const timeTicks = Array.from({ length: 5 }, (_, index) => {
     const fraction = index / 4;
     const x = left + plotWidth * fraction;

@@ -226,6 +226,42 @@ describe("public parse contract", () => {
     secondC7.equipped_modules[0].effects[0].initial_link_points = 19;
     expect(isPublicRunReconciliation(contradictory)).toBe(false);
   });
+  it("accepts schema 18 replay authority while keeping schema 16 and 17 readable", () => {
+    const current = fixture("parse-reconciliation.v1.json") as any;
+    current.schema_version = 18;
+    current.rdps_status = null;
+    expect(isPublicRunReconciliation(current)).toBe(true);
+
+    current.status = "reconciled";
+    current.attribution_replay_completed = true;
+    const report = fixture("parse-report.v1.json") as any;
+    current.reconciled_participants = report.runs[0].participants.map((participant: any) => ({
+      ...participant, rdps_damage: participant.damage, contribution_given: 0,
+      contribution_received: 0, rdps_incomplete: false,
+    }));
+    current.timeline.source = "reconciled_canonical_spine";
+    const damage = current.reconciled_participants.reduce((sum: number, participant: any) => sum + participant.damage, 0);
+    current.conservation = { raw_damage: damage, rdps_damage: damage, contribution_given: 0, contribution_received: 0, conserved: true };
+    expect(isPublicRunReconciliation(current)).toBe(false);
+    current.rdps_status = "partial_packet_proven_rules";
+    expect(isPublicRunReconciliation(current)).toBe(true);
+
+    const missingStatus = structuredClone(current);
+    delete missingStatus.rdps_status;
+    expect(isPublicRunReconciliation(missingStatus)).toBe(false);
+
+    for (const schemaVersion of [16, 17]) {
+      const legacy = fixture("parse-reconciliation.v1.json") as any;
+      legacy.schema_version = schemaVersion;
+      if (schemaVersion === 16) {
+        legacy.reports.forEach((source: any) => {
+          delete source.deployment_id;
+          delete source.client_build;
+        });
+      }
+      expect(isPublicRunReconciliation(legacy)).toBe(true);
+    }
+  });
   it("preserves audit-only Swift Vortex evidence without promoting it", () => {
     const reconciliation = fixture("parse-reconciliation.v1.json") as any;
     reconciliation.swift_vortex_candidate_audit = {
