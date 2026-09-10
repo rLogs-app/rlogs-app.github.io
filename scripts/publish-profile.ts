@@ -104,6 +104,7 @@ export async function publishProfilePackage(
           source_created_unix_millis: profilePackage.created_unix_millis,
           source_observation_count: profilePackage.source.observation_count,
           source_client_build: profilePackage.source.client_build,
+          source_protocol_pack_digest: profilePackage.source.protocol_pack_digest,
         }
       : {}),
   };

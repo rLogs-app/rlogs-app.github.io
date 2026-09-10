@@ -5,12 +5,14 @@ import {
 } from "../profiles/published-profile-loader";
 import {
   loadProfilePresentation,
+  profilePresentationForIdentity,
   type ProfilePresentationCatalog,
 } from "../profiles/profile-presentation";
 import { optimizerProfileHref } from "../module-optimizer/optimizer-profile-route";
 
 type JsonRecord = Record<string, JsonValue>;
 let presentation: ProfilePresentationCatalog;
+let weaponPresentation: ProfilePresentationCatalog | undefined;
 let profileDetailModal: ProfileDetailModal;
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
@@ -28,6 +30,7 @@ export async function renderSyncedCharacterProfile(
   options: SyncedCharacterProfileRenderOptions = {},
 ): Promise<HTMLElement> {
   presentation = await loadProfilePresentation();
+  weaponPresentation = profilePresentationForIdentity(presentation, profile.entry);
   const body = profile.envelope.body;
   const root = element("article", "synced-character-profile");
   const characterName = stringValue(body.display_name) ?? profile.entry.label;
@@ -241,7 +244,15 @@ function loadoutSelector(
       status.textContent = `Loading ${choice.project_name ?? `Loadout ${choice.project_id}`}…`;
       try {
         const envelope = await loadPublishedProfileLoadout(profile, choice.project_id);
-        const replacement = await renderSyncedCharacterProfile({ ...profile, envelope }, options);
+        const replacement = await renderSyncedCharacterProfile({
+          ...profile,
+          envelope,
+          entry: {
+            ...profile.entry,
+            source_client_build: choice.source_client_build,
+            source_protocol_pack_digest: choice.source_protocol_pack_digest,
+          },
+        }, options);
         root.replaceWith(replacement);
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : "That loadout could not be loaded.";
@@ -622,6 +633,9 @@ function equipmentSection(body: JsonRecord): HTMLElement {
     const itemId = numericValue(item.item_id);
     const slotId = numericValue(item.slot_id);
     const localized = itemId == null ? undefined : presentation.items[String(itemId)];
+    const localizedName = itemId == null
+      ? undefined
+      : profileEquipmentName(itemId, slotId, presentation, weaponPresentation);
     const setId = numericValue(item.set_id) ?? localized?.set_id ?? undefined;
     const setEffects = resolveActiveEquipmentSetEffects(suitEntries, setId, presentation);
     const slotName = slotId == null ? "Equipment" : presentation.equipment_slots[String(slotId)] ?? `Equipment slot ${slotId}`;
@@ -629,9 +643,9 @@ function equipmentSection(body: JsonRecord): HTMLElement {
     const equipmentQuality = item.quality ?? localized?.quality;
     const qualityToken = equipmentQualityToken(equipmentQuality);
     if (qualityToken) card.dataset.quality = qualityToken;
-    appendPresentationIcon(card, localized?.icon, localized?.name ?? slotName, "profile-item-icon");
+    appendPresentationIcon(card, localized?.icon, localizedName ?? slotName, "profile-item-icon");
     const copy = element("div", "profile-equipment-copy");
-    const itemName = localized?.name ?? `Unknown equipment ${displayValue(item.item_id)}`;
+    const itemName = localizedName ?? `Unknown equipment ${displayValue(item.item_id)}`;
     const itemNameNode = element("strong", "profile-equipment-name", itemName);
     itemNameNode.title = itemName;
     const facts = element("div", "profile-equipment-facts");
@@ -654,7 +668,7 @@ function equipmentSection(body: JsonRecord): HTMLElement {
     if (equipmentAttributeList(item) || enchantments.length || setEffects.length) {
       const details = profileDetailButton(
         "View details",
-        localized?.name ?? slotName,
+        localizedName ?? slotName,
         () => equipmentDetailPanel(item, setEffects, enchantments),
       );
       details.classList.add("profile-equipment-detail-trigger");
@@ -665,6 +679,18 @@ function equipmentSection(body: JsonRecord): HTMLElement {
   }
   section.append(items.length ? grid : empty("No equipment was present in the latest synced snapshot."));
   return section;
+}
+
+export function profileEquipmentName(
+  itemId: number,
+  slotId: number | null | undefined,
+  catalog: ProfilePresentationCatalog,
+  authorizedWeaponCatalog: ProfilePresentationCatalog | undefined,
+): string | undefined {
+  const item = catalog.items[String(itemId)];
+  return slotId === 200 || item?.type === 200
+    ? authorizedWeaponCatalog?.items[String(itemId)]?.name ?? `Unlocalized weapon item #${itemId}`
+    : item?.name;
 }
 
 function equipmentDetailPanel(

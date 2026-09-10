@@ -4,6 +4,7 @@ export interface PublicProfileCatalogEntry {
   package_id: string;
   updated_unix_millis: number;
   source_client_build: string;
+  source_protocol_pack_digest?: string | null;
   deployment: string;
   region: string;
   realm: string | null;
@@ -39,6 +40,7 @@ function isPublicProfileCatalogEntry(value: unknown): value is PublicProfileCata
     typeof value.package_id === "string" &&
     positiveSafeInteger(value.updated_unix_millis) &&
     typeof value.source_client_build === "string" &&
+    (value.source_protocol_pack_digest === undefined || nullableString(value.source_protocol_pack_digest)) &&
     typeof value.deployment === "string" &&
     typeof value.region === "string" &&
     nullableString(value.realm) &&

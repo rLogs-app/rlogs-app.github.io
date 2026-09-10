@@ -7,13 +7,28 @@ import { fileURLToPath } from "node:url";
 
 const readJson = (file) => JSON.parse(readFileSync(file, "utf8"));
 const websiteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const rlogsRoot = path.resolve(websiteRoot, "../RLogs");
+const rlogsRoot = [
+  process.env.RLOGS_SOURCE_ROOT,
+  path.resolve(websiteRoot, "../.."),
+  path.resolve(websiteRoot, "../RLogs"),
+].filter(Boolean).find((candidate) => existsSync(path.join(
+  candidate,
+  "plugins/games/blue-protocol-star-resonance/game-data/runtime",
+)));
+if (!rlogsRoot) throw new Error("Set RLOGS_SOURCE_ROOT to the RLogs checkout.");
 const tableRoot = process.env.BPSR_TABLE_DATA_DIR
   ? path.resolve(process.env.BPSR_TABLE_DATA_DIR)
   : path.join(rlogsRoot, "Excels");
 const gameDataRoot = path.join(rlogsRoot, "plugins/games/blue-protocol-star-resonance/game-data");
 const runtimeManifest = readJson(path.join(gameDataRoot, "runtime/rdps-formula-runtime.v1.json"));
+const localizationRuntime = readJson(path.join(gameDataRoot, "runtime/localization-runtime.v1.json"));
 const sourceBuildId = process.env.BPSR_TABLE_BUILD_ID ?? runtimeManifest.game_build;
+if (
+  localizationRuntime.schema_version !== 1
+  || localizationRuntime.deployment_id !== "global"
+  || localizationRuntime.client_build !== String(sourceBuildId)
+  || typeof localizationRuntime.protocol_pack_digest !== "string"
+) throw new Error("The profile presentation localization identity is invalid or stale.");
 const talentCatalogRoot = path.join(gameDataRoot, "catalog/talents");
 const talentLocaleRoot = path.join(gameDataRoot, "catalog/localization/en-US/talents");
 const sourceIconRoot = path.join(rlogsRoot, "assets/blue-protocol-star-resonance/shared/icons");
@@ -21,6 +36,38 @@ const publicIconRoot = path.join(websiteRoot, "public/assets/bpsr/profile");
 
 const itemsTablePath = path.join(tableRoot, "ItemTable.json");
 const itemsTable = readJson(itemsTablePath);
+const buildManifest = readJson(path.join(
+  rlogsRoot,
+  `plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-${sourceBuildId}/complete-build-source-manifest.v1.json`,
+));
+const itemTableManifest = buildManifest.files?.find((entry) =>
+  entry.root === "decoded-game-tables" && entry.relativePath === "ItemTable.json");
+const itemTableSha256 = createHash("sha256").update(readFileSync(itemsTablePath)).digest("hex");
+if (
+  buildManifest.deployment !== localizationRuntime.deployment_id
+  || String(buildManifest.gameBuild) !== String(sourceBuildId)
+  || itemTableManifest?.authority !== "exact-current-build-static-data"
+  || itemTableManifest.sha256 !== itemTableSha256
+) throw new Error("ItemTable does not match the exact current-build source manifest.");
+const weaponLocalization = readJson(path.join(
+  gameDataRoot,
+  "runtime/localization/en-US/weapon-names.v1.json",
+));
+if (
+  weaponLocalization.schema_version !== 1
+  || weaponLocalization.locale !== "en-US"
+  || weaponLocalization.deployment_id !== localizationRuntime.deployment_id
+  || weaponLocalization.client_build !== localizationRuntime.client_build
+  || weaponLocalization.protocol_pack_digest !== localizationRuntime.protocol_pack_digest
+  || weaponLocalization.source_item_table_sha256 !== itemTableSha256
+  || !Array.isArray(weaponLocalization.weapons)
+  || weaponLocalization.weapons.length !== 722
+) throw new Error("The exact-build weapon localization catalog is invalid or stale.");
+const weaponNames = new Map(weaponLocalization.weapons.map(([id, name]) => [String(id), name]));
+if (
+  weaponNames.size !== 722
+  || Object.values(itemsTable).some((item) => item.Type === 200 && !weaponNames.get(String(item.Id)))
+) throw new Error("The exact-build weapon localization coverage is incomplete.");
 const equipmentTable = readJson(path.join(tableRoot, "EquipTable.json"));
 const equipmentBreakthroughTablePath = path.join(tableRoot, "EquipBreakThroughTable.json");
 const equipmentBreakthroughTable = readJson(equipmentBreakthroughTablePath);
@@ -105,7 +152,7 @@ const items = Object.fromEntries(
   Object.values(itemsTable)
     .filter((item) => item.Type === 102 || (item.Type >= 200 && item.Type <= 210))
     .map((item) => [String(item.Id), {
-      name: item.Name,
+      name: item.Type === 200 ? weaponNames.get(String(item.Id)) : item.Name,
       quality: item.Quality,
       type: item.Type,
       equipment_level: equipmentTable[String(item.Id)]?.EquipGs ?? null,
@@ -713,8 +760,10 @@ const catalog = {
   schema_version: 3,
   locale: "en-US",
   game_build: sourceBuildId,
+  deployment_id: localizationRuntime.deployment_id,
+  protocol_pack_digest: localizationRuntime.protocol_pack_digest,
   source: "Exact-build BPSR Global Steam client tables and reviewed rLogs game-data catalogs",
-  source_item_table_sha256: createHash("sha256").update(readFileSync(itemsTablePath)).digest("hex"),
+  source_item_table_sha256: itemTableSha256,
   source_achievement_table_sha256: createHash("sha256").update(readFileSync(achievementsTablePath)).digest("hex"),
   source_life_profession_table_sha256: createHash("sha256").update(readFileSync(lifeProfessionsTablePath)).digest("hex"),
   source_reputation_table_sha256: createHash("sha256").update(readFileSync(reputationsTablePath)).digest("hex"),

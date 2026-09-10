@@ -27,6 +27,7 @@ export interface PublishedProfileLoadoutSummary {
   snapshot_available: boolean;
   updated_unix_millis: number;
   source_client_build: string;
+  source_protocol_pack_digest?: string;
   class_id?: number;
   specialization_id?: number;
   module_inventory_count: number;
@@ -149,6 +150,7 @@ async function loadSubmittedProfile(profileId: string): Promise<PublishedProfile
   const updated = positiveIntegerField(value, "updated_unix_millis");
   const observations = positiveIntegerField(value, "source_observation_count");
   const clientBuild = textField(value, "source_client_build");
+  const protocolPackDigest = profileSourceProtocolPackDigest(value);
   const characterId = textField(value, "character_id");
   const encoded = new TextEncoder().encode(JSON.stringify(envelope));
   const entry: PublishedProfileEntry = {
@@ -170,6 +172,7 @@ async function loadSubmittedProfile(profileId: string): Promise<PublishedProfile
     source_updated_unix_millis: updated,
     source_observation_count: observations,
     source_client_build: clientBuild,
+    ...(protocolPackDigest ? { source_protocol_pack_digest: protocolPackDigest } : {}),
   };
   verifyManifestMatchesEnvelope(entry, envelope);
   return { entry, envelope, loadouts: loadoutSummaries(value, envelope) };
@@ -185,6 +188,7 @@ function loadoutSummaries(
       const projectId = candidate.project_id;
       const updated = candidate.updated_unix_millis;
       const sourceBuild = candidate.source_client_build;
+      const sourceProtocolPackDigest = profileSourceProtocolPackDigest(candidate);
       const inventoryCount = candidate.module_inventory_count;
       const equippedCount = candidate.equipped_module_count;
       if (
@@ -201,6 +205,7 @@ function loadoutSummaries(
         snapshot_available: typeof candidate.snapshot_available === "boolean" ? candidate.snapshot_available : true,
         updated_unix_millis: updated,
         source_client_build: sourceBuild,
+        ...(sourceProtocolPackDigest ? { source_protocol_pack_digest: sourceProtocolPackDigest } : {}),
         ...(optionalIntegerField(candidate, "class_id") == null ? {} : { class_id: optionalIntegerField(candidate, "class_id") }),
         ...(optionalIntegerField(candidate, "specialization_id") == null ? {} : { specialization_id: optionalIntegerField(candidate, "specialization_id") }),
         module_inventory_count: inventoryCount,
@@ -209,6 +214,13 @@ function loadoutSummaries(
     })
     : [];
   return summaries.length ? summaries.sort((left, right) => left.project_id - right.project_id) : currentEnvelopeLoadout(envelope);
+}
+
+export function profileSourceProtocolPackDigest(
+  value: Record<string, unknown>,
+): string | undefined {
+  const digest = optionalTextField(value, "source_protocol_pack_digest");
+  return digest && /^sha256:[a-f0-9]{64}$/u.test(digest) ? digest : undefined;
 }
 
 function currentEnvelopeLoadout(envelope: WebsitePayloadEnvelope): PublishedProfileLoadoutSummary[] {

@@ -26,6 +26,7 @@ import {
   photoWallGridPosition,
   photoWallIdentityCount,
   profileProgressSummary,
+  profileEquipmentName,
   reputationViews,
   resolveCombatStatFamilies,
   resolveCombatActionPresentation,
@@ -69,6 +70,19 @@ describe("Battle Imagine ownership presentation", () => {
     expect(battleImagineRarityLabel(5)).toBe("SSR");
     expect(battleImagineRarityLabel(2)).toBe("");
     expect(battleImagineRarityLabel(undefined)).toBe("");
+  });
+});
+
+describe("weapon item presentation", () => {
+  it("fails closed without exact presentation authority while retaining other equipment names", () => {
+    expect(profileEquipmentName(2_000_631, 200, allTreesCatalog, allTreesCatalog))
+      .toBe("Ember - Gaze of the Far Sea");
+    expect(profileEquipmentName(2_000_631, 200, allTreesCatalog, undefined))
+      .toBe("Unlocalized weapon item #2000631");
+    const [nonWeaponId, nonWeapon] = Object.entries(allTreesCatalog.items)
+      .find(([, item]) => item.type !== 200)!;
+    expect(profileEquipmentName(Number(nonWeaponId), nonWeapon.type ?? null, allTreesCatalog, undefined))
+      .toBe(nonWeapon.name);
   });
 });
 

@@ -113,6 +113,8 @@ export interface ProfilePresentationCatalog {
   schema_version?: number;
   locale?: string;
   game_build?: string;
+  deployment_id?: string;
+  protocol_pack_digest?: string;
   source?: string;
   source_item_table_sha256?: string;
   source_achievement_table_sha256?: string;
@@ -154,7 +156,7 @@ export interface ProfilePresentationCatalog {
 
 // The query revision is part of the schema contract. Changing it prevents an
 // older immutable browser/CDN response from being paired with newer UI code.
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=24`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/profile-presentation.en-US.v1.json?schema=25`;
 let request: Promise<ProfilePresentationCatalog> | undefined;
 
 export function loadProfilePresentation(): Promise<ProfilePresentationCatalog> {
@@ -174,6 +176,11 @@ export function normalizeProfilePresentationCatalog(
   value: unknown,
 ): ProfilePresentationCatalog | undefined {
   if (!isRecord(value)) return undefined;
+  if (
+    value.deployment_id !== "global"
+    || typeof value.game_build !== "string"
+    || !/^sha256:[a-f0-9]{64}$/u.test(String(value.protocol_pack_digest ?? ""))
+  ) return undefined;
   if (
     ![
       "equipment_slots",
@@ -227,6 +234,23 @@ export function normalizeProfilePresentationCatalog(
       ? (value.talent_tree_index as unknown as ProfilePresentationCatalog["talent_tree_index"])
       : {},
   };
+}
+
+export interface ProfilePresentationIdentity {
+  deployment: string;
+  source_client_build?: string;
+  source_protocol_pack_digest?: string;
+}
+
+export function profilePresentationForIdentity(
+  catalog: ProfilePresentationCatalog,
+  identity: ProfilePresentationIdentity,
+): ProfilePresentationCatalog | undefined {
+  return catalog.deployment_id === identity.deployment
+    && catalog.game_build === identity.source_client_build
+    && catalog.protocol_pack_digest === identity.source_protocol_pack_digest
+    ? catalog
+    : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

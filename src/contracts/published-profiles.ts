@@ -17,6 +17,7 @@ export interface PublishedProfileEntry {
   source_updated_unix_millis?: number;
   source_observation_count?: number;
   source_client_build?: string;
+  source_protocol_pack_digest?: string;
 }
 
 export interface PublishedProfileIndex {
@@ -173,6 +174,13 @@ export function validatePublishedProfileIndex(
         1,
         256,
       );
+    }
+    if (
+      candidate.source_protocol_pack_digest !== undefined
+      && (typeof candidate.source_protocol_pack_digest !== "string"
+        || !/^sha256:[a-f0-9]{64}$/u.test(candidate.source_protocol_pack_digest))
+    ) {
+      errors.push(`${path}.source_protocol_pack_digest must be a lowercase prefixed SHA-256 digest.`);
     }
   });
 

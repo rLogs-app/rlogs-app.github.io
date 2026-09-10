@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   normalizeProfilePresentationCatalog,
+  profilePresentationForIdentity,
   type ProfilePresentationCatalog,
 } from "./profile-presentation";
 
@@ -25,6 +26,8 @@ function publishedAssetExists(assetPath: string): boolean {
 describe("BPSR profile presentation catalog", () => {
   it("is generated from the exact current-build game table instead of a parser snapshot", () => {
     expect(catalog.game_build).toBe("24687926");
+    expect(catalog.deployment_id).toBe("global");
+    expect(catalog.protocol_pack_digest).toBe("sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae");
     expect(catalog.source_item_table_sha256).toBe(
       "a5807d7b028ab5fa90e76fb519aea77493c79637576471b2e458efddf1846f99",
     );
@@ -36,6 +39,19 @@ describe("BPSR profile presentation catalog", () => {
     );
     expect(Object.keys(catalog.titles)).toHaveLength(599);
     expect(catalog.titles["9062067"]?.name).toBe("Power from the Other Side");
+  });
+
+  it("authorizes names only for the exact profile runtime identity", () => {
+    const exact = {
+      deployment: "global",
+      source_client_build: "24687926",
+      source_protocol_pack_digest: "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+    };
+    expect(profilePresentationForIdentity(catalog, exact)).toBe(catalog);
+    expect(profilePresentationForIdentity(catalog, { ...exact, deployment: "cn" })).toBeUndefined();
+    expect(profilePresentationForIdentity(catalog, { ...exact, source_client_build: "24687927" })).toBeUndefined();
+    expect(profilePresentationForIdentity(catalog, { ...exact, source_protocol_pack_digest: "sha256:wrong" })).toBeUndefined();
+    expect(profilePresentationForIdentity(catalog, { deployment: "global", source_client_build: "24687926" })).toBeUndefined();
   });
 
   it("localizes every exact-build medal used by public profiles", () => {
