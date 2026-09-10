@@ -1,9 +1,11 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it } from "vitest";
 
 import type { PublicParseCatalogEntry } from "../../contracts/public-parse";
 import type { PublicCommunityMilestone } from "../../contracts/public-activity";
 import type { ParsePresentationCatalog } from "../parse-browser/parse-presentation";
-import { buildSceneRankings, catalogEntrySceneLabel, milestonePresentationCopy } from "./home";
+import { buildSceneRankings, catalogEntrySceneLabel, milestonePresentationCopy, parseFeedRow } from "./home";
 import { regionalSeason } from "./regional-seasons";
 
 const digest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
@@ -91,6 +93,20 @@ describe("home rankings", () => {
     expect(name).toBe("Scene #1631");
     expect(name).not.toContain("Spoofed Tina Name");
     expect(name).not.toContain("synthetic.activity");
+  });
+
+  it("renders a recent parse name only when its exact presentation identity is authorized", () => {
+    const exact = entry(1633, "Chaotic - Tina's Mindrealm", 10);
+    const authorized = parseFeedRow(exact, presentation, 7);
+    expect(authorized).toContain("Chaotic - Tina's Mindrealm");
+    expect(authorized).not.toContain("Scene #1633");
+
+    const wrongDigest = {
+      ...exact,
+      protocol_pack_digest: `sha256:${"f".repeat(64)}`,
+    };
+    expect(parseFeedRow(wrongDigest, presentation, 7)).toContain("Scene #1633");
+    expect(parseFeedRow(exact, presentation, 6)).toContain("Scene #1633");
   });
 });
 

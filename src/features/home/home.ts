@@ -60,15 +60,14 @@ export async function mountHome(): Promise<void> {
   const presentationRequest = loadParsePresentation().catch(() => undefined);
   const photoHeaders = new Headers({ Accept: "application/json" });
   if (authorization) photoHeaders.set("Authorization", `Bearer ${authorization}`);
-  const parseTask = renderCoreWithOptionalPresentation(
+  const parseTask = Promise.all([
     fetchTyped(`${apiBase}/v1/parses?limit=250`, isPublicParseCatalog),
     presentationRequest,
-    (catalog, presentation) => {
+  ]).then(
+    ([catalog, presentation]) => {
       renderRecentParses(catalog, recent, presentation);
       renderRankings(catalog, rankings, presentation);
     },
-  ).then(
-    () => undefined,
     () => {
       setUnavailable("home-parse-status", recent, "Recent parse submissions are temporarily unavailable.");
       setUnavailable("home-ranking-status", rankings, "Scene rankings are temporarily unavailable.");
