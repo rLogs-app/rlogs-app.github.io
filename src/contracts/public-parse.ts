@@ -30,7 +30,7 @@ export interface FacetValue { id: string; count: number }
 export interface SceneFacetValue { id: number; label?: string; count: number }
 
 export interface PublicParseReport {
-  schema_version: 6 | 7 | 8 | 9 | 10 | 11 | 12 | 14 | 15; projection_revision?: number; report_id: string; visibility: "public" | "unlisted" | "private";
+  schema_version: 6 | 7 | 8 | 9 | 10 | 11 | 12 | 14 | 15 | 16; projection_revision?: number; report_id: string; visibility: "public" | "unlisted" | "private";
   created_unix_millis: number; game_plugin_id: string; deployment_id: string; region_id: string;
   world_id: string | null; client_build: string; protocol_pack_digest?: string; verification: PublicVerification;
   submission_provenance: PublicSubmissionProvenance; runs: PublicRun[];
@@ -82,14 +82,14 @@ export interface PublicRdpsInfluence {
   attributed_rdps: string | null; damage_context_complete: boolean;
 }
 export interface PublicCombatTimeline {
-  schema_version: 1 | 2 | 3; source: "single_report" | "reconciled_canonical_spine";
+  schema_version: 1 | 2 | 3 | 4; source: "single_report" | "reconciled_canonical_spine";
   canonical_report_id: string; canonical_run_index: number; contributing_report_ids: string[]; duration_micros: number;
   time_basis: "run_elapsed" | "capture_observed"; series_bucket_micros: number;
   coverage: { authoritative_start: boolean; authoritative_completion: boolean; data_gap_count: number; gap_timing: "no_known_gaps" | "count_only" };
   rate_clock?: PublicTimelineRateClockPoint[]; rate_clock_complete?: boolean;
   participant_tracks: Array<{ actor_id: string; character_id: string | null; observed_character_key: string | null;
     display_name: string | null; canonical_participant_index: number; series_point_count: number }>;
-  death_markers: Array<{ actor_id: string; at_micros: number; precision: "exact_microsecond" | "one_second_bucket" }>;
+  death_markers: Array<{ actor_id: string; at_micros: number; precision: "exact_microsecond" | "one_second_bucket"; cause?: PublicTimelineDeathCause | null }>;
   loadout_markers: Array<{ character_id: string; at_micros: number; phase_index: number; source_report_id: string }>;
   rdps_influence_spans: Array<{ influence_index: number; time_basis: "run_elapsed" | "capture_observed";
     start_micros: number; end_micros: number; complete_lifecycle: boolean }>;
@@ -129,7 +129,7 @@ export interface PublicCharacterWitnessSource {
   report_id: string; run_index: number; artifact_sha256: string; snapshots: PublicLocalProfileWitness[]; state_snapshots: PublicLocalStateWitness[];
 }
 export interface PublicRunReconciliation {
-  schema_version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15 | 16 | 17 | 18; reconciliation_id: string; run_group_id: string; status: ReconciliationStatus;
+  schema_version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15 | 16 | 17 | 18 | 19; reconciliation_id: string; run_group_id: string; status: ReconciliationStatus;
   canonical_spine: { report_id: string; run_index: number; artifact_sha256: string; authoritative_start: boolean;
     authoritative_completion: boolean; data_gap_count: number; event_count: number };
   reports: Array<{ report_id: string; run_index: number; artifact_sha256: string; deployment_id?: string; client_build?: string; protocol_pack_digest: string;
@@ -142,9 +142,18 @@ export interface PublicRunReconciliation {
   conservation?: PublicAttributionConservation;
   rdps_influences?: PublicRdpsInfluence[]; rdps_effects?: PublicRdpsEffectPresentation[];
   swift_vortex_candidate_audit?: SwiftVortexCandidateAuditReport;
-  /** Required in schema 18. Null until conserved replay authors formula coverage. */
+  /** Required in schema 18 and later. Null until conserved replay authors formula coverage. */
   rdps_status?: string | null;
   attribution_replay_completed: boolean; timeline?: PublicCombatTimeline;
+}
+export interface PublicTimelineDeathCause {
+  evidence: "packet_terminal_damage"; final_hit: PublicTimelineDeathHit;
+  prior_hits: PublicTimelineDeathHit[]; prior_hits_truncated: boolean;
+}
+export interface PublicTimelineDeathHit {
+  at_micros: number; source_actor_id: string; direct_source_actor_id?: string | null;
+  ability_id?: string | null; breakdown_ability_id?: string | null;
+  reported_damage: number; effective_damage: number; critical: boolean;
 }
 
 export interface PublicReconciledParticipant extends PublicParticipant {
@@ -193,9 +202,11 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
   }
   const timelineSchema = value.schema_version === 14 && value.projection_revision === 4 ? 1
     : value.schema_version === 14 && value.projection_revision === 5 ? 2
-    : value.schema_version === 15 && (value.projection_revision === 6 || value.projection_revision === 7) ? 3 : null;
+    : value.schema_version === 15 && (value.projection_revision === 6 || value.projection_revision === 7) ? 3
+    : value.schema_version === 16 && value.projection_revision === 8 ? 4 : null;
   if (timelineSchema == null) return false;
-  const requireProtocolIdentity = value.schema_version === 15 && value.projection_revision === 7;
+  const requireProtocolIdentity = (value.schema_version === 15 && value.projection_revision === 7) ||
+    (value.schema_version === 16 && value.projection_revision === 8);
   return typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) && (value.visibility === "public" || value.visibility === "unlisted" || value.visibility === "private") &&
     typeof value.deployment_id === "string" && value.deployment_id.length > 0 &&
@@ -226,9 +237,10 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
   if (!isRecord(value.timeline)) return false;
   const timelineSchema = value.timeline.schema_version;
   if (!((value.schema_version === 15 && (timelineSchema === 1 || timelineSchema === 2)) ||
-      ((value.schema_version === 16 || value.schema_version === 17 || value.schema_version === 18) && timelineSchema === 3))) return false;
-  const requireRuntimeIdentity = value.schema_version === 17 || value.schema_version === 18;
-  const replayRdpsStatusValid = value.schema_version !== 18 || value.rdps_status === null ||
+      ((value.schema_version === 16 || value.schema_version === 17 || value.schema_version === 18) && timelineSchema === 3) ||
+      (value.schema_version === 19 && timelineSchema === 4))) return false;
+  const requireRuntimeIdentity = value.schema_version === 17 || value.schema_version === 18 || value.schema_version === 19;
+  const replayRdpsStatusValid = (value.schema_version !== 18 && value.schema_version !== 19) || value.rdps_status === null ||
     (typeof value.rdps_status === "string" && value.rdps_status.length > 0);
   return typeof value.reconciliation_id === "string" && reconciliationIdPattern.test(value.reconciliation_id) &&
     typeof value.run_group_id === "string" && groupIdPattern.test(value.run_group_id) && isReconciliationStatus(value.status) &&
@@ -241,7 +253,7 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
     typeof value.complete_local_vantage_coverage === "boolean" && replayReadiness.has(value.state_replay_readiness) &&
     Array.isArray(value.state_replay_blockers) && value.state_replay_blockers.every((blocker) => typeof blocker === "string") &&
     typeof value.attribution_replay_completed === "boolean" && replayRdpsStatusValid &&
-    isConservation(value.conservation) && isReplayStateConsistent(value) && isCompletedSchema18RdpsConsistent(value) &&
+    isConservation(value.conservation) && isReplayStateConsistent(value) && isCompletedReplayRdpsConsistent(value) &&
     (value.swift_vortex_candidate_audit == null || isSwiftVortexCandidateAudit(value.swift_vortex_candidate_audit)) &&
     Array.isArray(value.characters) && value.characters.length <= 256 && value.characters.every((character) => isReconciliationCharacter(character, value.reports)) &&
     unique(value.characters.map((character: unknown) => isRecord(character) ? character.character_id : character)) &&
@@ -275,7 +287,7 @@ function isVerification(value: unknown): boolean {
   return isRecord(value) && ["replayed", "corroborated", "ranked"].includes(String(value.tier)) &&
     typeof value.artifact_sha256 === "string" && isNonNegativeInteger(value.event_count);
 }
-function isPublicRun(value: unknown, reportId: string, timelineSchema: 1 | 2 | 3): boolean {
+function isPublicRun(value: unknown, reportId: string, timelineSchema: 1 | 2 | 3 | 4): boolean {
   return isRecord(value) && isNonNegativeInteger(value.run_index) && typeof value.run_group_id === "string" &&
     groupIdPattern.test(value.run_group_id) && isRecord(value.timeline) && value.timeline.schema_version === timelineSchema &&
     (timelineSchema < 3 ? value.combat_loadout_phases === undefined || isLoadoutPhases(value.combat_loadout_phases, value.timeline.duration_micros)
@@ -284,14 +296,14 @@ function isPublicRun(value: unknown, reportId: string, timelineSchema: 1 | 2 | 3
     isTimeline(value.timeline, value.participants, true) && value.timeline.canonical_report_id === reportId &&
     value.timeline.canonical_run_index === value.run_index;
 }
-function isParticipant(value: unknown, timelineSchema: 1 | 2 | 3): boolean {
+function isParticipant(value: unknown, timelineSchema: 1 | 2 | 3 | 4): boolean {
   return isRecord(value) && typeof value.actor_id === "string" && value.actor_id.length > 0 && isFiniteNumber(value.damage) && isFiniteNumber(value.dps) &&
     (timelineSchema === 1 ? value.rdps_incomplete === undefined || typeof value.rdps_incomplete === "boolean" : typeof value.rdps_incomplete === "boolean") &&
     Array.isArray(value.series) && value.series.length <= 604_800 && value.series.every((point) => isSeriesPoint(point, timelineSchema)) &&
     strictlyAscending(value.series.map((point) => point.second));
 }
 function isTimeline(value: unknown, participants: readonly unknown[], requireResolvedTracks: boolean): value is PublicCombatTimeline {
-  return isRecord(value) && (value.schema_version === 1 || value.schema_version === 2 || value.schema_version === 3) && (value.source === "single_report" || value.source === "reconciled_canonical_spine") &&
+  return isRecord(value) && (value.schema_version === 1 || value.schema_version === 2 || value.schema_version === 3 || value.schema_version === 4) && (value.source === "single_report" || value.source === "reconciled_canonical_spine") &&
     typeof value.canonical_report_id === "string" && reportIdPattern.test(value.canonical_report_id) &&
     isNonNegativeInteger(value.canonical_run_index) && Array.isArray(value.contributing_report_ids) &&
     value.contributing_report_ids.length > 0 && value.contributing_report_ids.every((id) => typeof id === "string" && reportIdPattern.test(id)) &&
@@ -301,14 +313,14 @@ function isTimeline(value: unknown, participants: readonly unknown[], requireRes
     Array.isArray(value.participant_tracks) && value.participant_tracks.length <= 256 &&
     value.participant_tracks.every((track) => isTimelineTrack(track, participants, value.duration_micros, requireResolvedTracks)) &&
     unique(value.participant_tracks.map((track: unknown) => isRecord(track) ? track.canonical_participant_index : track)) &&
-    Array.isArray(value.death_markers) && value.death_markers.length <= 4_096 && value.death_markers.every((marker) => isDeathMarker(marker, value.duration_micros)) &&
+    Array.isArray(value.death_markers) && value.death_markers.length <= 4_096 && value.death_markers.every((marker) => isDeathMarker(marker, value.duration_micros, value.schema_version)) &&
     value.death_markers.every((marker) => value.participant_tracks.some((track: unknown) => isRecord(track) && track.actor_id === marker.actor_id)) &&
     Array.isArray(value.loadout_markers) && value.loadout_markers.length <= 4_096 && value.loadout_markers.every((marker) => isLoadoutMarker(marker, value.duration_micros)) &&
     value.loadout_markers.every((marker) => value.contributing_report_ids.includes(marker.source_report_id)) &&
     Array.isArray(value.rdps_influence_spans) && value.rdps_influence_spans.length <= 65_536 && value.rdps_influence_spans.every((span) => isRdpsSpan(span, value.duration_micros)) &&
     isCoverage(value.coverage) && isOmitted(value.omitted);
 }
-function isSeriesPoint(value: unknown, timelineSchema: 1 | 2 | 3): boolean {
+function isSeriesPoint(value: unknown, timelineSchema: 1 | 2 | 3 | 4): boolean {
   if (!isRecord(value) || !isNonNegativeInteger(value.second) || !isNonNegativeInteger(value.damage) ||
       !isNonNegativeInteger(value.effective_healing) || !isNonNegativeInteger(value.damage_taken)) return false;
   const attribution = [value.rdps_damage, value.rdps_contribution_given, value.rdps_contribution_received];
@@ -317,7 +329,7 @@ function isSeriesPoint(value: unknown, timelineSchema: 1 | 2 | 3): boolean {
   return present === 0 || (present === attribution.length && attribution.every(isNonNegativeInteger));
 }
 function isRateClock(value: Record<string, any>, durationMicros: number): boolean {
-  if (value.schema_version !== 3) {
+  if (value.schema_version !== 3 && value.schema_version !== 4) {
     return value.rate_clock === undefined && value.rate_clock_complete === undefined &&
       (!isRecord(value.omitted) || value.omitted.rate_clock_points === undefined);
   }
@@ -456,10 +468,11 @@ function isReplayStateConsistent(value: Record<string, any>): boolean {
   return value.status === "reconciled" && isRecord(value.conservation) && value.conservation.conserved === true &&
     Array.isArray(value.reconciled_participants) && value.reconciled_participants.length > 0 &&
     value.timeline?.source === "reconciled_canonical_spine" &&
-    (value.schema_version !== 18 || (typeof value.rdps_status === "string" && value.rdps_status.length > 0));
+    ((value.schema_version !== 18 && value.schema_version !== 19) ||
+      (typeof value.rdps_status === "string" && value.rdps_status.length > 0));
 }
-function isCompletedSchema18RdpsConsistent(value: Record<string, any>): boolean {
-  if (value.schema_version !== 18 || value.attribution_replay_completed !== true) return true;
+function isCompletedReplayRdpsConsistent(value: Record<string, any>): boolean {
+  if ((value.schema_version !== 18 && value.schema_version !== 19) || value.attribution_replay_completed !== true) return true;
   if (!Array.isArray(value.reconciled_participants) || !isRecord(value.conservation)) return false;
   const conservationFields = ["raw_damage", "rdps_damage", "contribution_given", "contribution_received"] as const;
   if (!conservationFields.every((field) => isNonNegativeInteger(value.conservation[field]))) return false;
@@ -602,9 +615,28 @@ function isTimelineTrack(value: unknown, participants: readonly unknown[], durat
   const maximumSecond = Math.floor(durationMicros / 1_000_000);
   return participant.series.slice(0, value.series_point_count).every((point) => isRecord(point) && point.second <= maximumSecond);
 }
-function isDeathMarker(value: unknown, durationMicros: number): boolean {
-  return isRecord(value) && typeof value.actor_id === "string" && isNonNegativeInteger(value.at_micros) &&
-    value.at_micros <= durationMicros && (value.precision === "exact_microsecond" || value.precision === "one_second_bucket");
+function isDeathMarker(value: unknown, durationMicros: number, timelineSchema: number): boolean {
+  if (!isRecord(value) || typeof value.actor_id !== "string" || !isNonNegativeInteger(value.at_micros) ||
+      value.at_micros > durationMicros || (value.precision !== "exact_microsecond" && value.precision !== "one_second_bucket")) return false;
+  if (timelineSchema < 4) return value.cause === undefined;
+  if (value.cause == null) return true;
+  return value.precision === "exact_microsecond" && isTimelineDeathCause(value.cause, value.at_micros);
+}
+function isTimelineDeathCause(value: unknown, deathMicros: number): value is PublicTimelineDeathCause {
+  if (!isRecord(value) || value.evidence !== "packet_terminal_damage" ||
+      !isTimelineDeathHit(value.final_hit, deathMicros) || value.final_hit.at_micros !== deathMicros ||
+      !Array.isArray(value.prior_hits) || value.prior_hits.length > 63 ||
+      !value.prior_hits.every((hit) => isTimelineDeathHit(hit, deathMicros)) ||
+      typeof value.prior_hits_truncated !== "boolean") return false;
+  return value.prior_hits.every((hit, index) => index === 0 || hit.at_micros >= value.prior_hits[index - 1].at_micros);
+}
+function isTimelineDeathHit(value: unknown, deathMicros: number): value is PublicTimelineDeathHit {
+  const earliestMicros = Math.max(0, deathMicros - 2_000_000);
+  return isRecord(value) && isNonNegativeInteger(value.at_micros) && value.at_micros >= earliestMicros && value.at_micros <= deathMicros &&
+    isBoundedIdentifierText(value.source_actor_id) && optionalBoundedIdentifierText(value.direct_source_actor_id) &&
+    optionalBoundedIdentifierText(value.ability_id) && optionalBoundedIdentifierText(value.breakdown_ability_id) &&
+    isNonNegativeInteger(value.reported_damage) &&
+    isNonNegativeInteger(value.effective_damage) && typeof value.critical === "boolean";
 }
 function isLoadoutMarker(value: unknown, durationMicros: number): boolean {
   return isRecord(value) && typeof value.character_id === "string" && isNonNegativeInteger(value.at_micros) &&
@@ -636,6 +668,8 @@ function isNonNegativeInteger(value: unknown): value is number { return Number.i
 function optionalNonNegativeInteger(value: unknown): boolean { return value === null || isNonNegativeInteger(value) }
 function optionalInteger(value: unknown): boolean { return value === null || Number.isSafeInteger(value) }
 function optionalText(value: unknown): boolean { return value === null || typeof value === "string" }
+function isBoundedIdentifierText(value: unknown): value is string { return typeof value === "string" && value.length > 0 && value.length <= 96 }
+function optionalBoundedIdentifierText(value: unknown): boolean { return value == null || isBoundedIdentifierText(value) }
 function isFiniteNumber(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value) }
 function strictlyAscending(values: readonly number[]): boolean { return values.every((value, index) => index === 0 || value > values[index - 1]!) }
 function unique(values: readonly unknown[]): boolean { return new Set(values).size === values.length }

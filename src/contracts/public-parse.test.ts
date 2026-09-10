@@ -48,6 +48,33 @@ function completedSchema18Reconciliation(): any {
   return reconciliation;
 }
 
+function reportWithTimelineV4(): any {
+  const report = fixture("parse-report.v1.json") as any;
+  report.schema_version = 16;
+  report.projection_revision = 8;
+  report.runs[0].timeline.schema_version = 4;
+  return report;
+}
+
+function packetTerminalDeathCause(atMicros: number): any {
+  const hit = (hitMicros: number, sourceActorId: string) => ({
+    at_micros: hitMicros,
+    source_actor_id: sourceActorId,
+    direct_source_actor_id: null,
+    ability_id: "2203291",
+    breakdown_ability_id: null,
+    reported_damage: 100,
+    effective_damage: 90,
+    critical: true,
+  });
+  return {
+    evidence: "packet_terminal_damage",
+    final_hit: hit(atMicros, "12"),
+    prior_hits: [hit(atMicros - 2_000_000, "13"), hit(atMicros - 500_000, "14")],
+    prior_hits_truncated: false,
+  };
+}
+
 describe("public parse contract", () => {
   it("accepts deterministic report identifiers", () => {
     expect(validateReportId(`rpt_${"ab".repeat(16)}`)).toBe(true);
@@ -168,6 +195,13 @@ describe("public parse contract", () => {
     expect(isPublicParseReport({ ...current, projection_revision: 7 })).toBe(true);
     expect(isPublicParseReport({ ...current, projection_revision: 8 })).toBe(false);
 
+    const timelineV4 = reportWithTimelineV4();
+    expect(isPublicParseReport(timelineV4)).toBe(true);
+    expect(isPublicParseReport({ ...timelineV4, schema_version: 15 })).toBe(false);
+    expect(isPublicParseReport({ ...timelineV4, projection_revision: 7 })).toBe(false);
+    timelineV4.runs[0].timeline.schema_version = 3;
+    expect(isPublicParseReport(timelineV4)).toBe(false);
+
     const legacy = structuredClone(current);
     legacy.schema_version = 14;
     legacy.projection_revision = 5;
@@ -190,6 +224,61 @@ describe("public parse contract", () => {
     expect(isPublicParseReport(legacy)).toBe(true);
     legacy.runs[0].timeline.schema_version = 2;
     expect(isPublicParseReport(legacy)).toBe(false);
+  });
+  it("accepts optional packet-proven death causes only when the timeline-v4 contract is complete", () => {
+    const report = reportWithTimelineV4();
+    const marker = report.runs[0].timeline.death_markers[0];
+    expect(marker.precision).toBe("one_second_bucket");
+    marker.cause = packetTerminalDeathCause(marker.at_micros);
+    expect(isPublicParseReport(report)).toBe(false);
+    marker.cause = null;
+    expect(isPublicParseReport(report)).toBe(true);
+    marker.precision = "exact_microsecond";
+    expect(isPublicParseReport(report)).toBe(true);
+    marker.cause = packetTerminalDeathCause(marker.at_micros);
+    expect(isPublicParseReport(report)).toBe(true);
+
+    const legacy = fixture("parse-report.v1.json") as any;
+    legacy.runs[0].timeline.death_markers[0].cause = packetTerminalDeathCause(marker.at_micros);
+    expect(isPublicParseReport(legacy)).toBe(false);
+
+    const malformedCases = [
+      (cause: any) => { cause.evidence = "inferred_damage"; },
+      (cause: any) => { delete cause.final_hit.critical; },
+      (cause: any) => { cause.final_hit.at_micros -= 1; },
+      (cause: any) => { cause.final_hit.source_actor_id = ""; },
+      (cause: any) => { cause.final_hit.source_actor_id = "1".repeat(97); },
+      (cause: any) => { cause.final_hit.direct_source_actor_id = 12; },
+      (cause: any) => { cause.final_hit.ability_id = "1".repeat(97); },
+      (cause: any) => { cause.final_hit.reported_damage = 1.5; },
+      (cause: any) => { cause.final_hit.effective_damage = -1; },
+      (cause: any) => { cause.prior_hits = "not-a-list"; },
+      (cause: any) => { cause.prior_hits[0].at_micros -= 1; },
+      (cause: any) => { cause.prior_hits.reverse(); },
+      (cause: any) => { cause.prior_hits = Array.from({ length: 64 }, () => cause.prior_hits[0]); },
+      (cause: any) => { delete cause.prior_hits_truncated; },
+    ];
+    for (const mutate of malformedCases) {
+      const malformed = reportWithTimelineV4();
+      const malformedMarker = malformed.runs[0].timeline.death_markers[0];
+      malformedMarker.cause = packetTerminalDeathCause(malformedMarker.at_micros);
+      mutate(malformedMarker.cause);
+      expect(isPublicParseReport(malformed)).toBe(false);
+    }
+  });
+  it("accepts only reconciliation 19 with timeline 4 while retaining reconciliation 18 with timeline 3", () => {
+    const legacy = fixture("parse-reconciliation.v1.json") as any;
+    legacy.schema_version = 18;
+    legacy.rdps_status = null;
+    expect(isPublicRunReconciliation(legacy)).toBe(true);
+
+    const current = structuredClone(legacy);
+    current.schema_version = 19;
+    current.timeline.schema_version = 4;
+    expect(isPublicRunReconciliation(current)).toBe(true);
+    expect(isPublicRunReconciliation({ ...current, schema_version: 18 })).toBe(false);
+    current.timeline.schema_version = 3;
+    expect(isPublicRunReconciliation(current)).toBe(false);
   });
   it("requires a complete current report envelope while keeping revision 6 digest-compatible", () => {
     const revision7 = fixture("parse-report.v1.json") as any;
