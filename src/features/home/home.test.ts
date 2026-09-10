@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { PublicParseCatalogEntry } from "../../contracts/public-parse";
 import type { PublicCommunityMilestone } from "../../contracts/public-activity";
 import type { ParsePresentationCatalog } from "../parse-browser/parse-presentation";
-import { buildSceneRankings, catalogEntrySceneLabel, milestonePresentationCopy, parseFeedRow } from "./home";
+import { buildSceneRankings, catalogEntryDifficultyLabel, catalogEntrySceneLabel, milestonePresentationCopy, parseFeedRow } from "./home";
 import { regionalSeason } from "./regional-seasons";
 
 const digest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
@@ -66,6 +66,15 @@ describe("home rankings", () => {
     expect(rankings.find((value) => value.regionLabel === "China")?.seasonLabel).toBe("Season 4");
   });
 
+  it("keeps different difficulty tiers in separate scene rankings", () => {
+    const master17 = { ...entry(1633, "Tina's Mindrealm", 10), difficulty_family: "master", difficulty_tier: 17 };
+    const master20 = { ...entry(1633, "Tina's Mindrealm", 8), difficulty_family: "master", difficulty_tier: 20 };
+    const rankings = buildSceneRankings([master17, master20], presentation, 7);
+    expect(rankings).toHaveLength(2);
+    expect(rankings.map((group) => group.difficultyLabel).sort()).toEqual(["Master 17", "Master 20"]);
+    expect(rankings.every((group) => group.entries.length === 1)).toBe(true);
+  });
+
   it("does not fold legacy or wrong-identity scene ranges into Stimen families", () => {
     const legacyEntries = [
       entry(30120, "Stimen Remains - Floor 20", 10),
@@ -96,17 +105,33 @@ describe("home rankings", () => {
   });
 
   it("renders a recent parse name only when its exact presentation identity is authorized", () => {
-    const exact = entry(1633, "Chaotic - Tina's Mindrealm", 10);
+    const exact = { ...entry(1633, "Chaotic - Tina's Mindrealm", 10), difficulty_family: "master", difficulty_tier: 17 };
     const authorized = parseFeedRow(exact, presentation, 7);
     expect(authorized).toContain("Chaotic - Tina's Mindrealm");
+    expect(authorized).toContain("Master 17 · Submitted by Unknown submitter · 5 players");
     expect(authorized).not.toContain("Scene #1633");
+    expect(catalogEntryDifficultyLabel(exact, presentation, 7)).toBe("Master 17");
 
     const wrongDigest = {
       ...exact,
       protocol_pack_digest: `sha256:${"f".repeat(64)}`,
     };
     expect(parseFeedRow(wrongDigest, presentation, 7)).toContain("Scene #1633");
+    expect(parseFeedRow(wrongDigest, presentation, 7)).toContain("Tier 17");
+    expect(parseFeedRow(wrongDigest, presentation, 7)).not.toContain("Master 17");
     expect(parseFeedRow(exact, presentation, 6)).toContain("Scene #1633");
+  });
+
+  it("omits difficulty from a recent parse when no trusted tier or family exists", () => {
+    const noDifficulty = { ...entry(12023, "Guild Hunt", 10), difficulty_family: undefined, difficulty_tier: undefined };
+    const html = parseFeedRow(noDifficulty, presentation, 7);
+    expect(catalogEntryDifficultyLabel(noDifficulty, presentation, 7)).toBeUndefined();
+    expect(html).toContain("Submitted by Unknown submitter · 5 players");
+    expect(html).not.toContain("Difficulty unresolved");
+
+    const hard = { ...noDifficulty, difficulty_family: "hard" };
+    expect(catalogEntryDifficultyLabel(hard, presentation, 7)).toBe("Hard");
+    expect(parseFeedRow(hard, presentation, 7)).toContain("Hard · Submitted by Unknown submitter");
   });
 });
 

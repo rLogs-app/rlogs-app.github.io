@@ -263,6 +263,29 @@ describe("parse search", () => {
     }
   });
 
+  it("shows applicable difficulty on both parse catalog and detail surfaces", () => {
+    const masterEntry = { ...parse, difficulty_family: "master", difficulty_tier: 17 };
+    expect(renderCatalogEntry(masterEntry, catalogPresentation, 7)).toContain("Master 17 / Completed");
+
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    report.deployment_id = catalogPresentation.deployment_id;
+    report.client_build = catalogPresentation.game_build;
+    report.protocol_pack_digest = catalogPresentation.protocol_pack_digest;
+    report.runs[0]!.difficulty_family = "master";
+    report.runs[0]!.difficulty_tier = 17;
+    expect(renderReport(report, 0, null, null, catalogPresentation)).toContain("Master 17 / Completed");
+
+    report.protocol_pack_digest = `sha256:${"f".repeat(64)}`;
+    const unauthorized = renderReport(report, 0, null, null, catalogPresentation);
+    expect(unauthorized).toContain("Tier 17 / Completed");
+    expect(unauthorized).not.toContain("Master 17");
+
+    report.protocol_pack_digest = catalogPresentation.protocol_pack_digest;
+    report.runs[0]!.difficulty_family = "hard";
+    report.runs[0]!.difficulty_tier = null;
+    expect(renderReport(report, 0, null, null, catalogPresentation)).toContain("Hard / Completed");
+  });
+
   it("withholds semantic facets for mixed catalog identities", () => {
     const wrong = { ...parse, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
     expect(catalogSemanticFacetsAuthorized([parse], 1, catalogPresentation, 7)).toBe(true);

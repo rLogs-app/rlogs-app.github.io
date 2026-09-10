@@ -33,6 +33,7 @@ const sessionKey = "rlogs.web-session.v1";
 export interface SceneRanking {
   key: string;
   label: string;
+  difficultyLabel?: string;
   regionLabel: string;
   seasonLabel: string;
   floor?: number;
@@ -134,9 +135,13 @@ export function buildSceneRankings(
     const hasPresentation = authorized(entry);
     const floor = stimenFloor(entry, hasPresentation);
     if (isStimenRun(entry, hasPresentation) && floor !== highestStimenFloor) continue;
+    const difficultyLabel = catalogEntryDifficultyLabel(entry, presentation, schemaVersion);
+    const difficultyKey = hasPresentation
+      ? `${entry.difficulty_family ?? "unknown"}:${entry.difficulty_tier ?? "unknown"}`
+      : `raw:${entry.difficulty_tier ?? "unknown"}`;
     const key = isStimenRun(entry, hasPresentation)
-      ? `${season.cohort}:${season.seasonId ?? "unknown"}:stimen:${highestStimenFloor}`
-      : `${season.cohort}:${season.seasonId ?? "unknown"}:${hasPresentation ? "presented" : "raw"}:scene:${entry.scene_id ?? (hasPresentation ? entry.activity_id ?? entry.scene_name : undefined) ?? "unknown"}`;
+      ? `${season.cohort}:${season.seasonId ?? "unknown"}:stimen:${highestStimenFloor}:${difficultyKey}`
+      : `${season.cohort}:${season.seasonId ?? "unknown"}:${hasPresentation ? "presented" : "raw"}:scene:${entry.scene_id ?? (hasPresentation ? entry.activity_id ?? entry.scene_name : undefined) ?? "unknown"}:${difficultyKey}`;
     const label = isStimenRun(entry, hasPresentation)
       ? `Stimen Remains · Floor ${highestStimenFloor}`
       : hasPresentation
@@ -145,6 +150,7 @@ export function buildSceneRankings(
     const group = groups.get(key) ?? {
       key,
       label,
+      ...(difficultyLabel ? { difficultyLabel } : {}),
       regionLabel: season.regionLabel,
       seasonLabel: season.seasonLabel,
       ...(isStimenRun(entry, hasPresentation) ? { floor } : {}),
@@ -205,12 +211,12 @@ function renderRankings(
 ): void {
   const groups = buildSceneRankings(catalog.entries, presentation, catalog.schema_version);
   const status = required("home-ranking-status");
-  status.textContent = groups.length ? `${groups.length} scenes` : "No rankings yet";
+  status.textContent = groups.length ? `${groups.length} rankings` : "No rankings yet";
   status.className = groups.length ? "status-chip success" : "status-chip neutral";
   target.innerHTML = groups.length
     ? groups
         .map(
-          (group) => `<section class="scene-ranking"><h3>${escapeHtml(group.label)}</h3><p class="scene-ranking-context">${escapeHtml(group.regionLabel)} · ${escapeHtml(group.seasonLabel)}</p><ol>${group.entries
+          (group) => `<section class="scene-ranking"><h3>${escapeHtml(group.label)}</h3><p class="scene-ranking-context">${escapeHtml([group.difficultyLabel, group.regionLabel, group.seasonLabel].filter(Boolean).join(" · "))}</p><ol>${group.entries
             .map((entry, index) => `<li><a href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span class="scene-ranking-position">${index + 1}</span><span class="scene-ranking-submitter">${escapeHtml(entry.submitter_name ?? "Unknown submitter")}</span><strong>${formatDuration(entry.total_run_time_micros)}</strong></a></li>`)
             .join("")}</ol></section>`,
         )
@@ -224,7 +230,22 @@ export function parseFeedRow(
   schemaVersion: 6 | 7 = 6,
 ): string {
   const name = catalogEntrySceneLabel(entry, presentation, schemaVersion);
-  return `<a class="home-feed-row" href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span><strong>${escapeHtml(name)}</strong><small>Submitted by ${escapeHtml(entry.submitter_name ?? "Unknown submitter")} · ${entry.participant_count} players</small></span><span><strong>${formatDuration(entry.total_run_time_micros)}</strong></span></a>`;
+  const difficulty = catalogEntryDifficultyLabel(entry, presentation, schemaVersion);
+  const context = [difficulty, `Submitted by ${entry.submitter_name ?? "Unknown submitter"}`, `${entry.participant_count} players`].filter(Boolean).join(" · ");
+  return `<a class="home-feed-row" href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(context)}</small></span><span><strong>${formatDuration(entry.total_run_time_micros)}</strong></span></a>`;
+}
+
+export function catalogEntryDifficultyLabel(
+  entry: PublicParseCatalogEntry,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 6 | 7 = 6,
+): string | undefined {
+  const authorized = presentationForCatalogEntry(presentation, schemaVersion, entry) != null;
+  const family = authorized && entry.difficulty_family ? humanizeIdentifier(entry.difficulty_family) : undefined;
+  const tier = entry.difficulty_tier == null ? undefined : entry.difficulty_tier;
+  if (family && tier !== undefined) return `${family} ${tier}`;
+  if (family) return family;
+  return tier === undefined ? undefined : `Tier ${tier}`;
 }
 
 function humanizeIdentifier(value: string): string {
