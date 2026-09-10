@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import type { MyParseCatalogEntry } from "../../contracts/public-parse";
+import type { ParsePresentationCatalog } from "../parse-browser/parse-presentation";
 import {
   bindMyParseReportInteractions,
   filterMyParses,
   renderMyParseEntry,
 } from "./my-parses";
+
+const digest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+const presentation: ParsePresentationCatalog = {
+  schema_version: 2, locale: "en-US", deployment_id: "global", game_build: "24687926",
+  protocol_pack_digest: digest, source: "test", actions: {}, effects: {},
+};
 
 const entry: MyParseCatalogEntry = {
   report_id: `rpt_${"ab".repeat(16)}`,
@@ -18,11 +25,15 @@ const entry: MyParseCatalogEntry = {
   attribution_reconciliation_status: "single_vantage",
   created_unix_millis: 1,
   deployment_id: "global",
+  client_build: "24687926",
+  protocol_pack_digest: digest,
   region_id: "global",
   activity_id: "scene.32154",
   activity_family_id: "stimen-vaults",
   scene_id: 32154,
   scene_name: "Floor 54",
+  difficulty_family: "challenge",
+  difficulty_tier: 54,
   terminal_state: "completed",
   total_run_time_micros: 1,
   participant_count: 5,
@@ -79,13 +90,27 @@ describe("My Parses", () => {
   });
 
   it("searches verified membership, scene, and visibility", () => {
-    expect(filterMyParses([entry], "3296036 unlisted floor 54")).toEqual([entry]);
+    expect(filterMyParses([entry], "3296036 unlisted floor 54", presentation, 7)).toEqual([entry]);
     expect(filterMyParses([entry], "private")).toEqual([]);
   });
 
+  it("keeps legacy and wrong-identity My Parses raw while preserving safe fields", () => {
+    const wrong = { ...entry, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
+    for (const [candidate, schema] of [[entry, 6], [wrong, 7]] as const) {
+      const html = renderMyParseEntry(candidate, presentation, schema);
+      expect(html).toContain("Scene #32154");
+      expect(html).toContain("Tier 54");
+      expect(html).toContain("Participant: 3296036");
+      expect(html).not.toContain("Floor 54");
+      expect(html).not.toContain("Challenge");
+      expect(filterMyParses([candidate], "floor", presentation, schema)).toEqual([]);
+      expect(filterMyParses([candidate], "32154 unlisted 3296036", presentation, schema)).toEqual([candidate]);
+    }
+  });
+
   it("lets only the uploader change a parse's visibility", () => {
-    const participantHtml = renderMyParseEntry(entry);
-    const ownerHtml = renderMyParseEntry({ ...entry, submitted_by_you: true });
+    const participantHtml = renderMyParseEntry(entry, presentation, 7);
+    const ownerHtml = renderMyParseEntry({ ...entry, submitted_by_you: true }, presentation, 7);
 
     expect(participantHtml).not.toContain("data-visibility-report");
     expect(participantHtml).toContain("Participant: 3296036");

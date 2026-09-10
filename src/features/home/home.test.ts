@@ -1,18 +1,29 @@
 import { describe, expect, it } from "vitest";
 
 import type { PublicParseCatalogEntry } from "../../contracts/public-parse";
-import { buildSceneRankings } from "./home";
+import type { ParsePresentationCatalog } from "../parse-browser/parse-presentation";
+import { buildSceneRankings, catalogEntrySceneLabel } from "./home";
 import { regionalSeason } from "./regional-seasons";
+
+const digest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+const presentation: ParsePresentationCatalog = {
+  schema_version: 2, locale: "en-US", deployment_id: "global", game_build: "24687926",
+  protocol_pack_digest: digest, source: "test", actions: {}, effects: {},
+};
 
 const entry = (sceneId: number, sceneName: string, duration: number): PublicParseCatalogEntry => ({
   report_id: `rpt_${String(sceneId).padStart(32, "0")}`,
   run_index: 0,
   created_unix_millis: duration,
   deployment_id: "global",
+  client_build: "24687926",
+  protocol_pack_digest: digest,
   region_id: "global",
   activity_id: `scene.${sceneId}`,
   scene_id: sceneId,
   scene_name: sceneName,
+  difficulty_family: "challenge",
+  difficulty_tier: sceneId % 100,
   terminal_state: "completed",
   total_run_time_micros: duration,
   participant_count: 5,
@@ -22,6 +33,8 @@ describe("home rankings", () => {
   it("keeps five fastest entries per ordinary scene", () => {
     const rankings = buildSceneRankings(
       [9, 7, 5, 3, 1, 2].map((duration) => entry(1631, "Tina's Mindrealm", duration)),
+      presentation,
+      7,
     );
     expect(rankings[0]?.entries.map((value) => value.total_run_time_micros)).toEqual([1, 2, 3, 5, 7]);
   });
@@ -31,7 +44,7 @@ describe("home rankings", () => {
       entry(30120, "Stimen Remains - Floor 20", 10),
       entry(30121, "Stimen Remains - Floor 21", 12),
       entry(30121, "Stimen Remains - Floor 21", 8),
-    ]);
+    ], presentation, 7);
     expect(rankings).toHaveLength(1);
     expect(rankings[0]?.floor).toBe(21);
     expect(rankings[0]?.entries.map((value) => value.total_run_time_micros)).toEqual([8, 12]);
@@ -43,11 +56,40 @@ describe("home rankings", () => {
     const europe = { ...entry(1631, "Tina's Mindrealm", 11), created_unix_millis: created, region_id: "europe" };
     const china = { ...entry(1631, "Tina's Mindrealm", 12), created_unix_millis: created, deployment_id: "star", region_id: "china" };
 
-    const rankings = buildSceneRankings([northAmerica, europe, china]);
+    const rankings = buildSceneRankings([northAmerica, europe, china], presentation, 7);
 
     expect(rankings).toHaveLength(2);
     expect(rankings.find((value) => value.regionLabel === "Global (NA / EU)")?.entries).toHaveLength(2);
     expect(rankings.find((value) => value.regionLabel === "China")?.seasonLabel).toBe("Season 4");
+  });
+
+  it("does not fold legacy or wrong-identity scene ranges into Stimen families", () => {
+    const legacyEntries = [
+      entry(30120, "Stimen Remains - Floor 20", 10),
+      entry(30121, "Stimen Remains - Floor 21", 8),
+    ];
+    const rankings = buildSceneRankings(legacyEntries, presentation, 6);
+    expect(rankings).toHaveLength(2);
+    expect(rankings.map((group) => group.label)).toEqual(["Scene #30120", "Scene #30121"]);
+    expect(rankings.every((group) => group.floor === undefined)).toBe(true);
+  });
+
+  it("keeps mixed identities in separate ranking groups and raw-renders unauthorized feeds", () => {
+    const exact = entry(1631, "Tina's Mindrealm", 10);
+    const wrong = {
+      ...entry(1631, "Spoofed Tina Name", 11),
+      protocol_pack_digest: `sha256:${"f".repeat(64)}`,
+      activity_id: "synthetic.activity",
+      difficulty_family: "synthetic-family",
+    };
+    const rankings = buildSceneRankings([exact, wrong], presentation, 7);
+    expect(rankings).toHaveLength(2);
+    expect(rankings.map((group) => group.label).sort()).toEqual(["Scene #1631", "Tina's Mindrealm"]);
+
+    const name = catalogEntrySceneLabel(wrong, presentation, 7);
+    expect(name).toBe("Scene #1631");
+    expect(name).not.toContain("Spoofed Tina Name");
+    expect(name).not.toContain("synthetic.activity");
   });
 });
 

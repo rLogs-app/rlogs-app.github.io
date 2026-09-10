@@ -18,6 +18,11 @@ import {
   type PublicCommunityMilestoneCatalog,
 } from "../../contracts/public-activity";
 import { fetchPublicRead } from "../../public-api";
+import {
+  loadParsePresentation,
+  presentationForCatalogEntry,
+  type ParsePresentationCatalog,
+} from "../parse-browser/parse-presentation";
 import { regionalSeason } from "./regional-seasons";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
@@ -52,8 +57,15 @@ export async function mountHome(): Promise<void> {
   const authorization = activeAccessToken();
   const photoHeaders = new Headers({ Accept: "application/json" });
   if (authorization) photoHeaders.set("Authorization", `Bearer ${authorization}`);
-  const parseTask = fetchTyped(`${apiBase}/v1/parses?limit=250`, isPublicParseCatalog).then(
-    (catalog) => { renderRecentParses(catalog, recent); renderRankings(catalog, rankings); },
+  const presentationRequest = loadParsePresentation().catch(() => undefined);
+  const parseTask = Promise.all([
+    fetchTyped(`${apiBase}/v1/parses?limit=250`, isPublicParseCatalog),
+    presentationRequest,
+  ]).then(
+    ([catalog, presentation]) => {
+      renderRecentParses(catalog, recent, presentation);
+      renderRankings(catalog, rankings, presentation);
+    },
     () => {
       setUnavailable("home-parse-status", recent, "Recent parse submissions are temporarily unavailable.");
       setUnavailable("home-ranking-status", rankings, "Scene rankings are temporarily unavailable.");
@@ -87,19 +99,25 @@ export async function mountHome(): Promise<void> {
   await Promise.allSettled([parseTask, profileTask, photoTask, milestoneTask]);
 }
 
-export function buildSceneRankings(entries: PublicParseCatalogEntry[]): SceneRanking[] {
+export function buildSceneRankings(
+  entries: PublicParseCatalogEntry[],
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 6 | 7 = 6,
+): SceneRanking[] {
   const ranked = entries.filter(
     (entry) => entry.terminal_state === "completed" && entry.total_run_time_micros != null,
   );
   const groups = new Map<string, SceneRanking>();
-  const stimen = ranked.filter(isStimenRun);
+  const authorized = (entry: PublicParseCatalogEntry): boolean =>
+    presentationForCatalogEntry(presentation, schemaVersion, entry) != null;
+  const stimen = ranked.filter((entry) => isStimenRun(entry, authorized(entry)));
   const highestStimenFloorBySeason = new Map<string, number>();
   for (const entry of stimen) {
     const season = regionalSeason(entry.deployment_id, entry.region_id, entry.created_unix_millis);
     const seasonKey = `${season.cohort}:${season.seasonId ?? "unknown"}`;
     highestStimenFloorBySeason.set(
       seasonKey,
-      Math.max(highestStimenFloorBySeason.get(seasonKey) ?? 0, stimenFloor(entry)),
+      Math.max(highestStimenFloorBySeason.get(seasonKey) ?? 0, stimenFloor(entry, true)),
     );
   }
 
@@ -107,20 +125,23 @@ export function buildSceneRankings(entries: PublicParseCatalogEntry[]): SceneRan
     const season = regionalSeason(entry.deployment_id, entry.region_id, entry.created_unix_millis);
     const seasonKey = `${season.cohort}:${season.seasonId ?? "unknown"}`;
     const highestStimenFloor = highestStimenFloorBySeason.get(seasonKey) ?? 0;
-    const floor = stimenFloor(entry);
-    if (isStimenRun(entry) && floor !== highestStimenFloor) continue;
-    const key = isStimenRun(entry)
+    const hasPresentation = authorized(entry);
+    const floor = stimenFloor(entry, hasPresentation);
+    if (isStimenRun(entry, hasPresentation) && floor !== highestStimenFloor) continue;
+    const key = isStimenRun(entry, hasPresentation)
       ? `${season.cohort}:${season.seasonId ?? "unknown"}:stimen:${highestStimenFloor}`
-      : `${season.cohort}:${season.seasonId ?? "unknown"}:scene:${entry.scene_id ?? entry.activity_id ?? entry.scene_name ?? "unknown"}`;
-    const label = isStimenRun(entry)
+      : `${season.cohort}:${season.seasonId ?? "unknown"}:${hasPresentation ? "presented" : "raw"}:scene:${entry.scene_id ?? (hasPresentation ? entry.activity_id ?? entry.scene_name : undefined) ?? "unknown"}`;
+    const label = isStimenRun(entry, hasPresentation)
       ? `Stimen Remains · Floor ${highestStimenFloor}`
-      : entry.scene_name ?? entry.activity_id ?? `Scene ${entry.scene_id ?? "unknown"}`;
+      : hasPresentation
+        ? entry.scene_name ?? entry.activity_id ?? rawSceneLabel(entry)
+        : rawSceneLabel(entry);
     const group = groups.get(key) ?? {
       key,
       label,
       regionLabel: season.regionLabel,
       seasonLabel: season.seasonLabel,
-      ...(isStimenRun(entry) ? { floor } : {}),
+      ...(isStimenRun(entry, hasPresentation) ? { floor } : {}),
       entries: [],
     };
     group.entries.push(entry);
@@ -140,13 +161,17 @@ export function buildSceneRankings(entries: PublicParseCatalogEntry[]): SceneRan
     .sort((left, right) => left.label.localeCompare(right.label));
 }
 
-function renderRecentParses(catalog: PublicParseCatalog, target: HTMLElement): void {
+function renderRecentParses(
+  catalog: PublicParseCatalog,
+  target: HTMLElement,
+  presentation?: ParsePresentationCatalog,
+): void {
   const status = required("home-parse-status");
   status.textContent = `${catalog.total_entries.toLocaleString()} submitted`;
   status.className = "status-chip success";
   const entries = catalog.entries.slice(0, 6);
   target.innerHTML = entries.length
-    ? entries.map((entry) => parseFeedRow(entry)).join("")
+    ? entries.map((entry) => parseFeedRow(entry, presentation, catalog.schema_version)).join("")
     : '<p class="empty-state">No public parses have been submitted yet.</p>';
 }
 
@@ -167,8 +192,12 @@ function renderLatestProfiles(catalog: PublicProfileCatalog, target: HTMLElement
     : '<p class="empty-state">No players have synced a public profile yet.</p>';
 }
 
-function renderRankings(catalog: PublicParseCatalog, target: HTMLElement): void {
-  const groups = buildSceneRankings(catalog.entries);
+function renderRankings(
+  catalog: PublicParseCatalog,
+  target: HTMLElement,
+  presentation?: ParsePresentationCatalog,
+): void {
+  const groups = buildSceneRankings(catalog.entries, presentation, catalog.schema_version);
   const status = required("home-ranking-status");
   status.textContent = groups.length ? `${groups.length} scenes` : "No rankings yet";
   status.className = groups.length ? "status-chip success" : "status-chip neutral";
@@ -183,8 +212,12 @@ function renderRankings(catalog: PublicParseCatalog, target: HTMLElement): void 
     : '<p class="empty-state">Rankings will appear after the first completed public parse.</p>';
 }
 
-function parseFeedRow(entry: PublicParseCatalogEntry): string {
-  const name = entry.scene_name ?? entry.activity_id ?? `Scene ${entry.scene_id ?? "unknown"}`;
+export function parseFeedRow(
+  entry: PublicParseCatalogEntry,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 6 | 7 = 6,
+): string {
+  const name = catalogEntrySceneLabel(entry, presentation, schemaVersion);
   return `<a class="home-feed-row" href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span><strong>${escapeHtml(name)}</strong><small>Submitted by ${escapeHtml(entry.submitter_name ?? "Unknown submitter")} · ${entry.participant_count} players</small></span><span><strong>${formatDuration(entry.total_run_time_micros)}</strong></span></a>`;
 }
 
@@ -192,7 +225,8 @@ function humanizeIdentifier(value: string): string {
   return value.split(/[-_\s]+/u).filter(Boolean).map((part) => `${part[0]?.toLocaleUpperCase() ?? ""}${part.slice(1)}`).join(" ");
 }
 
-function isStimenRun(entry: PublicParseCatalogEntry): boolean {
+function isStimenRun(entry: PublicParseCatalogEntry, hasPresentation: boolean): boolean {
+  if (!hasPresentation) return false;
   return Boolean(
     entry.activity_family_id?.toLowerCase().includes("stimen") ||
       entry.scene_name?.toLowerCase().includes("stimen") ||
@@ -200,13 +234,28 @@ function isStimenRun(entry: PublicParseCatalogEntry): boolean {
   );
 }
 
-function stimenFloor(entry: PublicParseCatalogEntry): number {
+function stimenFloor(entry: PublicParseCatalogEntry, hasPresentation: boolean): number {
+  if (!hasPresentation) return 0;
   const nameFloor = entry.scene_name?.match(/floor\s*(\d+)/iu)?.[1];
   if (nameFloor) return Number(nameFloor);
   if (entry.scene_id != null && ((entry.scene_id >= 30101 && entry.scene_id <= 30175) || (entry.scene_id >= 31101 && entry.scene_id <= 31175))) {
     return entry.scene_id % 100;
   }
   return entry.difficulty_tier ?? 0;
+}
+
+export function catalogEntrySceneLabel(
+  entry: PublicParseCatalogEntry,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 6 | 7 = 6,
+): string {
+  return presentationForCatalogEntry(presentation, schemaVersion, entry)
+    ? entry.scene_name ?? entry.activity_id ?? rawSceneLabel(entry)
+    : rawSceneLabel(entry);
+}
+
+function rawSceneLabel(entry: PublicParseCatalogEntry): string {
+  return entry.scene_id == null ? "Scene unresolved" : `Scene #${entry.scene_id}`;
 }
 
 function renderPhotoCatalog(catalog: PublicPhotoCatalog, target: HTMLElement): void {

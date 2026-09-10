@@ -11,12 +11,14 @@ import type { ParsePresentationCatalog } from "./parse-presentation";
 import {
   activityCategoryId,
   activityLabel,
+  catalogSemanticFacetsAuthorized,
   filterSearch,
   humanizeAttributionComponent,
   niceTimelineScaleMaximum,
   otherSkillDetailsHtml,
   ownedSkillParticipants,
   renderReport,
+  renderCatalogEntry,
   sortPartyParticipants,
   timelineDamageAtSecond,
   hasCompleteRdpsBuckets,
@@ -42,6 +44,16 @@ const load = <T>(name: string): T => JSON.parse(
 
 const siteStyles = readFileSync(new URL("../../styles/site.css", import.meta.url), "utf8");
 const localizationDigest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+const catalogPresentation: ParsePresentationCatalog = {
+  schema_version: 2,
+  locale: "en-US",
+  deployment_id: "global",
+  game_build: "24687926",
+  protocol_pack_digest: localizationDigest,
+  source: "test",
+  actions: {},
+  effects: {},
+};
 
 const parse: PublicParseCatalogEntry = {
   report_id: `rpt_${"a".repeat(32)}`,
@@ -54,12 +66,15 @@ const parse: PublicParseCatalogEntry = {
   attribution_reconciliation_status: "single_vantage",
   created_unix_millis: 1,
   deployment_id: "global",
+  client_build: "24687926",
+  protocol_pack_digest: localizationDigest,
   region_id: "north-america",
   activity_id: "scene.30120",
   activity_family_id: "stimen-remains",
   scene_id: 30120,
   scene_name: "Stimen Remains - Floor 20",
   difficulty_family: "challenge",
+  difficulty_tier: 20,
   terminal_state: "completed",
   participant_count: 5,
 };
@@ -215,8 +230,33 @@ describe("parse search", () => {
   });
 
   it("matches every word across scene and region fields", () => {
-    expect(filterSearch([parse], "stimen america")).toEqual([parse]);
-    expect(filterSearch([parse], "stimen europe")).toEqual([]);
+    expect(filterSearch([parse], "stimen america", catalogPresentation, 7)).toEqual([parse]);
+    expect(filterSearch([parse], "stimen europe", catalogPresentation, 7)).toEqual([]);
+  });
+
+  it("exposes catalog semantics only for an exact current presentation identity", () => {
+    const exact = renderCatalogEntry(parse, catalogPresentation, 7);
+    expect(exact).toContain("Stimen Remains - Floor 20");
+    expect(exact).toContain("Challenge 20");
+
+    const wrong = { ...parse, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
+    for (const [candidate, schema] of [[wrong, 7], [parse, 6]] as const) {
+      const html = renderCatalogEntry(candidate, catalogPresentation, schema);
+      expect(html).toContain("Scene #30120");
+      expect(html).toContain("Tier 20");
+      expect(html).not.toContain("Stimen");
+      expect(html).not.toContain("Challenge");
+      expect(filterSearch([candidate], "stimen", catalogPresentation, schema)).toEqual([]);
+      expect(filterSearch([candidate], "30120 global", catalogPresentation, schema)).toEqual([candidate]);
+    }
+  });
+
+  it("withholds semantic facets for mixed catalog identities", () => {
+    const wrong = { ...parse, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
+    expect(catalogSemanticFacetsAuthorized([parse], 1, catalogPresentation, 7)).toBe(true);
+    expect(catalogSemanticFacetsAuthorized([parse], 2, catalogPresentation, 7)).toBe(false);
+    expect(catalogSemanticFacetsAuthorized([parse, wrong], 2, catalogPresentation, 7)).toBe(false);
+    expect(catalogSemanticFacetsAuthorized([parse], 1, catalogPresentation, 6)).toBe(false);
   });
 
   it("can search exact report IDs", () => {

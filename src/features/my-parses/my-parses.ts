@@ -15,7 +15,11 @@ import {
   renderReport,
 } from "../parse-browser/parse-browser";
 import { createParseDetailModal } from "../parse-browser/parse-detail-modal";
-import { loadParsePresentation } from "../parse-browser/parse-presentation";
+import {
+  loadParsePresentation,
+  presentationForCatalogEntry,
+  type ParsePresentationCatalog,
+} from "../parse-browser/parse-presentation";
 import { fetchPublicRead } from "../../public-api";
 
 const sessionKey = "rlogs.web-session.v1";
@@ -75,16 +79,18 @@ export async function mountMyParses(): Promise<void> {
     handleRequestError(error, status, list);
     return;
   }
+  const catalogPresentation = await presentationRequest;
+  const catalogSchema = (): 6 | 7 => catalog.schema_version === 2 ? 7 : 6;
 
   const renderList = (): void => {
-    const entries = filterMyParses(catalog.entries, search.value);
+    const entries = filterMyParses(catalog.entries, search.value, catalogPresentation, catalogSchema());
     status.textContent = `${entries.length.toLocaleString()} shown · ${catalog.total_entries.toLocaleString()} my parses`;
     status.className = "status-chip success";
     const claimed = catalog.claimed_character_ids.length
       ? `<p class="my-parse-claims">Matched against claimed UID${catalog.claimed_character_ids.length === 1 ? "" : "s"}: ${catalog.claimed_character_ids.map(escapeHtml).join(", ")}</p>`
       : '<p class="my-parse-claims">No UID is claimed yet. Reports submitted by this account are still shown.</p>';
     list.innerHTML = entries.length
-      ? `${claimed}${entries.map(renderMyParseEntry).join("")}${renderLoadMore(catalog)}`
+      ? `${claimed}${entries.map((entry) => renderMyParseEntry(entry, catalogPresentation, catalogSchema())).join("")}${renderLoadMore(catalog)}`
       : `${claimed}<p class="empty-state">No parses match this search.</p>`;
     list.querySelectorAll<HTMLButtonElement>("[data-report-id]").forEach((button) => {
       button.addEventListener("click", () =>
@@ -249,17 +255,22 @@ async function authenticatedFetch(
 export function filterMyParses(
   entries: MyParseCatalogEntry[],
   search: string,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 6 | 7 = 6,
 ): MyParseCatalogEntry[] {
   const terms = search.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
   if (!terms.length) return entries;
   return entries.filter((entry) => {
+    const authorized = Boolean(presentationForCatalogEntry(presentation, schemaVersion, entry));
     const value = [
-      entry.scene_name,
-      entry.activity_id,
-      entry.activity_family_id,
+      authorized ? entry.scene_name : undefined,
+      authorized ? entry.activity_id : undefined,
+      authorized ? entry.activity_family_id : undefined,
       entry.region_id,
       entry.deployment_id,
-      entry.difficulty_family,
+      authorized ? entry.difficulty_family : undefined,
+      entry.scene_id == null ? undefined : String(entry.scene_id),
+      entry.difficulty_tier == null ? undefined : String(entry.difficulty_tier),
       entry.terminal_state,
       entry.report_id,
       entry.visibility,
@@ -273,16 +284,20 @@ export function filterMyParses(
   });
 }
 
-export function renderMyParseEntry(entry: MyParseCatalogEntry): string {
+export function renderMyParseEntry(
+  entry: MyParseCatalogEntry,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 6 | 7 = 6,
+): string {
   const relationship = entry.submitted_by_you
     ? "Submitted by you"
     : `Participant${entry.matched_character_ids.length === 1 ? "" : "s"}: ${entry.matched_character_ids.join(", ")}`;
   const visibility = entry.submitted_by_you
-    ? `<label class="my-parse-visibility"><span>Visibility</span><select data-visibility-report="${escapeHtml(entry.report_id)}" data-current-visibility="${entry.visibility}" aria-label="Visibility for ${escapeHtml(entry.scene_name ?? entry.report_id)}"><option value="public"${entry.visibility === "public" ? " selected" : ""}>Public</option><option value="unlisted"${entry.visibility === "unlisted" ? " selected" : ""}>Unlisted</option><option value="private"${entry.visibility === "private" ? " selected" : ""}>Private</option></select></label>`
+    ? `<label class="my-parse-visibility"><span>Visibility</span><select data-visibility-report="${escapeHtml(entry.report_id)}" data-current-visibility="${entry.visibility}" aria-label="Visibility for ${escapeHtml(presentationForCatalogEntry(presentation, schemaVersion, entry) ? entry.scene_name ?? entry.report_id : entry.scene_id == null ? entry.report_id : `Scene #${entry.scene_id}`)}"><option value="public"${entry.visibility === "public" ? " selected" : ""}>Public</option><option value="unlisted"${entry.visibility === "unlisted" ? " selected" : ""}>Unlisted</option><option value="private"${entry.visibility === "private" ? " selected" : ""}>Private</option></select></label>`
     : `<span class="status-chip neutral">${escapeHtml(title(entry.visibility))}</span>`;
   return `<article class="my-parse-entry">
     <div class="my-parse-entry-meta">${visibility}<span>${escapeHtml(relationship)}</span></div>
-    ${renderCatalogEntry(entry)}
+    ${renderCatalogEntry(entry, presentation, schemaVersion)}
   </article>`;
 }
 

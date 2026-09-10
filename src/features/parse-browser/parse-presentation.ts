@@ -67,6 +67,22 @@ export function presentationForReport(
   return catalog;
 }
 
+export interface CatalogPresentationIdentity {
+  deployment_id: string;
+  client_build?: string | null;
+  protocol_pack_digest?: string | null;
+}
+
+export function presentationForCatalogEntry(
+  catalog: ParsePresentationCatalog | undefined,
+  schemaVersion: 6 | 7,
+  entry: CatalogPresentationIdentity,
+): ParsePresentationCatalog | undefined {
+  return schemaVersion === 7
+    ? presentationForReport(catalog, entry.deployment_id, entry.client_build ?? "", entry.protocol_pack_digest ?? undefined)
+    : undefined;
+}
+
 function humanName(value: string | null): string | undefined {
   if (value == null) return undefined;
   const trimmed = value.trim();

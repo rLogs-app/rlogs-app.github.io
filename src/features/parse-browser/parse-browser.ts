@@ -21,6 +21,7 @@ import {
   loadParsePresentation,
   localizedActionName,
   localizedEffectName,
+  presentationForCatalogEntry,
   presentationForReport,
   type ParsePresentationCatalog,
 } from "./parse-presentation";
@@ -97,22 +98,29 @@ export async function mountParseBrowser(): Promise<void> {
     list.innerHTML = `<p class="empty-state">${escapeHtml(message(error))}</p>`;
     return;
   }
+  const catalogPresentation = await presentationRequest;
+  const semanticFacetsAuthorized = catalogSemanticFacetsAuthorized(
+    catalog.entries,
+    catalog.total_entries,
+    catalogPresentation,
+    catalog.schema_version,
+  );
 
   populateSelect(controls.region, catalog.facets.regions.map((item) => [item.id, label(item.id, item.count)]));
   populateSelect(
     controls.activity,
-    activityCategories.map(([id, name]) => [
+    semanticFacetsAuthorized ? activityCategories.map(([id, name]) => [
       id,
       label(name, catalog.facets.activities.find((item) => item.id === id)?.count ?? 0),
-    ]),
+    ]) : [],
   );
   populateSelect(
     controls.scene,
-    catalog.facets.scenes.map((item) => [String(item.id), label(item.label ?? `Scene ${item.id}`, item.count)]),
+    catalog.facets.scenes.map((item) => [String(item.id), label(semanticFacetsAuthorized ? item.label ?? `Scene #${item.id}` : `Scene #${item.id}`, item.count)]),
   );
   populateSelect(
     controls.difficulty,
-    catalog.facets.difficulties.map((item) => [item.id, label(item.id, item.count)]),
+    semanticFacetsAuthorized ? catalog.facets.difficulties.map((item) => [item.id, label(item.id, item.count)]) : [],
   );
   populateSelect(
     controls.terminal,
@@ -120,9 +128,9 @@ export async function mountParseBrowser(): Promise<void> {
   );
 
   const renderList = (): void => {
-    const visibleEntries = filterSearch(catalog.entries, controls.search.value);
+    const visibleEntries = filterSearch(catalog.entries, controls.search.value, catalogPresentation, catalog.schema_version);
     list.innerHTML = visibleEntries.length
-      ? `${visibleEntries.map(renderCatalogEntry).join("")}${renderLoadMore(catalog)}`
+      ? `${visibleEntries.map((entry) => renderCatalogEntry(entry, catalogPresentation, catalog.schema_version)).join("")}${renderLoadMore(catalog)}`
       : '<p class="empty-state">No submitted parses match your search and filters.</p>';
     status.textContent = `${visibleEntries.length.toLocaleString()} shown · ${catalog.total_entries.toLocaleString()} matched`;
     list.querySelectorAll<HTMLButtonElement>("[data-report-id]").forEach((button) => {
@@ -149,7 +157,7 @@ export async function mountParseBrowser(): Promise<void> {
     try {
       catalog = configuredApi
         ? await fetchCatalog(catalogQuery(controls))
-        : filterDemoCatalog(demoSource ?? catalog, controls);
+        : filterDemoCatalog(demoSource ?? catalog, controls, semanticFacetsAuthorized);
       renderList();
     } catch (error) {
       list.innerHTML = `<p class="empty-state">${escapeHtml(message(error))}</p>`;
@@ -308,12 +316,17 @@ async function fetchTyped<T>(url: string, guard: (value: unknown) => value is T)
   return value;
 }
 
-export function renderCatalogEntry(entry: PublicParseCatalogEntry): string {
-  const difficulty = [title(entry.difficulty_family), entry.difficulty_tier ? ` ${entry.difficulty_tier}` : ""]
-    .join("")
-    .trim();
+export function renderCatalogEntry(
+  entry: PublicParseCatalogEntry,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 6 | 7 = 6,
+): string {
+  const authorized = Boolean(presentationForCatalogEntry(presentation, schemaVersion, entry));
+  const difficulty = authorized
+    ? [title(entry.difficulty_family), entry.difficulty_tier ? ` ${entry.difficulty_tier}` : ""].join("").trim()
+    : entry.difficulty_tier == null ? "Difficulty unresolved" : `Tier ${entry.difficulty_tier}`;
   return `<button class="parse-row" type="button" data-report-id="${escapeHtml(entry.report_id)}" data-run-index="${entry.run_index}">
-    <span><strong>${escapeHtml(entry.scene_name ?? entry.activity_id ?? `Scene ${entry.scene_id ?? "?"}`)}</strong>
+    <span><strong>${escapeHtml(authorized ? entry.scene_name ?? entry.activity_id ?? rawCatalogSceneLabel(entry.scene_id) : rawCatalogSceneLabel(entry.scene_id))}</strong>
       <small>${escapeHtml([difficulty, title(entry.terminal_state)].filter(Boolean).join(" / "))}</small></span>
     <span><small>Region</small><strong>${escapeHtml(title(entry.region_id))}</strong></span>
     <span><small>Party</small><strong>${entry.participant_count}</strong></span>
@@ -2267,14 +2280,18 @@ function catalogQuery(controls: ParseControls, offset = 0): string {
   return value ? `&${value}` : "";
 }
 
-function filterDemoCatalog(catalog: PublicParseCatalog, controls: ParseControls): PublicParseCatalog {
+function filterDemoCatalog(
+  catalog: PublicParseCatalog,
+  controls: ParseControls,
+  semanticFacetsAuthorized: boolean,
+): PublicParseCatalog {
   const entries = catalog.entries.filter(
     (entry) =>
       (!controls.region.value || controls.region.value === entry.region_id) &&
-      (!controls.activity.value ||
+      (!semanticFacetsAuthorized || !controls.activity.value ||
         controls.activity.value === activityCategoryId(entry)) &&
       (!controls.scene.value || Number(controls.scene.value) === entry.scene_id) &&
-      (!controls.difficulty.value || controls.difficulty.value === entry.difficulty_family) &&
+      (!semanticFacetsAuthorized || !controls.difficulty.value || controls.difficulty.value === entry.difficulty_family) &&
       (!controls.terminal.value || controls.terminal.value === entry.terminal_state),
   );
   return { ...catalog, entries, total_entries: entries.length, next_offset: undefined };
@@ -2283,18 +2300,21 @@ function filterDemoCatalog(catalog: PublicParseCatalog, controls: ParseControls)
 export function filterSearch(
   entries: PublicParseCatalogEntry[],
   search: string,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 6 | 7 = 6,
 ): PublicParseCatalogEntry[] {
   const terms = search.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
   if (!terms.length) return entries;
   return entries.filter((entry) => {
+    const authorized = Boolean(presentationForCatalogEntry(presentation, schemaVersion, entry));
     const searchable = [
-      entry.scene_name,
-      entry.activity_id,
-      entry.activity_family_id,
-      entry.activity_category_id,
+      authorized ? entry.scene_name : undefined,
+      authorized ? entry.activity_id : undefined,
+      authorized ? entry.activity_family_id : undefined,
+      authorized ? entry.activity_category_id : undefined,
       entry.region_id,
       entry.deployment_id,
-      entry.difficulty_family,
+      authorized ? entry.difficulty_family : undefined,
       entry.terminal_state,
       entry.report_id,
       entry.run_group_id,
@@ -2308,6 +2328,20 @@ export function filterSearch(
 }
 
 function rawSceneLabel(sceneId: number | null): string {
+  return sceneId == null ? "Scene unresolved" : `Scene #${sceneId}`;
+}
+
+export function catalogSemanticFacetsAuthorized(
+  entries: PublicParseCatalogEntry[],
+  totalEntries: number,
+  presentation?: ParsePresentationCatalog,
+  schemaVersion: 6 | 7 = 6,
+): boolean {
+  return entries.length > 0 && entries.length === totalEntries && entries.every((entry) =>
+    presentationForCatalogEntry(presentation, schemaVersion, entry) != null);
+}
+
+function rawCatalogSceneLabel(sceneId: number | undefined): string {
   return sceneId == null ? "Scene unresolved" : `Scene #${sceneId}`;
 }
 

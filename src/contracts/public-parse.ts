@@ -1,20 +1,21 @@
 export type ReconciliationStatus = "single_vantage" | "multiple_reports_no_additional_vantage" | "cross_vantage_evidence_available" | "reconciled";
 
 export interface PublicParseCatalog {
-  schema_version: 6; total_entries: number; offset: number; next_offset?: number | null;
+  schema_version: 6 | 7; total_entries: number; offset: number; next_offset?: number | null;
   entries: PublicParseCatalogEntry[]; facets: CatalogFacets;
 }
 export interface PublicParseCatalogEntry {
   report_id: string; report_ids?: string[]; run_index: number; run_group_id?: string;
   contribution_count?: number; distinct_submitter_count?: number; local_profile_witness_character_count?: number;
   attribution_reconciliation_status?: ReconciliationStatus; created_unix_millis: number; deployment_id: string;
+  client_build?: string | null; protocol_pack_digest?: string | null;
   submitter_id?: string; submitter_name?: string;
   region_id: string; activity_id?: string; activity_family_id?: string; activity_category_id?: string;
   scene_id?: number; scene_name?: string; difficulty_family?: string; difficulty_tier?: number;
   terminal_state: string; total_run_time_micros?: number; participant_count: number;
 }
 export interface MyParseCatalog {
-  schema_version: 1; total_entries: number; offset: number; next_offset?: number | null;
+  schema_version: 1 | 2; total_entries: number; offset: number; next_offset?: number | null;
   claimed_character_ids: string[]; entries: MyParseCatalogEntry[];
 }
 export interface MyParseCatalogEntry extends PublicParseCatalogEntry {
@@ -178,9 +179,9 @@ const profileWitnessDispositions = new Set<ProfileWitnessDisposition>(["missing"
 const moduleSnapshotDispositions = new Set<ModuleSnapshotDisposition>(["missing", "complete", "invalid"]);
 
 export function isPublicParseCatalog(value: unknown): value is PublicParseCatalog {
-  return isRecord(value) && value.schema_version === 6 && isNonNegativeInteger(value.total_entries) && isNonNegativeInteger(value.offset) &&
+  return isRecord(value) && (value.schema_version === 6 || value.schema_version === 7) && isNonNegativeInteger(value.total_entries) && isNonNegativeInteger(value.offset) &&
     (value.next_offset == null || isNonNegativeInteger(value.next_offset)) && Array.isArray(value.entries) &&
-    value.entries.every(isCatalogEntry) && isCatalogFacets(value.facets);
+    value.entries.every((entry) => isCatalogEntry(entry, value.schema_version === 7)) && isCatalogFacets(value.facets);
 }
 export function isPublicParseReport(value: unknown): value is PublicParseReport {
   if (!isRecord(value)) return false;
@@ -205,10 +206,10 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
     value.runs.every((run) => isPublicRun(run, value.report_id, timelineSchema));
 }
 export function isMyParseCatalog(value: unknown): value is MyParseCatalog {
-  return isRecord(value) && value.schema_version === 1 && isNonNegativeInteger(value.total_entries) &&
+  return isRecord(value) && (value.schema_version === 1 || value.schema_version === 2) && isNonNegativeInteger(value.total_entries) &&
     isNonNegativeInteger(value.offset) && (value.next_offset == null || isNonNegativeInteger(value.next_offset)) &&
     Array.isArray(value.claimed_character_ids) && value.claimed_character_ids.every((id) => typeof id === "string" && id.length > 0) &&
-    Array.isArray(value.entries) && value.entries.every((entry) => isRecord(entry) && isCatalogEntry(entry) &&
+    Array.isArray(value.entries) && value.entries.every((entry) => isRecord(entry) && isCatalogEntry(entry, value.schema_version === 2) &&
       (entry.visibility === "public" || entry.visibility === "unlisted" || entry.visibility === "private") &&
       typeof entry.submitted_by_you === "boolean" && Array.isArray(entry.matched_character_ids) &&
       entry.matched_character_ids.every((id: unknown) => typeof id === "string" && id.length > 0));
@@ -254,7 +255,7 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
 export function validateReportId(value: string): boolean { return reportIdPattern.test(value) }
 export function validateRunGroupId(value: string): boolean { return groupIdPattern.test(value) }
 
-function isCatalogEntry(value: unknown): boolean {
+function isCatalogEntry(value: unknown, requirePresentationIdentity: boolean): boolean {
   return isRecord(value) && typeof value.report_id === "string" && reportIdPattern.test(value.report_id) &&
     (value.report_ids === undefined || (Array.isArray(value.report_ids) && value.report_ids.every((id) => typeof id === "string" && reportIdPattern.test(id)))) &&
     isNonNegativeInteger(value.run_index) && (value.run_group_id === undefined || (typeof value.run_group_id === "string" && groupIdPattern.test(value.run_group_id))) &&
@@ -262,6 +263,9 @@ function isCatalogEntry(value: unknown): boolean {
     (value.distinct_submitter_count === undefined || isNonNegativeInteger(value.distinct_submitter_count)) &&
     (value.local_profile_witness_character_count === undefined || isNonNegativeInteger(value.local_profile_witness_character_count)) &&
     (value.attribution_reconciliation_status === undefined || isReconciliationStatus(value.attribution_reconciliation_status)) &&
+    (!requirePresentationIdentity || (typeof value.deployment_id === "string" && value.deployment_id.length > 0 &&
+      (value.client_build == null || (typeof value.client_build === "string" && value.client_build.length > 0)) &&
+      (value.protocol_pack_digest == null || (typeof value.protocol_pack_digest === "string" && protocolDigestPattern.test(value.protocol_pack_digest))))) &&
     typeof value.region_id === "string" && typeof value.terminal_state === "string" && isNonNegativeInteger(value.participant_count);
 }
 function isCatalogFacets(value: unknown): boolean {

@@ -48,6 +48,39 @@ describe("public parse contract", () => {
     expect(reconciliation.reports.every((report: any) => report.deployment_id === "global" && report.client_build === "24687926")).toBe(true);
     expect(isPublicRunReconciliation(reconciliation)).toBe(true);
   });
+  it("keeps catalog 6 and My Parses 1 raw-readable while requiring identity on catalog 7 and My Parses 2", () => {
+    const legacy = fixture("parse-catalog.v1.json") as any;
+    expect(legacy.schema_version).toBe(6);
+    expect(isPublicParseCatalog(legacy)).toBe(true);
+
+    const identity = {
+      client_build: "24687926",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+    };
+    const current = { ...legacy, schema_version: 7, entries: legacy.entries.map((entry: any) => ({ ...entry, ...identity })) };
+    expect(isPublicParseCatalog(current)).toBe(true);
+    expect(isPublicParseCatalog({ ...current, entries: current.entries.map(({ client_build: _, protocol_pack_digest: __, ...entry }: any) => entry) })).toBe(true);
+    expect(isPublicParseCatalog({ ...current, entries: current.entries.map((entry: any) => ({ ...entry, client_build: null, protocol_pack_digest: null })) })).toBe(true);
+    expect(isPublicParseCatalog({ ...current, entries: current.entries.map((entry: any) => ({ ...entry, protocol_pack_digest: "sha256:nope" })) })).toBe(false);
+
+    const myLegacy = {
+      schema_version: 1, total_entries: 1, offset: 0, next_offset: null,
+      claimed_character_ids: ["3296036"],
+      entries: legacy.entries.map((entry: any) => ({ ...entry, visibility: "private", submitted_by_you: true, matched_character_ids: ["3296036"] })),
+    };
+    expect(isMyParseCatalog(myLegacy)).toBe(true);
+    expect(isMyParseCatalog({ ...myLegacy, schema_version: 2 })).toBe(true);
+    expect(isMyParseCatalog({
+      ...myLegacy,
+      schema_version: 2,
+      entries: myLegacy.entries.map((entry: any) => ({ ...entry, client_build: null, protocol_pack_digest: null })),
+    })).toBe(true);
+    expect(isMyParseCatalog({
+      ...myLegacy,
+      schema_version: 2,
+      entries: myLegacy.entries.map((entry: any) => ({ ...entry, ...identity })),
+    })).toBe(true);
+  });
   it("requires exact non-empty runtime identity on every schema 17 report source", () => {
     const missingDeployment = fixture("parse-reconciliation.v1.json") as any;
     delete missingDeployment.reports[0].deployment_id;
