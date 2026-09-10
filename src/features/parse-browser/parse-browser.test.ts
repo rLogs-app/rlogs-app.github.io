@@ -36,6 +36,8 @@ const load = <T>(name: string): T => JSON.parse(
   readFileSync(new URL(`../../../public/fixtures/${name}`, import.meta.url), "utf8"),
 ) as T;
 
+const siteStyles = readFileSync(new URL("../../styles/site.css", import.meta.url), "utf8");
+
 const parse: PublicParseCatalogEntry = {
   report_id: `rpt_${"a".repeat(32)}`,
   report_ids: [`rpt_${"a".repeat(32)}`],
@@ -58,6 +60,10 @@ const parse: PublicParseCatalogEntry = {
 };
 
 describe("parse search", () => {
+  it("keeps timeline styles outside the evidence blocker selector", () => {
+    expect(siteStyles).toMatch(/\.evidence-blockers ul\s*\{\s*margin:\s*6px 0 0;\s*\}\s*\.combat-timeline\s*\{/u);
+  });
+
   it("resolves grouped Other skill content from a nested click target", () => {
     const template = { innerHTML: "  <article>Grouped details</article>  " };
     const row = { closest: () => null, querySelector: () => template };
