@@ -30,6 +30,14 @@ describe("website message resolver", () => {
       .toBe("Player died. Show death details.");
     expect(messages.message("parse.timeline.death.hit_damage", { damage: "900", reported: "1,000" }))
       .toBe("900 effective damage (1,000 reported)");
+    expect(messages.message("parse.timeline.death.hit_source_named", { name: "MarieRose", id: "7" }))
+      .toBe("MarieRose (source actor ID 7)");
+    expect(messages.message("parse.timeline.death.hit_direct_source_named", { name: "Companion", id: "8" }))
+      .toBe("Companion (direct source actor ID 8)");
+    expect(messages.message("parse.timeline.death.hit_ability_named", { name: "Powerdraw", id: "2203291" }))
+      .toBe("Powerdraw (ability ID 2203291)");
+    expect(messages.message("parse.timeline.death.hit_breakdown_named", { name: "Burst", id: "230401" }))
+      .toBe("Burst (breakdown ability ID 230401)");
     expect(messages.message("parse.timeline.death.legacy_unavailable")).toContain("legacy timeline");
     expect(messages.message("parse.timeline.death.cause_unavailable")).toContain("unavailable");
   });

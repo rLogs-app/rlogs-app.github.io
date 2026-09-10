@@ -53,6 +53,11 @@ describe("combat timeline DOM interactions", () => {
 
   function mountedDeathCauseTimeline(): HTMLElement {
     const report = load<PublicParseReport>("parse-report.v1.json");
+    report.runs[0]!.participants[0]!.abilities = [{
+      ability_id: "2203291", presentation_name: "Powerdraw", presentation_kind: null,
+      icon_asset_path: null, casts: 0, hits: 1, critical_hits: 0, damage: 1_000,
+      effective_damage: 900, healing: 0, effective_healing: 0, shielding: 0,
+    }];
     const timeline = report.runs[0]!.timeline!;
     timeline.schema_version = 4;
     const marker = timeline.death_markers[0]!;
@@ -61,7 +66,7 @@ describe("combat timeline DOM interactions", () => {
       evidence: "packet_terminal_damage",
       final_hit: {
         at_micros: marker.at_micros,
-        source_actor_id: "12",
+        source_actor_id: "7",
         ability_id: "2203291",
         reported_damage: 1_000,
         effective_damage: 900,
@@ -172,6 +177,8 @@ describe("combat timeline DOM interactions", () => {
     window.document.addEventListener("keydown", () => { escapedToDocument = true; });
 
     expect(summary.hidden).toBe(true);
+    expect(summary.textContent).toContain("MarieRose (source actor ID 7)");
+    expect(summary.textContent).toContain("Powerdraw (ability ID 2203291)");
     trigger.dispatchEvent(new window.MouseEvent("pointerenter", { bubbles: false }) as unknown as Event);
     expect(summary.hidden).toBe(false);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");

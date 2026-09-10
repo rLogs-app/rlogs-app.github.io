@@ -1131,6 +1131,141 @@ describe("timeline rolling windows", () => {
       .toContain("Exact terminal-hit evidence is unavailable for this death.");
   });
 
+  it("resolves death source and preferred ability only from one matching plotted participant", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const participants = structuredClone(graph.participants);
+    participants[0]!.display_name = "Marie <script>alert(1)</script>";
+    participants[0]!.abilities = [{
+      ability_id: "raw-ability", presentation_name: "Raw ability that must not win", presentation_kind: null,
+      icon_asset_path: null, casts: 0, hits: 1, critical_hits: 0, damage: 1, effective_damage: 1,
+      healing: 0, effective_healing: 0, shielding: 0,
+    }, {
+      ability_id: "breakdown-ability", presentation_name: "Burst <img src=x>", presentation_kind: null,
+      icon_asset_path: null, casts: 0, hits: 1, critical_hits: 0, damage: 1, effective_damage: 1,
+      healing: 0, effective_healing: 0, shielding: 0,
+    }];
+    const marker = graph.timeline!.death_markers[0]!;
+    const exactMarker = {
+      ...marker,
+      precision: "exact_microsecond" as const,
+      cause: {
+        evidence: "packet_terminal_damage" as const,
+        final_hit: {
+          at_micros: marker.at_micros,
+          source_actor_id: participants[0]!.actor_id,
+          direct_source_actor_id: participants[1]!.actor_id,
+          ability_id: "raw-ability",
+          breakdown_ability_id: "breakdown-ability",
+          reported_damage: 1_000,
+          effective_damage: 900,
+          critical: false,
+        },
+        prior_hits: [],
+        prior_hits_truncated: false,
+      },
+    };
+    const html = renderTimeline({
+      ...graph,
+      participants,
+      timeline: { ...graph.timeline!, schema_version: 4, death_markers: [exactMarker] },
+    });
+
+    expect(html).toContain("Marie &lt;script&gt;alert(1)&lt;/script&gt; (source actor ID 7)");
+    expect(html).toContain("Verdant Oracle (direct source actor ID 8)");
+    expect(html).toContain("Burst &lt;img src=x&gt; (breakdown ability ID breakdown-ability)");
+    expect(html).toContain("ability ID raw-ability");
+    expect(html).not.toContain("Raw ability that must not win");
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).not.toContain("<img src=x>");
+  });
+
+  it("keeps ambiguous and unmatched death sources and abilities numeric", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const participants = structuredClone(graph.participants);
+    participants[0]!.abilities = [{
+      ability_id: "boss-ability", presentation_name: "Unrelated borrowed label", presentation_kind: null,
+      icon_asset_path: null, casts: 0, hits: 1, critical_hits: 0, damage: 1, effective_damage: 1,
+      healing: 0, effective_healing: 0, shielding: 0,
+    }, {
+      ability_id: "duplicate-ability", presentation_name: "First duplicate label", presentation_kind: null,
+      icon_asset_path: null, casts: 0, hits: 1, critical_hits: 0, damage: 1, effective_damage: 1,
+      healing: 0, effective_healing: 0, shielding: 0,
+    }, {
+      ability_id: "duplicate-ability", presentation_name: "Second duplicate label", presentation_kind: null,
+      icon_asset_path: null, casts: 0, hits: 1, critical_hits: 0, damage: 1, effective_damage: 1,
+      healing: 0, effective_healing: 0, shielding: 0,
+    }];
+    const duplicate = { ...structuredClone(participants[2]!), display_name: "Duplicate Marksman" };
+    const duplicateIndex = participants.push(duplicate) - 1;
+    const marker = graph.timeline!.death_markers[0]!;
+    const hit = (source_actor_id: string, ability_id: string, at_micros: number) => ({
+      at_micros, source_actor_id, ability_id, reported_damage: 100, effective_damage: 100, critical: false,
+    });
+    const timeline = {
+      ...graph.timeline!,
+      schema_version: 4 as const,
+      participant_tracks: [...graph.timeline!.participant_tracks, {
+        ...graph.timeline!.participant_tracks[2]!,
+        canonical_participant_index: duplicateIndex,
+      }],
+      death_markers: [{
+        ...marker,
+        precision: "exact_microsecond" as const,
+        cause: {
+          evidence: "packet_terminal_damage" as const,
+          final_hit: hit(participants[2]!.actor_id, "ambiguous-ability", marker.at_micros),
+          prior_hits: [
+            hit("boss-9", "boss-ability", marker.at_micros - 200_000),
+            hit(participants[0]!.actor_id, "duplicate-ability", marker.at_micros - 100_000),
+          ],
+          prior_hits_truncated: false,
+        },
+      }],
+    };
+    const html = renderTimeline({ ...graph, participants, timeline });
+
+    expect(html).toContain("source actor ID 11");
+    expect(html).toContain("ability ID ambiguous-ability");
+    expect(html).toContain("source actor ID boss-9");
+    expect(html).toContain("ability ID boss-ability");
+    expect(html).toContain("MarieRose (source actor ID 7)");
+    expect(html).toContain("ability ID duplicate-ability");
+    expect(html).not.toContain("Duplicate Marksman (source actor ID 11)");
+    expect(html).not.toContain("Unrelated borrowed label");
+    expect(html).not.toContain("First duplicate label");
+    expect(html).not.toContain("Second duplicate label");
+  });
+
+  it("falls back from an unmatched breakdown ID to the same source participant's raw ability", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const participants = structuredClone(graph.participants);
+    participants[0]!.abilities = [{
+      ability_id: "raw-ability", presentation_name: "Raw fallback", presentation_kind: null,
+      icon_asset_path: null, casts: 0, hits: 1, critical_hits: 0, damage: 1, effective_damage: 1,
+      healing: 0, effective_healing: 0, shielding: 0,
+    }];
+    const marker = graph.timeline!.death_markers[0]!;
+    const timeline = {
+      ...graph.timeline!, schema_version: 4 as const, death_markers: [{
+        ...marker, precision: "exact_microsecond" as const, cause: {
+          evidence: "packet_terminal_damage" as const,
+          final_hit: {
+            at_micros: marker.at_micros, source_actor_id: participants[0]!.actor_id,
+            ability_id: "raw-ability", breakdown_ability_id: "unknown-breakdown",
+            reported_damage: 100, effective_damage: 100, critical: false,
+          },
+          prior_hits: [], prior_hits_truncated: false,
+        },
+      }],
+    };
+    const html = renderTimeline({ ...graph, participants, timeline });
+    expect(html).toContain("Raw fallback (ability ID raw-ability)");
+    expect(html).toContain("breakdown ability ID unknown-breakdown");
+  });
+
   it("leaves ambiguous and unmatched marker identities visible but unscoped", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const graph = selectCanonicalGraph(report.runs[0]);

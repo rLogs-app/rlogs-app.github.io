@@ -982,8 +982,14 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
 type CombatTimeline = NonNullable<PublicRun["timeline"]>;
 type CombatTimelineTrack = CombatTimeline["participant_tracks"][number];
 type ParticipantSeriesPoint = NonNullable<PublicParticipant["series"]>[number];
+type PlottedTimelineParticipant = {
+  actor: PublicParticipant;
+  track: CombatTimelineTrack;
+  color: string;
+  pattern: typeof timelineLinePatterns[number];
+};
 
-function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: PublicParticipant; track: CombatTimelineTrack; color: string; pattern: typeof timelineLinePatterns[number] }>, loadoutPhaseSources: TimelineLoadoutPhaseSource[], rdpsRateClock: PublicTimelineRateClockPoint[] | null, rdpsLabel: string, partialRdps: boolean, messages: MessageResolver): string {
+function renderTimelineSvg(timeline: CombatTimeline, plotted: PlottedTimelineParticipant[], loadoutPhaseSources: TimelineLoadoutPhaseSource[], rdpsRateClock: PublicTimelineRateClockPoint[] | null, rdpsLabel: string, partialRdps: boolean, messages: MessageResolver): string {
   const width = 1040, height = 320, left = 68, right = 18, top = 22, bottom = 42;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const seconds = Math.max(1, Math.ceil(timeline.duration_micros / 1_000_000));
@@ -1556,7 +1562,7 @@ function timelineDeathSummaryId(timeline: CombatTimeline, markerIndex: number): 
 
 function renderTimelineDeathSummaries(
   timeline: CombatTimeline,
-  plotted: Array<{ actor: PublicParticipant; track: CombatTimelineTrack; color: string; pattern: typeof timelineLinePatterns[number] }>,
+  plotted: PlottedTimelineParticipant[],
   messages: MessageResolver,
 ): string {
   return timeline.death_markers.map((marker, markerIndex) => {
@@ -1573,9 +1579,9 @@ function renderTimelineDeathSummaries(
       : messages.message("parse.timeline.event.death_exact", { player, time: formatDuration(marker.at_micros) });
     const scope = match ? ` data-timeline-death-participant="${match.participantIndex}"` : "";
     const body = marker.cause
-      ? `<div class="timeline-death-section"><strong>${escapeHtml(messages.message("parse.timeline.death.terminal_hit"))}</strong><ul>${renderTimelineDeathHit(marker.cause.final_hit, messages)}</ul></div>
+      ? `<div class="timeline-death-section"><strong>${escapeHtml(messages.message("parse.timeline.death.terminal_hit"))}</strong><ul>${renderTimelineDeathHit(marker.cause.final_hit, plotted, messages)}</ul></div>
         <div class="timeline-death-section"><strong>${escapeHtml(messages.message("parse.timeline.death.recent_hits"))}</strong>${marker.cause.prior_hits.length
-          ? `<ul>${[...marker.cause.prior_hits].reverse().map((hit) => renderTimelineDeathHit(hit, messages)).join("")}</ul>`
+          ? `<ul>${[...marker.cause.prior_hits].reverse().map((hit) => renderTimelineDeathHit(hit, plotted, messages)).join("")}</ul>`
           : `<p>${escapeHtml(messages.message("parse.timeline.death.no_recent_hits"))}</p>`}</div>
         ${marker.cause.prior_hits_truncated ? `<p class="timeline-death-truncated">${escapeHtml(messages.message("parse.timeline.death.truncated"))}</p>` : ""}`
       : `<p>${escapeHtml(messages.message(timeline.schema_version < 4
@@ -1584,14 +1590,76 @@ function renderTimelineDeathSummaries(
   }).join("");
 }
 
-function renderTimelineDeathHit(hit: PublicTimelineDeathHit, messages: MessageResolver): string {
+function exactPlottedParticipant(
+  plotted: PlottedTimelineParticipant[],
+  actorId: string,
+): PublicParticipant | undefined {
+  const matches = plotted.filter(({ actor }) => actor.actor_id === actorId);
+  return matches.length === 1 ? matches[0]!.actor : undefined;
+}
+
+function nonemptyPresentationName(value: string | null | undefined): string | undefined {
+  return value && value.trim().length > 0 ? value : undefined;
+}
+
+function resolveTimelineDeathAbility(
+  hit: PublicTimelineDeathHit,
+  source: PublicParticipant | undefined,
+): { id: string; name: string; breakdown: boolean } | undefined {
+  if (!source) return undefined;
+  const candidates = [
+    hit.breakdown_ability_id ? { id: hit.breakdown_ability_id, breakdown: true } : null,
+    hit.ability_id && hit.ability_id !== hit.breakdown_ability_id
+      ? { id: hit.ability_id, breakdown: false }
+      : null,
+  ].filter((candidate): candidate is { id: string; breakdown: boolean } => candidate !== null);
+  for (const candidate of candidates) {
+    const matches = (source.abilities ?? []).filter((ability) => ability.ability_id === candidate.id);
+    if (matches.length > 1) return undefined;
+    const name = matches.length === 1 ? nonemptyPresentationName(matches[0]!.presentation_name) : undefined;
+    if (name) return { ...candidate, name };
+  }
+  return undefined;
+}
+
+function renderTimelineDeathHit(
+  hit: PublicTimelineDeathHit,
+  plotted: PlottedTimelineParticipant[],
+  messages: MessageResolver,
+): string {
+  const source = exactPlottedParticipant(plotted, hit.source_actor_id);
+  const sourceName = nonemptyPresentationName(source?.display_name);
+  const directSource = hit.direct_source_actor_id
+    ? exactPlottedParticipant(plotted, hit.direct_source_actor_id)
+    : undefined;
+  const directSourceName = nonemptyPresentationName(directSource?.display_name);
+  const ability = resolveTimelineDeathAbility(hit, source);
+  const abilityDetails = ability
+    ? [
+      messages.message(ability.breakdown
+        ? "parse.timeline.death.hit_breakdown_named"
+        : "parse.timeline.death.hit_ability_named", { name: ability.name, id: ability.id }),
+      hit.ability_id && hit.ability_id !== ability.id
+        ? messages.message("parse.timeline.death.hit_ability", { id: hit.ability_id }) : "",
+      hit.breakdown_ability_id && hit.breakdown_ability_id !== ability.id
+        ? messages.message("parse.timeline.death.hit_breakdown", { id: hit.breakdown_ability_id }) : "",
+    ]
+    : [
+      hit.ability_id ? messages.message("parse.timeline.death.hit_ability", { id: hit.ability_id })
+        : messages.message("parse.timeline.death.hit_ability_unavailable"),
+      hit.breakdown_ability_id ? messages.message("parse.timeline.death.hit_breakdown", { id: hit.breakdown_ability_id }) : "",
+    ];
   const details = [
     messages.message("parse.timeline.death.hit_time", { time: formatDuration(hit.at_micros) }),
-    messages.message("parse.timeline.death.hit_source", { id: hit.source_actor_id }),
-    hit.direct_source_actor_id ? messages.message("parse.timeline.death.hit_direct_source", { id: hit.direct_source_actor_id }) : "",
-    hit.ability_id ? messages.message("parse.timeline.death.hit_ability", { id: hit.ability_id })
-      : messages.message("parse.timeline.death.hit_ability_unavailable"),
-    hit.breakdown_ability_id ? messages.message("parse.timeline.death.hit_breakdown", { id: hit.breakdown_ability_id }) : "",
+    sourceName
+      ? messages.message("parse.timeline.death.hit_source_named", { name: sourceName, id: hit.source_actor_id })
+      : messages.message("parse.timeline.death.hit_source", { id: hit.source_actor_id }),
+    hit.direct_source_actor_id
+      ? directSourceName
+        ? messages.message("parse.timeline.death.hit_direct_source_named", { name: directSourceName, id: hit.direct_source_actor_id })
+        : messages.message("parse.timeline.death.hit_direct_source", { id: hit.direct_source_actor_id })
+      : "",
+    ...abilityDetails,
     hit.critical ? messages.message("parse.timeline.death.hit_critical") : "",
   ].filter(Boolean).map(escapeHtml).join(" · ");
   const damage = messages.message("parse.timeline.death.hit_damage", {
