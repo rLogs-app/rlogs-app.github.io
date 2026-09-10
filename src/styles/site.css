@@ -2212,6 +2212,22 @@ summary.party-loadout-title {
   border-radius: 8px;
 }
 
+.timeline-range-scroll {
+  max-height: 340px;
+  margin-top: 8px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.timeline-range-note {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+
 .timeline-snapshot-table {
   width: 100%;
   min-width: 560px;
@@ -2221,7 +2237,22 @@ summary.party-loadout-title {
   font-variant-numeric: tabular-nums;
 }
 
+.timeline-range-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  color: var(--text);
+  font: 14px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 .timeline-snapshot-table caption {
+  padding: 8px 10px;
+  color: var(--muted);
+  text-align: left;
+}
+
+.timeline-range-table caption {
   padding: 8px 10px;
   color: var(--muted);
   text-align: left;
@@ -2229,6 +2260,14 @@ summary.party-loadout-title {
 
 .timeline-snapshot-table th,
 .timeline-snapshot-table td {
+  padding: 7px 10px;
+  border-top: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.timeline-range-table th,
+.timeline-range-table td {
   padding: 7px 10px;
   border-top: 1px solid var(--line);
   text-align: right;
@@ -2243,7 +2282,20 @@ summary.party-loadout-title {
   background: var(--surface-raised);
 }
 
+.timeline-range-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--muted);
+  background: var(--surface-raised);
+}
+
 .timeline-snapshot-table th:first-child {
+  left: 0;
+  text-align: left;
+}
+
+.timeline-range-table th:first-child {
   left: 0;
   text-align: left;
 }
@@ -2253,7 +2305,21 @@ summary.party-loadout-title {
   background: var(--surface-raised);
 }
 
+.timeline-range-table tbody th:first-child {
+  position: sticky;
+  background: var(--surface-raised);
+}
+
 .timeline-snapshot-table i {
+  display: inline-block;
+  width: 12px;
+  height: 2px;
+  margin-right: 7px;
+  vertical-align: middle;
+  background: var(--track);
+}
+
+.timeline-range-table i {
   display: inline-block;
   width: 12px;
   height: 2px;

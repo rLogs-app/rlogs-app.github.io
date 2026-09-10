@@ -111,6 +111,7 @@ describe("combat timeline DOM interactions", () => {
     const reset = root.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]")!;
     const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
     const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+    const fullRangeCaption = root.querySelector(".timeline-range-table caption")?.textContent;
 
     scrubber.value = "2";
     scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
@@ -127,11 +128,14 @@ describe("combat timeline DOM interactions", () => {
     expect(scrubber.max).toBe("3");
     expect(reset.disabled).toBe(false);
     expect(root.querySelector("[data-timeline-viewport-status]")?.textContent).toContain("Visible");
+    expect(root.querySelector(".timeline-range-table caption")?.textContent).toContain("0:01.000–0:03.000");
+    expect(root.querySelector(".timeline-range-table")?.textContent).toContain("eDPS");
     expect(inspector.getAttribute("aria-valuenow")).toBe("2");
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toBe(ratesAtTwo);
 
     root.querySelector<HTMLButtonElement>('[data-metric="rdps_damage"]')!.click();
     const rdpsAtTwo = root.querySelector(".timeline-snapshot-table")?.textContent;
+    const selectedRange = root.querySelector(".timeline-range-table")?.textContent;
     expect(rdpsAtTwo).toContain("rDPS");
 
     inspector.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Home", bubbles: true }) as unknown as Event);
@@ -139,10 +143,12 @@ describe("combat timeline DOM interactions", () => {
     inspector.dispatchEvent(new window.KeyboardEvent("keydown", { key: "End", bubbles: true }) as unknown as Event);
     expect(inspector.getAttribute("aria-valuenow")).toBe("3");
     expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("DPS at 0:03");
+    expect(root.querySelector(".timeline-range-table")?.textContent).toBe(selectedRange);
 
     reset.click();
     expect(timeline.dataset.timelineViewportStart).toBe("0");
     expect(reset.disabled).toBe(true);
+    expect(root.querySelector(".timeline-range-table caption")?.textContent).toBe(fullRangeCaption);
     scrubber.value = "2";
     scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toBe(rdpsAtTwo);
@@ -155,12 +161,15 @@ describe("combat timeline DOM interactions", () => {
     participant.click();
     expect(participant.getAttribute("aria-pressed")).toBe("false");
     expect(root.querySelectorAll(".timeline-snapshot-table tbody tr")).toHaveLength(rowsBefore - 1);
+    expect(root.querySelectorAll(".timeline-range-table tbody tr")).toHaveLength(rowsBefore - 1);
 
     root.querySelector<HTMLButtonElement>('[data-metric="rdps_damage"]')!.click();
     const table = root.querySelector(".timeline-snapshot-table")!;
     expect(table.textContent).toContain("rDPS");
     expect(table.textContent).not.toContain("eDPS");
     expect(table.textContent).toContain("—");
+    expect(root.querySelector(".timeline-range-table")?.textContent).toContain("Adjusted damage");
+    expect(root.querySelector(".timeline-range-scroll")?.textContent).toContain("unavailable");
   });
 
   it("focuses a legend participant across every metric and window without changing visibility", () => {

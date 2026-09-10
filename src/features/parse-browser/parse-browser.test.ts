@@ -36,10 +36,12 @@ import {
   clampTimelineViewport,
   timelineDamageRatesAtSecond,
   timelineRateVariantsAtSecond,
+  timelineRangeRates,
   timelineRdpsAtSecond,
   timelineRdpsRateVariantsAtSecond,
   timelineValueAtSecond,
   timelineVisibleTotalAtSecond,
+  timelineVisibleRangeTotal,
 } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(
@@ -1050,6 +1052,65 @@ describe("timeline rolling windows", () => {
     expect(timelineVisibleTotalAtSecond([{ ...exactRows[0], rdps: null }, exactRows[1]], true)?.rdps).toBeNull();
     expect(timelineVisibleTotalAtSecond([{ ...exactRows[0], damageRates: null }, exactRows[1]], true)?.damageRates).toBeNull();
     expect(timelineVisibleTotalAtSecond([])).toBeNull();
+  });
+
+  it("computes selected ranges with start-exclusive buckets and reducer clock deltas", () => {
+    const clock = [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 2, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 3, edps_elapsed_micros: 3_000_000, adps_elapsed_micros: 2_000_000 },
+    ];
+    expect(timelineRangeRates("damage", [[1, 10], [2, 20], [4, 30]], clock, 1, 4, 4_000_000)).toEqual({
+      amount: 50,
+      rate: null,
+      damageRates: { edps: 25, adps: 50 },
+    });
+    expect(timelineRangeRates("rdps_damage", [[1, 10], [2, 20], [4, 30]], clock, 1, 4, 4_000_000)).toEqual({
+      amount: 50,
+      rate: 25,
+      damageRates: null,
+    });
+  });
+
+  it("uses the exact fractional endpoint and fails closed for missing range evidence", () => {
+    const clock = [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 2_000_000 },
+      { second: 2, edps_elapsed_micros: 2_200_000, adps_elapsed_micros: 2_200_000 },
+    ];
+    expect(timelineRangeRates("effective_healing", [[3, 20]], clock, 2, 3, 2_200_000)).toEqual({
+      amount: 20,
+      rate: 100,
+      damageRates: null,
+    });
+    expect(timelineRangeRates("damage", [[2, 20]], clock.slice(0, 2), 1, 3, 2_200_000).damageRates)
+      .toEqual({ edps: null, adps: null });
+    expect(timelineRangeRates("rdps_damage", [[2, 20]], clock, 1, 3, 2_200_000, false)).toEqual({
+      amount: null,
+      rate: null,
+      damageRates: null,
+    });
+    const pausedClock = [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 1, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+    ];
+    expect(timelineRangeRates("rdps_damage", [[2, 20]], pausedClock, 1, 2, 2_000_000).rate).toBeNull();
+  });
+
+  it("conserves exact selected-range totals and propagates unavailable rows", () => {
+    const rows = [
+      { amount: 100, rate: null, damageRates: { edps: 50, adps: 75 } },
+      { amount: 200, rate: null, damageRates: { edps: 100, adps: 150 } },
+    ];
+    expect(timelineVisibleRangeTotal(rows)).toEqual({
+      amount: 300,
+      rate: null,
+      damageRates: { edps: 150, adps: 225 },
+    });
+    expect(timelineVisibleRangeTotal([{ ...rows[0], amount: null }, rows[1]])?.amount).toBeNull();
+    expect(timelineVisibleRangeTotal([{ ...rows[0], damageRates: null }, rows[1]])?.damageRates).toBeNull();
+    expect(timelineVisibleRangeTotal([])).toBeNull();
   });
 });
 

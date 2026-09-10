@@ -955,6 +955,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
       <input type="range" data-timeline-scrubber min="0" max="${durationSeconds}" step="1" value="0" aria-label="${escapeHtml(messages.message("parse.timeline.position"))}" />
     </div>
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, authorizedRateClock, rdpsLabel, messages)}</div>
+    <div class="timeline-range-scroll" data-timeline-range></div>
     <div class="timeline-inspection" data-timeline-inspection><strong>${escapeHtml(messages.message("parse.timeline.inspection.title"))}</strong><span>${escapeHtml(messages.message("parse.timeline.inspection.hint"))}</span></div>
     <output class="timeline-live" data-timeline-live aria-live="polite" aria-atomic="true"></output>
     <div class="timeline-snapshot-scroll" data-timeline-snapshot></div>
@@ -1349,6 +1350,101 @@ export interface TimelineCursorRateRow {
   rdps: number | null;
 }
 
+export interface TimelineRangeRateRow {
+  amount: number | null;
+  rate: number | null;
+  damageRates: { edps: number | null; adps: number | null } | null;
+}
+
+const timelineRangePrefixCache = new WeakMap<readonly [number, number][], Array<[number, number]>>();
+
+function timelineRangeAmount(
+  samples: readonly [number, number][],
+  startBoundary: number,
+  endBoundary: number,
+): number {
+  let prefix = timelineRangePrefixCache.get(samples);
+  if (!prefix) {
+    let total = 0;
+    prefix = [...samples]
+      .sort(([left], [right]) => left - right)
+      .map(([boundary, value]) => [boundary, total += value]);
+    timelineRangePrefixCache.set(samples, prefix);
+  }
+  const through = (boundary: number): number => {
+    let low = 0, high = prefix!.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (prefix![middle]![0] <= boundary) low = middle + 1;
+      else high = middle;
+    }
+    return low > 0 ? prefix![low - 1]![1] : 0;
+  };
+  return through(endBoundary) - through(startBoundary);
+}
+
+function timelineRateClockFieldAtBoundary(
+  rateClock: readonly PublicTimelineRateClockPoint[] | null,
+  boundary: number,
+  field: "edps_elapsed_micros" | "adps_elapsed_micros",
+): number | null {
+  if (boundary === 0) return 0;
+  const point = rateClock?.[boundary - 1];
+  return point?.second === boundary - 1 ? point[field] : null;
+}
+
+export function timelineRangeRates(
+  metric: TimelineMetric,
+  oneSecond: readonly [number, number][],
+  rateClock: readonly PublicTimelineRateClockPoint[] | null,
+  startBoundary: number,
+  endBoundary: number,
+  durationMicros: number,
+  exactNumerator = true,
+): TimelineRangeRateRow {
+  const viewport = clampTimelineViewport(durationMicros, startBoundary, endBoundary);
+  if (!exactNumerator) return { amount: null, rate: null, damageRates: null };
+  const amount = timelineRangeAmount(oneSecond, viewport.startBoundary, viewport.endBoundary);
+  const startElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+  const endElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+  const runElapsed = endElapsed - startElapsed;
+  if (metric === "effective_healing" || metric === "damage_taken") {
+    return { amount, rate: runElapsed > 0 ? amount * 1_000_000 / runElapsed : null, damageRates: null };
+  }
+  const edpsStart = timelineRateClockFieldAtBoundary(rateClock, viewport.startBoundary, "edps_elapsed_micros");
+  const edpsEnd = timelineRateClockFieldAtBoundary(rateClock, viewport.endBoundary, "edps_elapsed_micros");
+  const edpsElapsed = edpsStart == null || edpsEnd == null ? null : edpsEnd - edpsStart;
+  if (metric === "rdps_damage") {
+    return { amount, rate: edpsElapsed != null && edpsElapsed > 0 ? amount * 1_000_000 / edpsElapsed : null, damageRates: null };
+  }
+  const adpsStart = timelineRateClockFieldAtBoundary(rateClock, viewport.startBoundary, "adps_elapsed_micros");
+  const adpsEnd = timelineRateClockFieldAtBoundary(rateClock, viewport.endBoundary, "adps_elapsed_micros");
+  const adpsElapsed = adpsStart == null || adpsEnd == null ? null : adpsEnd - adpsStart;
+  return {
+    amount,
+    rate: null,
+    damageRates: {
+      edps: edpsElapsed != null && edpsElapsed > 0 ? amount * 1_000_000 / edpsElapsed : null,
+      adps: adpsElapsed != null && adpsElapsed > 0 ? amount * 1_000_000 / adpsElapsed : null,
+    },
+  };
+}
+
+export function timelineVisibleRangeTotal(rows: readonly TimelineRangeRateRow[]): TimelineRangeRateRow | null {
+  if (!rows.length) return null;
+  const sumExact = (select: (row: TimelineRangeRateRow) => number | null): number | null =>
+    rows.every((row) => select(row) !== null) ? rows.reduce((sum, row) => sum + select(row)!, 0) : null;
+  const damageRates = rows.every((row) => row.damageRates !== null)
+    ? {
+      edps: rows.every((row) => row.damageRates!.edps !== null)
+        ? rows.reduce((sum, row) => sum + row.damageRates!.edps!, 0) : null,
+      adps: rows.every((row) => row.damageRates!.adps !== null)
+        ? rows.reduce((sum, row) => sum + row.damageRates!.adps!, 0) : null,
+    }
+    : null;
+  return { amount: sumExact((row) => row.amount), rate: sumExact((row) => row.rate), damageRates };
+}
+
 export function timelineVisibleTotalAtSecond(
   rows: readonly TimelineCursorRateRow[],
   rdpsCoverageComplete = false,
@@ -1448,6 +1544,7 @@ function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" =
   if (status) status.textContent = messages.message(full ? "parse.timeline.viewport_full" : "parse.timeline.viewport_selected", { start: startText, end: endText });
   const reset = timeline.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]");
   if (reset) reset.disabled = full;
+  refreshTimelineRange(timeline);
   return viewport;
 }
 
@@ -1462,6 +1559,7 @@ function wireTimelineControls(root: HTMLElement): void {
       if (series.dataset.series === metric && series.dataset.seriesWindow === timeline.dataset.timelineWindow) series.removeAttribute("hidden");
       else series.setAttribute("hidden", "");
     });
+    refreshTimelineRange(timeline);
     refreshTimelineInspection(timeline);
   }));
   root.querySelectorAll<HTMLButtonElement>("[data-window]").forEach((button) => button.addEventListener("click", () => {
@@ -1500,6 +1598,7 @@ function wireTimelineControls(root: HTMLElement): void {
         if (visible) track.removeAttribute("hidden");
         else track.setAttribute("hidden", "");
       });
+      refreshTimelineRange(timeline);
       refreshTimelineInspection(timeline);
     });
   });
@@ -1630,6 +1729,74 @@ function refreshTimelineInspection(timeline: HTMLElement): void {
   if (inspector && !timeline.querySelector<SVGGElement>("[data-timeline-crosshair]")?.hasAttribute("hidden")) {
     showTimelineInspection(timeline, Number(inspector.getAttribute("aria-valuenow") ?? "0"));
   }
+}
+
+interface TimelineRangeDisplayRow extends TimelineRangeRateRow {
+  label: string;
+  color: string;
+}
+
+function refreshTimelineRange(timeline: HTMLElement): void {
+  const svg = timeline.querySelector<SVGSVGElement>(".timeline-svg");
+  const output = timeline.querySelector<HTMLElement>("[data-timeline-range]");
+  if (!svg || !output) return;
+  const metric = (timeline.dataset.timelineMetric ?? "damage") as TimelineMetric;
+  const viewport = timelineViewportFor(timeline, Number(svg.dataset.durationMicros));
+  const rateClock = timelineRateClockFor(svg);
+  const rows = [...svg.querySelectorAll<SVGPolylineElement>(`[data-series="${metric}"][data-series-window="1"] polyline:not([hidden])`)].map((line) => {
+    const participant = line.dataset.participant ?? "";
+    const exactNumerator = svg.dataset.seriesComplete === "true" &&
+      (metric !== "rdps_damage" || line.dataset.cumulativeComplete === "true");
+    return {
+      label: line.dataset.label ?? "Player",
+      color: line.getAttribute("stroke") ?? "currentColor",
+      ...timelineRangeRates(
+        metric,
+        timelineSamplesFor(svg, metric, "1", participant),
+        rateClock,
+        viewport.startBoundary,
+        viewport.endBoundary,
+        Number(svg.dataset.durationMicros),
+        exactNumerator,
+      ),
+    };
+  });
+  const messages = createMessageResolver(timeline.dataset.locale);
+  const start = formatDuration(timelineBoundaryElapsedMicros(Number(svg.dataset.durationMicros), viewport.startBoundary));
+  const end = formatDuration(timelineBoundaryElapsedMicros(Number(svg.dataset.durationMicros), viewport.endBoundary));
+  output.innerHTML = renderTimelineRangeTable(metric, start, end, rows, timelineVisibleRangeTotal(rows), messages);
+}
+
+export function renderTimelineRangeTable(
+  metric: TimelineMetric,
+  start: string,
+  end: string,
+  rows: readonly TimelineRangeDisplayRow[],
+  visibleTotal: TimelineRangeRateRow | null,
+  messages = createMessageResolver(),
+): string {
+  if (!rows.length || !visibleTotal) return `<p class="timeline-snapshot-empty">${escapeHtml(messages.message("parse.timeline.inspection.none"))}</p>`;
+  const columns = metric === "damage"
+    ? [
+      { label: messages.message("parse.timeline.range.amount.damage"), value: (row: TimelineRangeRateRow) => row.amount },
+      { label: messages.message("parse.timeline.snapshot.edps"), value: (row: TimelineRangeRateRow) => row.damageRates?.edps ?? null },
+      { label: messages.message("parse.timeline.snapshot.adps"), value: (row: TimelineRangeRateRow) => row.damageRates?.adps ?? null },
+    ]
+    : [
+      { label: messages.message(metric === "effective_healing" ? "parse.timeline.range.amount.healing" : metric === "damage_taken" ? "parse.timeline.range.amount.taken" : "parse.timeline.range.amount.rdps"), value: (row: TimelineRangeRateRow) => row.amount },
+      { label: messages.message(metric === "effective_healing" ? "parse.timeline.metric.healing" : metric === "damage_taken" ? "parse.timeline.metric.taken" : "parse.timeline.snapshot.rdps"), value: (row: TimelineRangeRateRow) => row.rate },
+    ];
+  const format = (value: number | null): string => value == null ? "—" : messages.number(value, { maximumFractionDigits: 1 });
+  const cells = (row: TimelineRangeRateRow) => columns.map((column) => `<td>${escapeHtml(format(column.value(row)))}</td>`).join("");
+  const playerRows = rows.map((row) => `<tr><th scope="row"><i aria-hidden="true" style="--track:${row.color}"></i>${escapeHtml(row.label)}</th>${cells(row)}</tr>`).join("");
+  const unavailable = rows.some((row) => row.amount === null || (metric === "damage"
+    ? row.damageRates === null || row.damageRates.edps === null || row.damageRates.adps === null
+    : row.rate === null));
+  return `<table class="timeline-range-table">
+    <caption>${escapeHtml(messages.message("parse.timeline.range.caption", { start, end }))}</caption>
+    <thead><tr><th scope="col">${escapeHtml(messages.message("parse.timeline.snapshot.player"))}</th>${columns.map((column) => `<th scope="col">${escapeHtml(column.label)}</th>`).join("")}</tr></thead>
+    <tbody><tr class="timeline-snapshot-total"><th scope="row">${escapeHtml(messages.message("parse.timeline.inspection.visible_total"))}</th>${cells(visibleTotal)}</tr>${playerRows}</tbody>
+  </table>${unavailable ? `<p class="timeline-range-note">${escapeHtml(messages.message("parse.timeline.range.unavailable"))}</p>` : ""}`;
 }
 
 function showTimelineInspection(timeline: HTMLElement, second: number, announce = false): void {
