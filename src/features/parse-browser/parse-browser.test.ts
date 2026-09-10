@@ -233,6 +233,35 @@ describe("party rune and loadout summaries", () => {
     expect(html).toContain("Exact canonical POV");
     expect(html).not.toContain("private-inventory-instance");
   });
+
+  it("localizes report, party, and loadout surfaces with locale-aware quantities", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const reconciliation = load<PublicRunReconciliation>("parse-reconciliation.v1.json");
+    report.verification.event_count = 1_234;
+    reconciliation.characters.find((character) => character.character_id === "c7")!.participant_report_count = 1_234;
+    const messages = createMessageResolver("de-DE", {
+      ...bundledMessageCatalogs,
+      "de-DE": {
+        "parse.report.server_replayed": "server-replayed-marker",
+        "parse.report.party.title": "party-title-marker",
+        "parse.report.participant.damage": "damage-metric-marker",
+        "parse.loadout.title": "loadout-<title>-marker",
+        "parse.loadout.evidence.conflict": "conflict-state-marker",
+        "parse.loadout.none_selected": "empty-state-marker",
+      },
+    });
+    const html = renderReport(report, 0, reconciliation, messages);
+    expect(html).toContain("server-replayed-marker");
+    expect(html).toContain("party-title-marker");
+    expect(html).toContain("damage-metric-marker");
+    expect(html).toContain("loadout-&lt;title&gt;-marker");
+    expect(html).not.toContain("loadout-<title>-marker");
+    expect(html).toContain("conflict-state-marker");
+    expect(html).toContain("empty-state-marker");
+    expect(html).toContain("1.234 matching POVs");
+    expect(html).toContain("1.234 canonical events");
+    expect(html).toContain("1.661.739,1");
+  });
 });
 
 describe("timeline interaction markup", () => {

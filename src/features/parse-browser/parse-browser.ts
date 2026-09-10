@@ -173,29 +173,40 @@ function renderCatalogEntry(entry: PublicParseCatalogEntry): string {
 
 export function renderReport(report: PublicParseReport, runIndex: number, reconciliation?: PublicRunReconciliation, messages = createMessageResolver()): string {
   const run = report.runs.find((candidate) => candidate.run_index === runIndex) ?? report.runs[0];
-  if (!run) return '<p class="empty-state">This report contains no public run.</p>';
+  if (!run) return `<p class="empty-state">${escapeHtml(messages.message("parse.report.empty"))}</p>`;
   const graph = selectCanonicalGraph(run, reconciliation);
   const teamEdps = graph.participants.reduce((sum, actor) => sum + actor.dps, 0);
   const teamAdps = graph.participants.reduce((sum, actor) => sum + actor.encounter_dps, 0);
+  const count = (value: number) => messages.number(value, { maximumFractionDigits: 0 });
+  const scene = run.scene_name ?? run.activity_id ?? messages.message("parse.report.scene", { id: run.scene_id ?? "?" });
+  const verification = messages.message(`parse.report.verification.${report.verification.tier}`);
+  const partySummary = messages.message(graph.participants.length === 1 ? "parse.report.party.summary.one" : "parse.report.party.summary.other", {
+    count: count(graph.participants.length), status: run.rdps_status,
+  });
+  const eventCount = messages.message(report.verification.event_count === 1 ? "parse.report.proof.events.one" : "parse.report.proof.events.other", { count: count(report.verification.event_count) });
+  const gapCount = messages.message(run.data_gap_count === 1 ? "parse.report.proof.gaps.one" : "parse.report.proof.gaps.other", { count: count(run.data_gap_count) });
+  const proof = messages.message("parse.report.proof", {
+    build: report.client_build, events: eventCount, gaps: gapCount, report: report.report_id,
+  });
   return `<article class="parse-report">
-    <div class="parse-report-heading"><div><p class="eyebrow">${escapeHtml(report.region_id)} / ${escapeHtml(report.verification.tier)}</p>
-      <h3>${escapeHtml(run.scene_name ?? run.activity_id ?? `Scene ${run.scene_id ?? "?"}`)}</h3>
-      <p>${escapeHtml(formatDifficulty(run))} / ${escapeHtml(title(run.terminal_state))}</p></div>
-      <span class="status-chip success">Server replayed</span></div>
+    <div class="parse-report-heading"><div><p class="eyebrow">${escapeHtml(report.region_id)} / ${escapeHtml(verification)}</p>
+      <h3>${escapeHtml(scene)}</h3>
+      <p>${escapeHtml(formatDifficulty(run, messages))} / ${escapeHtml(title(run.terminal_state))}</p></div>
+      <span class="status-chip success">${escapeHtml(messages.message("parse.report.server_replayed"))}</span></div>
     <div class="parse-metrics">
-      ${metric("Run", formatDuration(run.total_run_time_micros))}
-      ${metric("Game", formatDuration(run.game_time_micros))}
-      ${metric("Active", formatDuration(run.active_combat_micros))}
-      ${metric("Team eDPS", formatNumber(teamEdps, messages))}
-      ${metric("Team aDPS", formatNumber(teamAdps, messages))}
-      ${metric("Retries", `${run.retry_count} / ${run.boss_retry_count} boss`)}
+      ${metric(messages.message("parse.report.metric.run"), formatDuration(run.total_run_time_micros))}
+      ${metric(messages.message("parse.report.metric.game"), formatDuration(run.game_time_micros))}
+      ${metric(messages.message("parse.report.metric.active"), formatDuration(run.active_combat_micros))}
+      ${metric(messages.message("parse.report.metric.team_edps"), formatNumber(teamEdps, messages))}
+      ${metric(messages.message("parse.report.metric.team_adps"), formatNumber(teamAdps, messages))}
+      ${metric(messages.message("parse.report.metric.retries"), messages.message(run.boss_retry_count === 1 ? "parse.report.retry_summary.one" : "parse.report.retry_summary.other", { retries: count(run.retry_count), boss: count(run.boss_retry_count) }))}
     </div>
     ${renderTimeline(graph, messages)}
-    ${renderPartyLoadouts(run, graph.participants, reconciliation)}
-    <div class="parse-party"><div class="parse-party-head"><strong>Party</strong><small>${graph.participants.length} combatants / rDPS ${escapeHtml(run.rdps_status)}</small></div>
+    ${renderPartyLoadouts(run, graph.participants, reconciliation, messages)}
+    <div class="parse-party"><div class="parse-party-head"><strong>${escapeHtml(messages.message("parse.report.party.title"))}</strong><small>${escapeHtml(partySummary)}</small></div>
       ${graph.participants.map((participant) => renderParticipant(participant, run.rdps_status, messages)).join("")}
     </div>
-    <p class="parse-proof">Build ${escapeHtml(report.client_build)} / ${report.verification.event_count.toLocaleString()} canonical events / ${run.data_gap_count} data gaps / report ${escapeHtml(report.report_id)}${run.run_group_id ? ` / group ${escapeHtml(run.run_group_id)}` : ""}</p>
+    <p class="parse-proof">${escapeHtml(run.run_group_id ? messages.message("parse.report.proof_group", { proof, group: run.run_group_id }) : proof)}</p>
   </article>`;
 }
 
@@ -210,31 +221,33 @@ export function partyLoadoutSummaries(
   run: PublicRun,
   participants: readonly PublicParticipant[],
   reconciliation?: PublicRunReconciliation,
+  messages = createMessageResolver(),
 ): PartyLoadoutSummary[] {
   const characters = new Map(reconciliation?.characters.map((character) => [character.character_id, character]));
   return participants.map((participant) => {
     const characterId = participant.character_id;
-    if (!characterId) return { participant, disposition: "missing", evidenceLabel: "No stable character identity", phases: [] };
+    if (!characterId) return { participant, disposition: "missing", evidenceLabel: messages.message("parse.loadout.evidence.no_identity"), phases: [] };
     if (reconciliation) {
       const character = characters.get(characterId);
       if (!character || character.combat_loadout_disposition === "missing") {
-        return { participant, disposition: "missing", evidenceLabel: "Missing POV loadout evidence", phases: [] };
+        return { participant, disposition: "missing", evidenceLabel: messages.message("parse.loadout.evidence.missing_pov"), phases: [] };
       }
       if (character.combat_loadout_disposition === "multiple_reports_require_ordering") {
-        return { participant, disposition: "conflict", evidenceLabel: "Conflicting POV loadouts — none selected", phases: [] };
+        return { participant, disposition: "conflict", evidenceLabel: messages.message("parse.loadout.evidence.conflict"), phases: [] };
       }
       return {
         participant,
         disposition: "exact",
         evidenceLabel: character.combat_loadout_disposition === "multiple_reports_identical"
-          ? `${character.participant_report_count} matching POVs` : "Exact local POV",
+          ? messages.message("parse.loadout.evidence.matching_povs", { count: messages.number(character.participant_report_count, { maximumFractionDigits: 0 }) })
+          : messages.message("parse.loadout.evidence.exact_local"),
         phases: character.selected_combat_loadout_phases,
       };
     }
     const phases = run.combat_loadout_phases.filter((phase) => phase.character_id === characterId);
     return phases.length
-      ? { participant, disposition: "exact", evidenceLabel: "Exact canonical POV", phases }
-      : { participant, disposition: "missing", evidenceLabel: "Missing canonical POV evidence", phases: [] };
+      ? { participant, disposition: "exact", evidenceLabel: messages.message("parse.loadout.evidence.exact_canonical"), phases }
+      : { participant, disposition: "missing", evidenceLabel: messages.message("parse.loadout.evidence.missing_canonical"), phases: [] };
   });
 }
 
@@ -242,40 +255,66 @@ export function renderPartyLoadouts(
   run: PublicRun,
   participants: readonly PublicParticipant[],
   reconciliation?: PublicRunReconciliation,
+  messages = createMessageResolver(),
 ): string {
-  const summaries = partyLoadoutSummaries(run, participants, reconciliation);
+  const summaries = partyLoadoutSummaries(run, participants, reconciliation, messages);
   const exact = summaries.filter((summary) => summary.disposition === "exact").length;
-  return `<section class="party-loadouts" aria-label="Party runes and loadouts">
-    <div class="parse-party-head"><strong>Runes &amp; loadouts</strong><small>${exact} exact / ${summaries.length} party members</small></div>
-    <div class="party-loadout-grid">${summaries.map(renderPartyLoadout).join("")}</div>
-    <p class="timeline-note">Multi-POV loadouts are selected only when their phase sequences agree. Conflicting snapshots remain separate evidence and are never merged.</p>
+  const summary = messages.message(summaries.length === 1 ? "parse.loadout.summary.one" : "parse.loadout.summary.other", {
+    exact: messages.number(exact, { maximumFractionDigits: 0 }), count: messages.number(summaries.length, { maximumFractionDigits: 0 }),
+  });
+  return `<section class="party-loadouts" aria-label="${escapeHtml(messages.message("parse.loadout.aria"))}">
+    <div class="parse-party-head"><strong>${escapeHtml(messages.message("parse.loadout.title"))}</strong><small>${escapeHtml(summary)}</small></div>
+    <div class="party-loadout-grid">${summaries.map((loadout) => renderPartyLoadout(loadout, messages)).join("")}</div>
+    <p class="timeline-note">${escapeHtml(messages.message("parse.loadout.selection_note"))}</p>
   </section>`;
 }
 
-function renderPartyLoadout(summary: PartyLoadoutSummary): string {
-  const name = summary.participant.display_name ?? `Player ${summary.participant.actor_id}`;
+function renderPartyLoadout(summary: PartyLoadoutSummary, messages: MessageResolver): string {
+  const name = summary.participant.display_name ?? messages.message("parse.timeline.player", { id: summary.participant.actor_id });
+  const className = summary.participant.class_name ?? messages.message("parse.report.class_unresolved");
   const statusClass = summary.disposition === "exact" ? "success" : summary.disposition === "conflict" ? "warning" : "neutral";
   if (summary.disposition !== "exact") {
-    return `<article class="party-loadout-card"><div class="party-loadout-title"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(summary.participant.class_name ?? "Class unresolved")}</small></span><span class="status-chip ${statusClass}">${escapeHtml(summary.evidenceLabel)}</span></div><p class="party-loadout-empty">No loadout was selected.</p></article>`;
+    return `<article class="party-loadout-card"><div class="party-loadout-title"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(className)}</small></span><span class="status-chip ${statusClass}">${escapeHtml(summary.evidenceLabel)}</span></div><p class="party-loadout-empty">${escapeHtml(messages.message("parse.loadout.none_selected"))}</p></article>`;
   }
   const phases = [...summary.phases].sort((left, right) => left.run_elapsed_micros - right.run_elapsed_micros);
   const moduleCount = phases.at(-1)?.equipped_module_count;
-  return `<details class="party-loadout-card"><summary class="party-loadout-title"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(summary.participant.class_name ?? "Class unresolved")} · ${moduleCount ?? "?"} modules · ${phases.length} phase${phases.length === 1 ? "" : "s"}</small></span><span class="status-chip ${statusClass}">${escapeHtml(summary.evidenceLabel)}</span></summary>
-    <div class="party-loadout-phases">${phases.map((phase, index) => renderLoadoutPhase(phase, index, phases.length)).join("")}</div></details>`;
+  const modules = moduleCount == null ? messages.message("parse.loadout.modules.unknown")
+    : messages.message(moduleCount === 1 ? "parse.loadout.modules.one" : "parse.loadout.modules.other", { count: messages.number(moduleCount, { maximumFractionDigits: 0 }) });
+  const phaseCount = messages.message(phases.length === 1 ? "parse.loadout.phases.one" : "parse.loadout.phases.other", { count: messages.number(phases.length, { maximumFractionDigits: 0 }) });
+  return `<details class="party-loadout-card"><summary class="party-loadout-title"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(`${className} · ${modules} · ${phaseCount}`)}</small></span><span class="status-chip ${statusClass}">${escapeHtml(summary.evidenceLabel)}</span></summary>
+    <div class="party-loadout-phases">${phases.map((phase, index) => renderLoadoutPhase(phase, index, phases.length, messages)).join("")}</div></details>`;
 }
 
-function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, count: number): string {
-  const context = phase.in_active_combat ? "Active combat" : index === 0 ? "Run baseline" : "Between pulls";
+function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, count: number, messages: MessageResolver): string {
+  const integer = (value: number) => messages.number(value, { maximumFractionDigits: 0 });
+  const context = messages.message(phase.in_active_combat ? "parse.loadout.context.active" : index === 0 ? "parse.loadout.context.baseline" : "parse.loadout.context.between");
   const modules = phase.module_snapshot_disposition === "complete"
     ? phase.equipped_modules.length
-      ? `<div class="loadout-modules">${phase.equipped_modules.map((module) => `<span><strong>Slot ${module.equipped_slot}: module ${module.config_id}${module.level == null ? "" : ` · Lv ${module.level}`}</strong><small>${module.effects.length ? module.effects.map((effect) => `rune ${effect.effect_id}${effect.initial_link_points == null ? "" : ` · ${effect.initial_link_points} LP`}`).join(" / ") : "No rune effects"}</small></span>`).join("")}</div>`
-      : '<p class="party-loadout-empty">Complete module snapshot: no modules equipped.</p>'
-    : `<p class="party-loadout-empty">${phase.module_snapshot_disposition === "invalid" ? "Invalid module snapshot — partial runes withheld." : "Module/rune evidence missing."}</p>`;
-  const skills = phase.equipped_skill_ids.length ? phase.equipped_skill_ids.map((id) => escapeHtml(id)).join(", ") : "None observed";
-  const imagines = phase.equipped_imagines.length ? phase.equipped_imagines.map((imagine) => `slot ${imagine.equipped_slot}: ${escapeHtml(imagine.skill_id)}${imagine.tier == null ? "" : ` (tier ${imagine.tier})`}`).join(", ") : "None observed";
-  return `<section class="loadout-phase" data-loadout-at-micros="${phase.run_elapsed_micros}"><div class="loadout-phase-heading"><strong>${count > 1 ? `Phase ${index + 1}` : "Selected phase"}</strong><small>${context} · ${formatDuration(phase.run_elapsed_micros)}</small></div>
-    <p><strong>${escapeHtml([phase.class_name, phase.specialization_name].filter(Boolean).join(" / ") || "Class unresolved")}</strong> · ${phase.equipment_count ?? "?"} equipment · ${phase.talent_count ?? "?"} talents</p>
-    ${modules}<p><small>Skills</small> ${skills}</p><p><small>Imagines</small> ${imagines}</p></section>`;
+      ? `<div class="loadout-modules">${phase.equipped_modules.map((module) => {
+        const moduleLabel = messages.message("parse.loadout.module", { slot: integer(module.equipped_slot), id: module.config_id });
+        const level = module.level == null ? "" : ` · ${messages.message("parse.loadout.level", { level: integer(module.level) })}`;
+        const effects = module.effects.length ? module.effects.map((effect) => {
+          const rune = messages.message("parse.loadout.rune", { id: effect.effect_id });
+          return effect.initial_link_points == null ? rune : `${rune} · ${messages.message("parse.loadout.link_points", { points: integer(effect.initial_link_points) })}`;
+        }).join(" / ") : messages.message("parse.loadout.no_rune_effects");
+        return `<span><strong>${escapeHtml(`${moduleLabel}${level}`)}</strong><small>${escapeHtml(effects)}</small></span>`;
+      }).join("")}</div>`
+      : `<p class="party-loadout-empty">${escapeHtml(messages.message("parse.loadout.complete_empty"))}</p>`
+    : `<p class="party-loadout-empty">${escapeHtml(messages.message(phase.module_snapshot_disposition === "invalid" ? "parse.loadout.invalid" : "parse.loadout.missing"))}</p>`;
+  const skills = phase.equipped_skill_ids.length ? phase.equipped_skill_ids.join(", ") : messages.message("parse.loadout.none_observed");
+  const imagines = phase.equipped_imagines.length ? phase.equipped_imagines.map((imagine) => {
+    const item = messages.message("parse.loadout.imagine", { slot: integer(imagine.equipped_slot), id: imagine.skill_id });
+    return imagine.tier == null ? item : `${item} (${messages.message("parse.loadout.tier", { tier: integer(imagine.tier) })})`;
+  }).join(", ") : messages.message("parse.loadout.none_observed");
+  const phaseLabel = count > 1 ? messages.message("parse.loadout.phase", { number: integer(index + 1) }) : messages.message("parse.loadout.selected_phase");
+  const equipment = phase.equipment_count == null ? messages.message("parse.loadout.equipment.unknown")
+    : messages.message(phase.equipment_count === 1 ? "parse.loadout.equipment.one" : "parse.loadout.equipment.other", { count: integer(phase.equipment_count) });
+  const talents = phase.talent_count == null ? messages.message("parse.loadout.talents.unknown")
+    : messages.message(phase.talent_count === 1 ? "parse.loadout.talents.one" : "parse.loadout.talents.other", { count: integer(phase.talent_count) });
+  const className = [phase.class_name, phase.specialization_name].filter(Boolean).join(" / ") || messages.message("parse.report.class_unresolved");
+  return `<section class="loadout-phase" data-loadout-at-micros="${phase.run_elapsed_micros}"><div class="loadout-phase-heading"><strong>${escapeHtml(phaseLabel)}</strong><small>${escapeHtml(`${context} · ${formatDuration(phase.run_elapsed_micros)}`)}</small></div>
+    <p><strong>${escapeHtml(className)}</strong> · ${escapeHtml(equipment)} · ${escapeHtml(talents)}</p>
+    ${modules}<p><small>${escapeHtml(messages.message("parse.loadout.skills"))}</small> ${escapeHtml(skills)}</p><p><small>${escapeHtml(messages.message("parse.loadout.imagines"))}</small> ${escapeHtml(imagines)}</p></section>`;
 }
 
 export interface CanonicalGraphSelection {
@@ -756,17 +795,19 @@ function parseTimelineValues(value: string): Array<[number, number]> {
 
 function renderParticipant(actor: PublicRun["participants"][number], rdpsStatus: string, messages: MessageResolver): string {
   const rdpsLabel = messages.message(rdpsStatus.startsWith("partial_") || actor.rdps_incomplete === true ? "parse.timeline.rdps.partial" : "parse.timeline.rdps.exact");
-  return `<div class="parse-party-row"><span><strong>${escapeHtml(actor.display_name ?? `Player ${actor.actor_id}`)}</strong>
-    <small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span>
-    <span><small>Damage</small><strong>${formatNumber(actor.damage, messages)}</strong></span>
-    <span><small>eDPS</small><strong>${formatNumber(actor.dps, messages)}</strong></span>
-    <span><small>aDPS</small><strong>${formatNumber(actor.encounter_dps, messages)}</strong></span>
+  const actorName = actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id });
+  const className = [actor.class_name, actor.specialization_name].filter(Boolean).join(" / ") || messages.message("parse.report.class_unresolved");
+  return `<div class="parse-party-row"><span><strong>${escapeHtml(actorName)}</strong>
+    <small>${escapeHtml(className)}</small></span>
+    <span><small>${escapeHtml(messages.message("parse.report.participant.damage"))}</small><strong>${formatNumber(actor.damage, messages)}</strong></span>
+    <span><small>${escapeHtml(messages.message("parse.report.participant.edps"))}</small><strong>${formatNumber(actor.dps, messages)}</strong></span>
+    <span><small>${escapeHtml(messages.message("parse.report.participant.adps"))}</small><strong>${formatNumber(actor.encounter_dps, messages)}</strong></span>
     <span><small>${escapeHtml(rdpsLabel)}</small><strong>${actor.rdps == null ? "-" : formatNumber(actor.rdps, messages)}</strong></span>
-    <span><small>Deaths</small><strong>${actor.deaths}</strong></span></div>`;
+    <span><small>${escapeHtml(messages.message("parse.report.participant.deaths"))}</small><strong>${messages.number(actor.deaths, { maximumFractionDigits: 0 })}</strong></span></div>`;
 }
 
 function metric(name: string, value: string): string {
-  return `<span><small>${name}</small><strong>${escapeHtml(value)}</strong></span>`;
+  return `<span><small>${escapeHtml(name)}</small><strong>${escapeHtml(value)}</strong></span>`;
 }
 
 function populateSelect(select: HTMLSelectElement, options: Array<[string, string]>): void {
@@ -804,10 +845,10 @@ function filterDemoCatalog(catalog: PublicParseCatalog, controls: ParseControls)
   return { ...catalog, entries, total_entries: entries.length, next_offset: undefined };
 }
 
-function formatDifficulty(run: PublicRun): string {
+function formatDifficulty(run: PublicRun, messages = createMessageResolver()): string {
   return (
     [title(run.difficulty_family), run.difficulty_tier ? ` ${run.difficulty_tier}` : ""].join("").trim() ||
-    "Difficulty unresolved"
+    messages.message("parse.report.difficulty_unresolved")
   );
 }
 
