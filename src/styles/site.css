@@ -1169,6 +1169,8 @@ h3 {
 .parse-party-metric strong {
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
 .party-loadouts {
   overflow: hidden;
   border: 1px solid var(--line);

@@ -60,8 +60,18 @@ const parse: PublicParseCatalogEntry = {
 };
 
 describe("parse search", () => {
+  it("keeps party loadout styles outside the party metric value selector", () => {
+    expect(siteStyles).toMatch(
+      /\.parse-party-metric strong\s*\{[^{}]*text-align:\s*right;\s*\}\s*\.party-loadouts\s*\{/u,
+    );
+  });
+
   it("keeps timeline styles outside the evidence blocker selector", () => {
     expect(siteStyles).toMatch(/\.evidence-blockers ul\s*\{\s*margin:\s*6px 0 0;\s*\}\s*\.combat-timeline\s*\{/u);
+  });
+
+  it("keeps the stylesheet brace topology balanced", () => {
+    expect(siteStyles.match(/\{/gu)?.length).toBe(siteStyles.match(/\}/gu)?.length);
   });
 
   it("resolves grouped Other skill content from a nested click target", () => {
