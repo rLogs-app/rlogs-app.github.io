@@ -8,7 +8,7 @@ import {
 } from "./profile-browser";
 describe("public profile routes", () => {
   it("uses the observable character UID as the canonical URL", () => {
-    expect(profileUrl("3296036")).toBe("/profiles/3296036/");
+    expect(profileUrl("3296036")).toBe("/profiles/?profile=3296036");
     expect(requestedProfileReference("/profiles/3296036/", "")).toBe("3296036");
   });
 
@@ -22,7 +22,7 @@ describe("public profile routes", () => {
   });
 
   it("uses an opaque observed character key as a stable unclaimed profile route", () => {
-    expect(profileUrl(`obs_${"a".repeat(32)}`)).toBe(`/profiles/obs_${"a".repeat(32)}/`);
+    expect(profileUrl(`obs_${"a".repeat(32)}`)).toBe(`/profiles/?profile=obs_${"a".repeat(32)}`);
   });
 
   it("does not substitute stale developer fixtures when the API is unavailable", async () => {

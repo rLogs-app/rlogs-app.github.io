@@ -99,7 +99,7 @@ export async function mountProfileBrowser(): Promise<void> {
   selected ??= directory[0];
   if (!selected) return;
   const canonicalUrl = profileUrl(directoryReference(selected));
-  if (location.pathname !== canonicalUrl || location.search) {
+  if (`${location.pathname}${location.search}` !== canonicalUrl) {
     history.replaceState(null, "", canonicalUrl);
   }
   if (selected.kind === "observed") {
@@ -159,7 +159,7 @@ export function requestedProfileReference(pathname: string, search: string): str
 }
 
 export function profileUrl(characterId: string): string {
-  return `/profiles/${encodeURIComponent(characterId)}/`;
+  return `/profiles/?profile=${encodeURIComponent(characterId)}`;
 }
 
 function searchableDirectoryEntry(entry: DirectoryEntry): string {

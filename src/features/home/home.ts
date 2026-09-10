@@ -161,7 +161,7 @@ function renderLatestProfiles(catalog: PublicProfileCatalog, target: HTMLElement
     ? profiles
         .map((profile) => {
           const location = [profile.region, profile.realm ?? profile.world].filter(Boolean).map((value) => humanizeIdentifier(String(value))).join(" · ");
-          return `<a class="home-feed-row profile-feed-row" href="/profiles/${encodeURIComponent(profile.character_id)}/"><span><strong>${escapeHtml(profile.display_name ?? `UID ${profile.character_id}`)}</strong><small>${escapeHtml(location || profile.deployment)}</small></span><span><small>Last seen</small><strong>${escapeHtml(relativeTime(profile.updated_unix_millis))}</strong></span></a>`;
+          return `<a class="home-feed-row profile-feed-row" href="/profiles/?profile=${encodeURIComponent(profile.character_id)}"><span><strong>${escapeHtml(profile.display_name ?? `UID ${profile.character_id}`)}</strong><small>${escapeHtml(location || profile.deployment)}</small></span><span><small>Last seen</small><strong>${escapeHtml(relativeTime(profile.updated_unix_millis))}</strong></span></a>`;
         })
         .join("")
     : '<p class="empty-state">No players have synced a public profile yet.</p>';
@@ -218,7 +218,7 @@ function renderPhotoCatalog(catalog: PublicPhotoCatalog, target: HTMLElement): v
 function photoCard(entry: PublicPhotoCatalogEntry): string {
   const name = entry.display_name ?? `UID ${entry.character_id}`;
   const identity = `${entry.profile_id}:${entry.photo_id}`;
-  return `<article class="community-photo-card"><a class="community-photo-link" href="/profiles/${encodeURIComponent(entry.character_id)}/" aria-label="Open ${escapeHtml(name)}'s profile"><img src="${escapeHtml(`${apiBase}${entry.image_path}`)}" alt="Photo Wall image from ${escapeHtml(name)}" loading="lazy" decoding="async" /></a><div class="community-photo-meta"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(relativeTime(entry.uploaded_unix_millis))}</small></span><button class="photo-like-button${entry.viewer_liked ? " is-liked" : ""}" type="button" data-photo-like="${escapeHtml(identity)}" data-profile-id="${escapeHtml(entry.profile_id)}" data-photo-id="${entry.photo_id}" aria-pressed="${entry.viewer_liked}" title="${entry.viewer_liked ? "Remove like" : "Like this photo"}"><span aria-hidden="true">♥</span><span data-like-count>${entry.like_count.toLocaleString()}</span></button></div></article>`;
+  return `<article class="community-photo-card"><a class="community-photo-link" href="/profiles/?profile=${encodeURIComponent(entry.character_id)}" aria-label="Open ${escapeHtml(name)}'s profile"><img src="${escapeHtml(`${apiBase}${entry.image_path}`)}" alt="Photo Wall image from ${escapeHtml(name)}" loading="lazy" decoding="async" /></a><div class="community-photo-meta"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(relativeTime(entry.uploaded_unix_millis))}</small></span><button class="photo-like-button${entry.viewer_liked ? " is-liked" : ""}" type="button" data-photo-like="${escapeHtml(identity)}" data-profile-id="${escapeHtml(entry.profile_id)}" data-photo-id="${entry.photo_id}" aria-pressed="${entry.viewer_liked}" title="${entry.viewer_liked ? "Remove like" : "Like this photo"}"><span aria-hidden="true">♥</span><span data-like-count>${entry.like_count.toLocaleString()}</span></button></div></article>`;
 }
 
 function renderMilestones(

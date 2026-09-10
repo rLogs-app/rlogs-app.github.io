@@ -25,7 +25,7 @@
           "/optimizer": "optimizer",
         };
         document.documentElement.dataset.rlogsPage =
-          pages[route] ||
+          (route === "/profiles" && new URLSearchParams(location.search).has("user") ? "users" : pages[route]) ||
           (route.startsWith("/profiles/") ? "profiles" :
             route.startsWith("/users/") ? "users" : "home");
       })();

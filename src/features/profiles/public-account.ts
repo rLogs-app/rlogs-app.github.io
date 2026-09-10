@@ -20,7 +20,7 @@ export async function mountPublicAccount(): Promise<void> {
   const status = required("public-account-status");
   const title = required("public-account-title");
   const content = required("public-account-content");
-  const accountId = publicAccountIdFromPath(location.pathname);
+  const accountId = publicAccountIdFromLocation(location.pathname, location.search);
   if (!accountId) {
     status.textContent = "Not found";
     content.replaceChildren(message("That rLogs account URL is invalid."));
@@ -60,6 +60,20 @@ export function publicAccountIdFromPath(pathname: string): number | undefined {
   return Number.isSafeInteger(value) ? value : undefined;
 }
 
+export function publicAccountIdFromLocation(pathname: string, search: string): number | undefined {
+  const pathAccountId = publicAccountIdFromPath(pathname);
+  if (pathAccountId) return pathAccountId;
+  if (pathname.replace(/\/+$/u, "") !== "/profiles") return undefined;
+  const account = new URLSearchParams(search).get("user");
+  if (!account || !/^[1-9][0-9]{11}$/u.test(account)) return undefined;
+  const value = Number(account);
+  return Number.isSafeInteger(value) ? value : undefined;
+}
+
+export function publicAccountUrl(accountId: number): string {
+  return `/profiles/?user=${encodeURIComponent(String(accountId))}`;
+}
+
 export function parsePublicAccountCatalog(value: unknown): PublicAccountCatalog {
   if (
     !isRecord(value) ||
@@ -82,7 +96,7 @@ export function parsePublicAccountCatalog(value: unknown): PublicAccountCatalog 
 function publicCharacterCard(profile: PublicProfileCatalogEntry): HTMLAnchorElement {
   const card = document.createElement("a");
   card.className = "linked-profile-card";
-  card.href = `/profiles/${encodeURIComponent(profile.character_id)}/`;
+  card.href = `/profiles/?profile=${encodeURIComponent(profile.character_id)}`;
   const location = [profile.region, profile.realm ?? profile.world].filter(Boolean).join(" · ");
   card.append(
     element("strong", "", profile.display_name ?? `UID ${profile.character_id}`),

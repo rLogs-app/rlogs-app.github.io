@@ -258,7 +258,7 @@ function rankingRow(entry: RankedIdentity, rank: number, primary: string, second
   rankLabel.textContent = String(rank);
   const link = document.createElement("a");
   link.className = "leaderboard-identity";
-  link.href = `/profiles/${encodeURIComponent(entry.character_id)}/`;
+  link.href = `/profiles/?profile=${encodeURIComponent(entry.character_id)}`;
   const name = document.createElement("strong");
   name.textContent = entry.display_name?.trim() || `UID ${entry.character_id}`;
   const metadata = document.createElement("small");

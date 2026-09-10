@@ -18,6 +18,10 @@ describe("site navigation", () => {
     expect(pageFromPath(path)).toBe(expected);
   });
 
+  it("routes static public-account query URLs to the player view", () => {
+    expect(pageFromPath("/profiles/", "?user=583104927614")).toBe("users");
+  });
+
   it("shows My Profile only for a structurally valid, unexpired session", () => {
     const active = JSON.stringify({ access_token: "rlw_test", expires_unix_millis: 2_000 });
     expect(hasActiveSession(active, 1_000)).toBe(true);

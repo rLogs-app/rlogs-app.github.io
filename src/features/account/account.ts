@@ -235,7 +235,7 @@ async function renderSignedIn(
   if (account.account_id) {
     const publicLink = document.createElement("a");
     publicLink.className = "profile-public-link";
-    publicLink.href = `/users/${account.account_id}/`;
+    publicLink.href = `/profiles/?user=${encodeURIComponent(String(account.account_id))}`;
     publicLink.textContent = "View public account";
     publicIdentity.append(publicLink);
   }
@@ -561,7 +561,7 @@ async function renderClaimedProfileLinks(session: WebSession): Promise<HTMLEleme
     for (const profile of catalog.profiles) {
       const link = document.createElement("a");
       link.className = "linked-profile-card";
-      link.href = `/profiles/${encodeURIComponent(profile.character_id)}/`;
+      link.href = `/profiles/?profile=${encodeURIComponent(profile.character_id)}`;
       link.append(
         element("strong", "", profile.display_name ?? `UID ${profile.character_id}`),
         element("small", "identity-id", `UID ${profile.character_id}`),
@@ -616,7 +616,7 @@ async function renderLinkedProfiles(session: WebSession): Promise<HTMLElement> {
       link.textContent = profile.display_name ?? `UID ${profile.character_id}`;
       const publicLink = document.createElement("a");
       publicLink.className = "profile-public-link";
-      publicLink.href = `/profiles/${encodeURIComponent(profile.character_id)}/`;
+      publicLink.href = `/profiles/?profile=${encodeURIComponent(profile.character_id)}`;
       publicLink.textContent = "View public profile";
       card.append(
         link,

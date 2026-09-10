@@ -15,11 +15,12 @@ const pageTitles: Record<SitePage, string> = {
   optimizer: "Module Optimizer · rLogs",
 };
 
-export function pageFromPath(pathname: string): SitePage {
+export function pageFromPath(pathname: string, search = ""): SitePage {
   const route = pathname.replace(/\/+$/u, "") || "/";
   if (route === "/parses") return "parses";
   if (route === "/leaderboards") return "leaderboards";
   if (route === "/my-parses") return "my-parses";
+  if (route === "/profiles" && new URLSearchParams(search).has("user")) return "users";
   if (route === "/profiles" || route.startsWith("/profiles/")) return "profiles";
   if (route === "/users" || route.startsWith("/users/")) return "users";
   if (route === "/account") return "account";
@@ -46,7 +47,7 @@ export function hasActiveSession(source: string | null, now = Date.now()): boole
 }
 
 export function mountSiteNavigation(): SitePage {
-  const page = pageFromPath(location.pathname);
+  const page = pageFromPath(location.pathname, location.search);
   document.documentElement.dataset.rlogsPage = page;
   document.title = pageTitles[page];
 
