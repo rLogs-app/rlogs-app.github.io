@@ -19,9 +19,10 @@ import {
 } from "../../contracts/public-activity";
 import { fetchPublicRead } from "../../public-api";
 import {
+  localizedSceneName,
   loadParsePresentation,
-  presentationForCatalogEntry,
-  presentationForIdentity,
+  semanticPresentationForCatalogEntry,
+  semanticPresentationForIdentity,
   renderCoreWithOptionalPresentation,
   type ParsePresentationCatalog,
 } from "../parse-browser/parse-presentation";
@@ -116,7 +117,7 @@ export function buildSceneRankings(
   );
   const groups = new Map<string, SceneRanking>();
   const authorized = (entry: PublicParseCatalogEntry): boolean =>
-    presentationForCatalogEntry(presentation, schemaVersion, entry) != null;
+    semanticPresentationForCatalogEntry(presentation, schemaVersion, entry) != null;
   const stimen = ranked.filter((entry) => isStimenRun(entry, authorized(entry)));
   const highestStimenFloorBySeason = new Map<string, number>();
   for (const entry of stimen) {
@@ -167,9 +168,7 @@ export function buildSceneRankings(
       : `${season.cohort}:${season.seasonId ?? "unknown"}:${hasPresentation ? "presented" : "raw"}:scene:${entry.scene_id ?? (hasPresentation ? entry.activity_id ?? entry.scene_name : undefined) ?? "unknown"}:${difficultyKey}`;
     const label = isStimenRun(entry, hasPresentation)
       ? `Stimen Remains · Floor ${highestStimenFloor}`
-      : hasPresentation
-        ? entry.scene_name ?? entry.activity_id ?? rawSceneLabel(entry)
-        : rawSceneLabel(entry);
+      : localizedSceneName(presentation, entry.scene_id);
     const group = groups.get(key) ?? {
       key,
       label,
@@ -263,7 +262,7 @@ export function catalogEntryDifficultyLabel(
   presentation?: ParsePresentationCatalog,
   schemaVersion: 6 | 7 = 6,
 ): string | undefined {
-  const authorized = presentationForCatalogEntry(presentation, schemaVersion, entry) != null;
+  const authorized = semanticPresentationForCatalogEntry(presentation, schemaVersion, entry) != null;
   const family = authorized && entry.difficulty_family ? humanizeIdentifier(entry.difficulty_family) : undefined;
   const tier = entry.difficulty_tier == null ? undefined : entry.difficulty_tier;
   if (family && tier !== undefined) return `${family} ${tier}`;
@@ -299,13 +298,8 @@ export function catalogEntrySceneLabel(
   presentation?: ParsePresentationCatalog,
   schemaVersion: 6 | 7 = 6,
 ): string {
-  return presentationForCatalogEntry(presentation, schemaVersion, entry)
-    ? entry.scene_name ?? entry.activity_id ?? rawSceneLabel(entry)
-    : rawSceneLabel(entry);
-}
-
-function rawSceneLabel(entry: PublicParseCatalogEntry): string {
-  return entry.scene_id == null ? "Scene unresolved" : `Scene #${entry.scene_id}`;
+  void schemaVersion;
+  return localizedSceneName(presentation, entry.scene_id);
 }
 
 function renderPhotoCatalog(catalog: PublicPhotoCatalog, target: HTMLElement): void {
@@ -355,10 +349,8 @@ export function milestonePresentationCopy(
     client_build: entry.client_build ?? null,
     protocol_pack_digest: entry.protocol_pack_digest ?? null,
   } : null;
-  const authorized = presentationForIdentity(presentation, identity) != null;
-  const activity = authorized
-    ? entry.scene_name ?? rawMilestoneSceneLabel(entry.scene_id)
-    : rawMilestoneSceneLabel(entry.scene_id);
+  const authorized = semanticPresentationForIdentity(presentation, identity) != null;
+  const activity = localizedSceneName(presentation, entry.scene_id);
   const achievement = authorized && entry.kind === "master_twenty_dungeon"
     ? `first M${entry.difficulty_tier ?? 20} clear`
     : authorized && entry.kind === "nightmare_raid"
@@ -367,10 +359,6 @@ export function milestonePresentationCopy(
       .filter(Boolean)
       .join(" · ");
   return { activity, achievement };
-}
-
-function rawMilestoneSceneLabel(sceneId: number | null): string {
-  return sceneId == null ? "Scene unresolved" : `Scene #${sceneId}`;
 }
 
 function bindPhotoLikes(): void {

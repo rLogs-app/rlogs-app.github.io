@@ -1,5 +1,5 @@
 export interface ParsePresentationCatalog {
-  schema_version: 4;
+  schema_version: 5;
   locale: "en-US";
   deployment_id: string;
   game_build: string;
@@ -29,9 +29,12 @@ export interface ParsePresentationCatalog {
   imagines: Readonly<Record<string, string>>;
   modules: Readonly<Record<string, string>>;
   module_effects: Readonly<Record<string, string>>;
+  scenes: Readonly<Record<string, string>>;
+  classes: Readonly<Record<string, string>>;
+  specializations: Readonly<Record<string, string>>;
 }
 
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/parse-presentation.en-US.v4.json?schema=4&labels=reviewed-observed-v1&authority=protocol-v1`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/parse-presentation.en-US.v5.json?schema=5&labels=trusted-id-catalog-v1`;
 let request: Promise<ParsePresentationCatalog> | undefined;
 
 export function loadParsePresentation(): Promise<ParsePresentationCatalog> {
@@ -49,17 +52,17 @@ export function loadParsePresentation(): Promise<ParsePresentationCatalog> {
 export function localizedActionName(
   catalog: ParsePresentationCatalog | undefined,
   abilityId: string,
-  publishedName: string | null,
+  _publishedName: string | null,
 ): string {
-  return humanName(catalog?.actions[abilityId] ?? null) ?? humanName(publishedName) ?? unlocalizedLabel("action", abilityId);
+  return humanName(catalog?.actions[abilityId] ?? null) ?? unlocalizedLabel("action", abilityId);
 }
 
 export function localizedEffectName(
   catalog: ParsePresentationCatalog | undefined,
   effectId: string,
-  publishedName: string | null,
+  _publishedName: string | null,
 ): string {
-  return humanName(catalog?.effects[effectId] ?? null) ?? humanName(publishedName) ?? unlocalizedLabel("effect", effectId);
+  return humanName(catalog?.effects[effectId] ?? null) ?? unlocalizedLabel("effect", effectId);
 }
 
 export function localizedImagineName(
@@ -83,6 +86,33 @@ export function localizedModuleEffectName(
   return humanName(catalog?.module_effects[effectId] ?? null) ?? unlocalizedLabel("module effect", effectId);
 }
 
+export function localizedSceneName(
+  catalog: ParsePresentationCatalog | undefined,
+  sceneId: number | string | null | undefined,
+): string {
+  if (sceneId == null) return "Scene unresolved";
+  const id = String(sceneId);
+  return humanName(catalog?.scenes[id] ?? null) ?? `Scene #${id}`;
+}
+
+export function localizedClassName(
+  catalog: ParsePresentationCatalog | undefined,
+  classId: number | string | null | undefined,
+): string | undefined {
+  if (classId == null) return undefined;
+  const id = String(classId);
+  return humanName(catalog?.classes[id] ?? null) ?? `Class #${id}`;
+}
+
+export function localizedSpecializationName(
+  catalog: ParsePresentationCatalog | undefined,
+  specializationId: number | string | null | undefined,
+): string | undefined {
+  if (specializationId == null) return undefined;
+  const id = String(specializationId);
+  return humanName(catalog?.specializations[id] ?? null) ?? `Specialization #${id}`;
+}
+
 export async function renderCoreWithOptionalPresentation<T>(
   coreRequest: Promise<T>,
   presentationRequest: Promise<ParsePresentationCatalog | undefined>,
@@ -98,6 +128,15 @@ export async function renderCoreWithOptionalPresentation<T>(
 }
 
 export function presentationForReport(
+  catalog: ParsePresentationCatalog | undefined,
+  _deploymentId: string,
+  _clientBuild: string,
+  _protocolPackDigest: string | undefined,
+): ParsePresentationCatalog | undefined {
+  return catalog;
+}
+
+export function semanticPresentationForReport(
   catalog: ParsePresentationCatalog | undefined,
   deploymentId: string,
   clientBuild: string,
@@ -122,11 +161,19 @@ export interface CatalogPresentationIdentity {
 
 export function presentationForCatalogEntry(
   catalog: ParsePresentationCatalog | undefined,
+  _schemaVersion: 6 | 7,
+  _entry: CatalogPresentationIdentity,
+): ParsePresentationCatalog | undefined {
+  return catalog;
+}
+
+export function semanticPresentationForCatalogEntry(
+  catalog: ParsePresentationCatalog | undefined,
   schemaVersion: 6 | 7,
   entry: CatalogPresentationIdentity,
 ): ParsePresentationCatalog | undefined {
   return schemaVersion === 7
-    ? presentationForReport(catalog, entry.deployment_id, entry.client_build ?? "", entry.protocol_pack_digest ?? undefined)
+    ? semanticPresentationForReport(catalog, entry.deployment_id, entry.client_build ?? "", entry.protocol_pack_digest ?? undefined)
     : undefined;
 }
 
@@ -138,10 +185,17 @@ export interface NullablePresentationIdentity {
 
 export function presentationForIdentity(
   catalog: ParsePresentationCatalog | undefined,
+  _identity: NullablePresentationIdentity | null | undefined,
+): ParsePresentationCatalog | undefined {
+  return catalog;
+}
+
+export function semanticPresentationForIdentity(
+  catalog: ParsePresentationCatalog | undefined,
   identity: NullablePresentationIdentity | null | undefined,
 ): ParsePresentationCatalog | undefined {
   return identity?.deployment_id != null && identity.client_build != null && identity.protocol_pack_digest != null
-    ? presentationForReport(catalog, identity.deployment_id, identity.client_build, identity.protocol_pack_digest)
+    ? semanticPresentationForReport(catalog, identity.deployment_id, identity.client_build, identity.protocol_pack_digest)
     : undefined;
 }
 
@@ -172,7 +226,7 @@ function unlocalizedLabel(kind: "action" | "effect" | "imagine" | "module" | "mo
 function isCatalog(value: unknown): value is ParsePresentationCatalog {
   return (
     isRecord(value) &&
-    value.schema_version === 4 &&
+    value.schema_version === 5 &&
     value.locale === "en-US" &&
     typeof value.deployment_id === "string" &&
     value.deployment_id.length > 0 &&
@@ -185,7 +239,10 @@ function isCatalog(value: unknown): value is ParsePresentationCatalog {
     isStringRecord(value.effects) &&
     isStringRecord(value.imagines) &&
     isStringRecord(value.modules) &&
-    isStringRecord(value.module_effects)
+    isStringRecord(value.module_effects) &&
+    isStringRecord(value.scenes) &&
+    isStringRecord(value.classes) &&
+    isStringRecord(value.specializations)
   );
 }
 

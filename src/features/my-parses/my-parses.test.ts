@@ -10,8 +10,9 @@ import {
 
 const digest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 const presentation: ParsePresentationCatalog = {
-  schema_version: 4, locale: "en-US", deployment_id: "global", game_build: "24687926",
+  schema_version: 5, locale: "en-US", deployment_id: "global", game_build: "24687926",
   protocol_pack_digest: digest, source: "test", actions: {}, effects: {}, imagines: {}, modules: {}, module_effects: {},
+  scenes: { "32154": "Floor 54" }, classes: {}, specializations: {},
 };
 
 const entry: MyParseCatalogEntry = {
@@ -97,16 +98,15 @@ describe("My Parses", () => {
     expect(filterMyParses([entry], "private")).toEqual([]);
   });
 
-  it("keeps legacy and wrong-identity My Parses raw while preserving safe fields", () => {
+  it("keeps catalog labels for legacy and wrong-identity parses while leaving difficulty raw", () => {
     const wrong = { ...entry, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
     for (const [candidate, schema] of [[entry, 6], [wrong, 7]] as const) {
       const html = renderMyParseEntry(candidate, presentation, schema);
-      expect(html).toContain("Scene #32154");
+      expect(html).toContain("Floor 54");
       expect(html).toContain("Tier 54");
       expect(html).toContain("Participant: 3296036");
-      expect(html).not.toContain("Floor 54");
       expect(html).not.toContain("Challenge");
-      expect(filterMyParses([candidate], "floor", presentation, schema)).toEqual([]);
+      expect(filterMyParses([candidate], "floor", presentation, schema)).toEqual([candidate]);
       expect(filterMyParses([candidate], "32154 unlisted 3296036", presentation, schema)).toEqual([candidate]);
     }
   });

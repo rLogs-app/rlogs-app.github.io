@@ -15,8 +15,9 @@ import type { ParsePresentationCatalog } from "../parse-browser/parse-presentati
 
 const digest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 const presentation: ParsePresentationCatalog = {
-  schema_version: 4, locale: "en-US", deployment_id: "global", game_build: "24687926",
+  schema_version: 5, locale: "en-US", deployment_id: "global", game_build: "24687926",
   protocol_pack_digest: digest, source: "test", actions: {}, effects: {}, imagines: {}, modules: {}, module_effects: {},
+  scenes: { "13021": "Clash! Field of Forgotten Illusions", "6515": "Cursed Radiant Tomb" }, classes: { "1": "Stormblade", "4": "Wind Knight" }, specializations: { "101": "Iaido Slash Spec", "107": "Vanguard Spec" },
 };
 describe("public profile routes", () => {
   it("uses the observable character UID as the canonical URL", () => {
@@ -91,7 +92,7 @@ describe("public profile routes", () => {
     )).resolves.toEqual(catalog);
   });
 
-  it("shows and searches observed semantics only under their exact schema 2 authority", () => {
+  it("shows catalog labels across identities while keeping difficulty semantics exact", () => {
     const character: ObservedCharacterEntry = {
       observed_character_key: `obs_${"a".repeat(32)}`,
       identity_kind: "legacy_name_observation",
@@ -139,18 +140,18 @@ describe("public profile routes", () => {
       reports: [{ ...character.reports[0]!, deployment_id: null, client_build: null, protocol_pack_digest: null }],
     };
     for (const [candidate, schema] of [[wrong, 2], [unavailable, 2], [character, 1]] as const) {
-      expect(observedClassLabel(candidate, presentation, schema)).toBe("Class #4 / Specialization #107");
-      expect(observedReportSceneLabel(candidate.reports[0]!, presentation, schema)).toBe("Scene #6515");
+      expect(observedClassLabel(candidate, presentation, schema)).toBe("Wind Knight / Vanguard Spec");
+      expect(observedReportSceneLabel(candidate.reports[0]!, presentation, schema)).toBe("Cursed Radiant Tomb");
       expect(observedReportDifficultyLabel(candidate.reports[0]!, presentation, schema)).toBe("Tier 5");
       const searchable = searchableDirectoryEntry({ kind: "observed", character: candidate }, presentation, schema);
       expect(searchable).toContain("captured player");
       expect(searchable).toContain("4 107 global north-america");
-      expect(searchable).not.toContain("wind knight");
-      expect(searchable).not.toContain("vanguard spec");
+      expect(searchable).toContain("wind knight");
+      expect(searchable).toContain("vanguard spec");
     }
 
     expect(observedClassLabel({ ...character, reports: wrong.reports }, presentation, 2)).toBe("Wind Knight / Vanguard Spec");
-    expect(observedReportSceneLabel(wrong.reports[0]!, presentation, 2)).toBe("Scene #6515");
+    expect(observedReportSceneLabel(wrong.reports[0]!, presentation, 2)).toBe("Cursed Radiant Tomb");
     expect(observedReportDifficultyLabel({ ...character.reports[0]!, difficulty_tier: null }, presentation, 2)).toBe("Master");
     expect(observedReportDifficultyLabel({ ...character.reports[0]!, difficulty_family: null, difficulty_tier: null }, presentation, 2)).toBeUndefined();
   });

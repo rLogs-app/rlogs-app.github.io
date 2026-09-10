@@ -2,17 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   localizedActionName,
+  localizedClassName,
   localizedEffectName,
   localizedImagineName,
   localizedModuleEffectName,
   localizedModuleName,
+  localizedSceneName,
+  localizedSpecializationName,
   presentationForReport,
+  semanticPresentationForReport,
   renderCoreWithOptionalPresentation,
   type ParsePresentationCatalog,
 } from "./parse-presentation";
 
 const catalog: ParsePresentationCatalog = {
-  schema_version: 4,
+  schema_version: 5,
   locale: "en-US",
   deployment_id: "global",
   game_build: "24687926",
@@ -23,6 +27,9 @@ const catalog: ParsePresentationCatalog = {
   imagines: { "3948": "Battle Imagine - Rorola" },
   modules: { "5500104": "Excellent Attack Module - Premium" },
   module_effects: { "1110": "Strength Boost" },
+  scenes: { "13021": "Clash! Field of Forgotten Illusions" },
+  classes: { "1": "Stormblade" },
+  specializations: { "101": "Iaido Slash Spec" },
 };
 
 describe("parse presentation", () => {
@@ -71,13 +78,13 @@ describe("parse presentation", () => {
     );
   });
 
-  it("applies the same gate to catalog strings and falls through to a safe report label", () => {
+  it("rejects unsafe catalog strings without borrowing report-supplied labels", () => {
     const unsafeCatalog: ParsePresentationCatalog = {
       ...catalog,
       actions: { "1202": "博伊斯ATK_02" },
       effects: { "4502": "Player_SKILL_02_BD" },
     };
-    expect(localizedActionName(unsafeCatalog, "1202", "Raincall Surge")).toBe("Raincall Surge");
+    expect(localizedActionName(unsafeCatalog, "1202", "Raincall Surge")).toBe("Unlocalized combat action #1202");
     expect(localizedEffectName(unsafeCatalog, "4502", null)).toBe(
       "Unlocalized combat effect #4502",
     );
@@ -89,25 +96,29 @@ describe("parse presentation", () => {
     );
   });
 
-  it("only exposes a catalog to its exact deployment, client build, and protocol digest", () => {
-    expect(presentationForReport(catalog, "global", "24687926", "sha256:localization-authority")).toBe(catalog);
-    expect(presentationForReport(catalog, "starsea", "24687926", "sha256:localization-authority")).toBeUndefined();
-    expect(presentationForReport(catalog, "global", "24687927", "sha256:localization-authority")).toBeUndefined();
-    expect(presentationForReport(catalog, "global", "24687926", "sha256:other")).toBeUndefined();
-    expect(presentationForReport(catalog, "global", "24687926", undefined)).toBeUndefined();
+  it.each([
+    ["older build", "global", "24252055", "sha256:older"],
+    ["equal build with wrong digest", "global", "24687926", "sha256:other"],
+    ["newer build", "global", "24699999", "sha256:newer"],
+    ["missing identity", "", "", undefined],
+    ["another deployment", "cn", "24687926", "sha256:other"],
+  ])("exposes trusted ID labels for %s", (_case, deployment, build, digest) => {
+    const resolved = presentationForReport(catalog, deployment, build, digest);
+    expect(localizedActionName(resolved, "2900840", null)).toBe("Arcane! Divine Reliance");
+    expect(localizedEffectName(resolved, "3003052", null)).toBe("Harmony Grace");
+    expect(localizedImagineName(resolved, "3948")).toBe("Battle Imagine - Rorola");
+    expect(localizedModuleName(resolved, "5500104")).toBe("Excellent Attack Module - Premium");
+    expect(localizedModuleEffectName(resolved, "1110")).toBe("Strength Boost");
+    expect(localizedSceneName(resolved, 13021)).toBe("Clash! Field of Forgotten Illusions");
+    expect(localizedClassName(resolved, 1)).toBe("Stormblade");
+    expect(localizedSpecializationName(resolved, 101)).toBe("Iaido Slash Spec");
   });
 
-  it("fails closed instead of borrowing labels across builds", () => {
-    const mismatched = presentationForReport(catalog, "global", "24687927", "sha256:localization-authority");
-    expect(localizedActionName(mismatched, "2900840", "Skill 2900840")).toBe(
-      "Unlocalized combat action #2900840",
-    );
-    expect(localizedEffectName(mismatched, "3003052", "Effect 3003052")).toBe(
-      "Unlocalized combat effect #3003052",
-    );
-    expect(localizedImagineName(mismatched, "3948")).toBe("Unlocalized combat imagine #3948");
-    expect(localizedModuleName(mismatched, "5500104")).toBe("Unlocalized combat module #5500104");
-    expect(localizedModuleEffectName(mismatched, "1110")).toBe("Unlocalized combat module effect #1110");
+  it("keeps semantic authorization exact while labels remain available", () => {
+    expect(semanticPresentationForReport(catalog, "global", "24687926", "sha256:localization-authority")).toBe(catalog);
+    expect(semanticPresentationForReport(catalog, "global", "24252055", "sha256:older")).toBeUndefined();
+    expect(semanticPresentationForReport(catalog, "global", "24687926", "sha256:other")).toBeUndefined();
+    expect(semanticPresentationForReport(catalog, "cn", "24687926", "sha256:localization-authority")).toBeUndefined();
   });
 
   it("renders core data before an optional presentation request settles", async () => {

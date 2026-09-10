@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProfilePresentationCatalog } from "../profiles/profile-presentation";
+import type { ModuleSolution, OptimizerCatalog } from "./optimizer-types";
 import {
   loadoutLinkSummary,
   moduleCardModel,
+  moduleSolutionScoreSummary,
   optimizerPresentationIdentityForPublishedSelection,
   optimizerPresentationForIdentity,
+  scoreModuleSet,
   sortModuleInventory,
 } from "./optimizer-presentation";
 
@@ -21,6 +24,37 @@ const catalog = {
 } as unknown as ProfilePresentationCatalog;
 
 describe("module optimizer presentation", () => {
+  it("shows the optimizer-computed score and ordering priority with deterministic formatting", () => {
+    const solution = {
+      score: 12_345,
+      ranking_score: 12_345,
+    } as ModuleSolution;
+    expect(moduleSolutionScoreSummary(solution)).toBe("Score 12,345");
+    expect(moduleSolutionScoreSummary({
+      ...solution,
+      ranking_score: 23_456,
+    })).toBe("Score 12,345 · Priority 23,456");
+  });
+
+  it("scores individual modules with the same catalog thresholds and Link power as the app", () => {
+    const scoringCatalog = {
+      link_power: Array.from({ length: 21 }, (_, link) => link * 5),
+      attributes: [
+        { id: 2_104, thresholds: [5, 10], fight_values: [100, 250] },
+        { id: 1_111, thresholds: [3, 8], fight_values: [40, 120] },
+      ],
+    } as OptimizerCatalog;
+    expect(scoreModuleSet([{
+      instance_id: "scored",
+      config_id: 5_500_103,
+      quality: 4,
+      parts: [
+        { part_id: 2_104, initial_link_points: 10 },
+        { part_id: 1_111, initial_link_points: 3 },
+      ],
+    }], scoringCatalog)).toBe(355);
+  });
+
   it("turns a raw module into localized, readable card data", () => {
     expect(moduleCardModel({
       instance_id: "9876543210123456",

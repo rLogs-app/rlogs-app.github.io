@@ -10,8 +10,9 @@ import { regionalSeason } from "./regional-seasons";
 
 const digest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 const presentation: ParsePresentationCatalog = {
-  schema_version: 4, locale: "en-US", deployment_id: "global", game_build: "24687926",
+  schema_version: 5, locale: "en-US", deployment_id: "global", game_build: "24687926",
   protocol_pack_digest: digest, source: "test", actions: {}, effects: {}, imagines: {}, modules: {}, module_effects: {},
+  scenes: { "1631": "Tina's Mindrealm", "1633": "Chaotic - Tina's Mindrealm", "6500": "Chaotic Realm", "30120": "Stimen Remains - Floor 20", "30121": "Stimen Remains - Floor 21" }, classes: {}, specializations: {},
 };
 
 const entry = (sceneId: number, sceneName: string, duration: number): PublicParseCatalogEntry => ({
@@ -91,7 +92,7 @@ describe("home rankings", () => {
     ];
     const rankings = buildSceneRankings(legacyEntries, presentation, 6);
     expect(rankings).toHaveLength(2);
-    expect(rankings.map((group) => group.label)).toEqual(["Scene #30120", "Scene #30121"]);
+    expect(rankings.map((group) => group.label)).toEqual(["Stimen Remains - Floor 20", "Stimen Remains - Floor 21"]);
     expect(rankings.every((group) => group.floor === undefined)).toBe(true);
   });
 
@@ -105,15 +106,15 @@ describe("home rankings", () => {
     };
     const rankings = buildSceneRankings([exact, wrong], presentation, 7);
     expect(rankings).toHaveLength(2);
-    expect(rankings.map((group) => group.label).sort()).toEqual(["Scene #1631", "Tina's Mindrealm"]);
+    expect(rankings.map((group) => group.label).sort()).toEqual(["Tina's Mindrealm", "Tina's Mindrealm"]);
 
     const name = catalogEntrySceneLabel(wrong, presentation, 7);
-    expect(name).toBe("Scene #1631");
+    expect(name).toBe("Tina's Mindrealm");
     expect(name).not.toContain("Spoofed Tina Name");
     expect(name).not.toContain("synthetic.activity");
   });
 
-  it("renders a recent parse name only when its exact presentation identity is authorized", () => {
+  it("renders catalog scene labels across identities while keeping difficulty semantics exact", () => {
     const exact = { ...entry(1633, "Chaotic - Tina's Mindrealm", 10), difficulty_family: "master", difficulty_tier: 17 };
     const authorized = parseFeedRow(exact, presentation, 7);
     expect(authorized).toContain("Chaotic - Tina's Mindrealm");
@@ -125,10 +126,10 @@ describe("home rankings", () => {
       ...exact,
       protocol_pack_digest: `sha256:${"f".repeat(64)}`,
     };
-    expect(parseFeedRow(wrongDigest, presentation, 7)).toContain("Scene #1633");
+    expect(parseFeedRow(wrongDigest, presentation, 7)).toContain("Chaotic - Tina's Mindrealm");
     expect(parseFeedRow(wrongDigest, presentation, 7)).toContain("Tier 17");
     expect(parseFeedRow(wrongDigest, presentation, 7)).not.toContain("Master 17");
-    expect(parseFeedRow(exact, presentation, 6)).toContain("Scene #1633");
+    expect(parseFeedRow(exact, presentation, 6)).toContain("Chaotic - Tina's Mindrealm");
   });
 
   it("omits difficulty from a recent parse when no trusted tier or family exists", () => {
@@ -181,8 +182,7 @@ describe("home milestones", () => {
     const unavailable = { ...milestone, deployment_id: null, client_build: null, protocol_pack_digest: null };
     for (const [candidate, schema] of [[wrong, 2], [unavailable, 2], [milestone, 1]] as const) {
       const copy = milestonePresentationCopy(candidate, presentation, schema);
-      expect(copy).toEqual({ activity: "Scene #6500", achievement: "Tier 20 · verified clear" });
-      expect(`${copy.activity} ${copy.achievement}`).not.toContain("Chaotic Realm");
+      expect(copy).toEqual({ activity: "Chaotic Realm", achievement: "Tier 20 · verified clear" });
       expect(`${copy.activity} ${copy.achievement}`).not.toContain("Nightmare");
     }
   });
@@ -198,8 +198,7 @@ describe("home milestones", () => {
       protocol_pack_digest: null,
     };
     const copy = milestonePresentationCopy(unavailable, presentation, 2);
-    expect(copy).toEqual({ activity: "Scene #6500", achievement: "verified clear" });
-    expect(JSON.stringify(copy)).not.toContain("Chaotic Realm");
+    expect(copy).toEqual({ activity: "Chaotic Realm", achievement: "verified clear" });
     expect(JSON.stringify(copy)).not.toContain("Nightmare");
 
     expect(milestonePresentationCopy({

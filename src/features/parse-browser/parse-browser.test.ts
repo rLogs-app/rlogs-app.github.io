@@ -59,17 +59,20 @@ const load = <T>(name: string): T => JSON.parse(
 const siteStyles = readFileSync(new URL("../../styles/site.css", import.meta.url), "utf8");
 const localizationDigest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 const catalogPresentation: ParsePresentationCatalog = {
-  schema_version: 4,
+  schema_version: 5,
   locale: "en-US",
   deployment_id: "global",
   game_build: "24687926",
   protocol_pack_digest: localizationDigest,
   source: "test",
-  actions: {},
+  actions: { "2203291": "Falcon Strike / Falcon Lightning Strike" },
   effects: {},
   imagines: { "3948": "Battle Imagine - Rorola" },
   modules: { "5500104": "Excellent Attack Module - Premium" },
   module_effects: { "1110": "Strength Boost" },
+  scenes: { "30120": "Stimen Remains - Floor 20" },
+  classes: {},
+  specializations: {},
 };
 
 const parse: PublicParseCatalogEntry = {
@@ -251,7 +254,7 @@ describe("parse search", () => {
     expect(filterSearch([parse], "stimen europe", catalogPresentation, 7)).toEqual([]);
   });
 
-  it("exposes catalog semantics only for an exact current presentation identity", () => {
+  it("exposes catalog labels across identities while keeping semantics exact", () => {
     const exact = renderCatalogEntry(parse, catalogPresentation, 7);
     expect(exact).toContain("Stimen Remains - Floor 20");
     expect(exact).toContain("Challenge 20");
@@ -259,11 +262,10 @@ describe("parse search", () => {
     const wrong = { ...parse, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
     for (const [candidate, schema] of [[wrong, 7], [parse, 6]] as const) {
       const html = renderCatalogEntry(candidate, catalogPresentation, schema);
-      expect(html).toContain("Scene #30120");
+      expect(html).toContain("Stimen Remains - Floor 20");
       expect(html).toContain("Tier 20");
-      expect(html).not.toContain("Stimen");
       expect(html).not.toContain("Challenge");
-      expect(filterSearch([candidate], "stimen", catalogPresentation, schema)).toEqual([]);
+      expect(filterSearch([candidate], "stimen", catalogPresentation, schema)).toEqual([candidate]);
       expect(filterSearch([candidate], "30120 global", catalogPresentation, schema)).toEqual([candidate]);
     }
   });
@@ -623,7 +625,7 @@ describe("parse search", () => {
     };
 
     const presentation: ParsePresentationCatalog = {
-      schema_version: 4,
+      schema_version: 5,
       locale: "en-US",
       deployment_id: "global",
       game_build: "24687926",
@@ -633,22 +635,26 @@ describe("parse search", () => {
         "2900840": "Arcane! Divine Reliance",
         "2220329107": "Canonical Falcon Strike",
       },
-      effects: {},
+      effects: { "3003052": "Harmony Grace" },
       imagines: { "3948": "Battle Imagine - Rorola" },
       modules: {},
       module_effects: {},
+      scenes: {},
+      classes: {},
+      specializations: {},
     };
     const html = renderReport(report, 0, reconciliation, null, presentation);
     expect(html).toContain("Combat timeline");
     expect(html).toContain("Skill contribution");
     expect(html).toContain("Falcon Strike");
     expect(html).toContain("5 casts · 4 hits");
-    expect(html).toContain("Falcon Lightning Strike");
+    expect(html).toContain("Unlocalized combat action #2220329109");
     expect(html).toContain("Other (2)");
     expect(html).toContain("data-skill-other-trigger");
     expect(html).toContain("View 2 other skill details for MarieRose");
     expect(html).toContain("Other skills · MarieRose");
-    expect(html).toContain("Grouped Skill 7");
+    expect(html).not.toContain("Grouped Skill 7");
+    expect(html).toContain("Unlocalized combat action");
     expect(html).toContain("rDPS calculations");
     expect(html).toContain("Harmony Grace");
 
@@ -672,8 +678,7 @@ describe("parse search", () => {
     const wrongReconciliationDigest = structuredClone(reconciliation);
     wrongReconciliationDigest.reports[0]!.protocol_pack_digest = "sha256:wrong-canonical-authority";
     const wrongReconciliationHtml = renderReport(report, 0, wrongReconciliationDigest, null, presentation);
-    expect(wrongReconciliationHtml).toContain("Unlocalized combat action #2220329107");
-    expect(wrongReconciliationHtml).not.toContain("Canonical Falcon Strike");
+    expect(wrongReconciliationHtml).toContain("Canonical Falcon Strike");
     const singlePovHtml = renderReport(report, 0, null, null, presentation);
     expect(singlePovHtml).toContain("Arcane! Divine Reliance");
     const wrongDigest = structuredClone(report);
@@ -681,9 +686,8 @@ describe("parse search", () => {
     wrongDigest.runs[0]!.activity_id = "derived.secret-activity";
     wrongDigest.runs[0]!.difficulty_family = "derived-secret-difficulty";
     const wrongDigestHtml = renderReport(wrongDigest, 0, null, null, presentation);
-    expect(wrongDigestHtml).toContain("Unlocalized combat action #2900840");
-    expect(wrongDigestHtml).not.toContain("Arcane! Divine Reliance");
-    expect(wrongDigestHtml).not.toContain("Falcon Strike");
+    expect(wrongDigestHtml).toContain("Arcane! Divine Reliance");
+    expect(wrongDigestHtml).toContain("Falcon Strike");
     expect(wrongDigestHtml).not.toContain("Stimen Remains - Floor 20");
     expect(wrongDigestHtml).not.toContain("derived.secret-activity");
     expect(wrongDigestHtml).not.toContain("derived-secret-difficulty");
@@ -698,8 +702,7 @@ describe("parse search", () => {
     missingDigest.runs[0]!.activity_id = "derived.missing-digest-activity";
     missingDigest.runs[0]!.difficulty_family = "derived-missing-digest-difficulty";
     const missingDigestHtml = renderReport(missingDigest, 0, null, null, presentation);
-    expect(missingDigestHtml).toContain("Unlocalized combat action #2900840");
-    expect(missingDigestHtml).not.toContain("Arcane! Divine Reliance");
+    expect(missingDigestHtml).toContain("Arcane! Divine Reliance");
     expect(missingDigestHtml).not.toContain("derived.missing-digest-activity");
     expect(missingDigestHtml).not.toContain("derived-missing-digest-difficulty");
     expect(missingDigestHtml).not.toContain("Derived Missing Digest Difficulty");
@@ -710,7 +713,8 @@ describe("parse search", () => {
     expect(missingDigestHtml).toContain("Class #4 / Specialization #2");
     expect(html).toContain("Evidence coverage");
     expect(html).toContain("Cross-vantage reconciled");
-    expect(html).toContain("Marksman / Falconry");
+    expect(html).not.toContain("Marksman / Falconry");
+    expect(html).toContain("Class #4 / Specialization #2");
     expect(html).toContain(`Run ID</small><code>${runGroupId}`);
     expect(html).toContain(`Report ID</small><code>${reportId}`);
     expect(html).toContain('data-party-sort="adps" aria-sort="descending"');
@@ -1944,7 +1948,7 @@ describe("damage-rate labels", () => {
 });
 
 describe("party rune and loadout summaries", () => {
-  it("localizes exact-build skills, Imagines, modules, and rune effects once and fails closed across identities", () => {
+  it("localizes known skills, Imagines, modules, and rune effects across identities", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     report.client_build = catalogPresentation.game_build;
     report.protocol_pack_digest = catalogPresentation.protocol_pack_digest;
@@ -1965,12 +1969,11 @@ describe("party rune and loadout summaries", () => {
     expect(exact).not.toContain("Time-gated profile evidence");
 
     report.protocol_pack_digest = "sha256:wrong-build-identity";
-    const unavailable = renderReport(report, 0, null, null, presentation);
-    expect(unavailable).toContain("Unlocalized combat action #2203291");
-    expect(unavailable).toContain("Unlocalized combat imagine #3948");
-    expect(unavailable).toContain("Unlocalized combat module #5500104");
-    expect(unavailable).toContain("Unlocalized combat module effect #1110");
-    expect(unavailable).not.toContain("Battle Imagine - Rorola");
+    const mismatched = renderReport(report, 0, null, null, presentation);
+    expect(mismatched).toContain("Falcon Strike / Falcon Lightning Strike");
+    expect(mismatched).toContain("Battle Imagine - Rorola");
+    expect(mismatched).toContain("Excellent Attack Module - Premium");
+    expect(mismatched).toContain("Strength Boost");
   });
 
   it("uses reconciled selections for matching POVs without merging conflicts", () => {

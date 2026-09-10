@@ -1,5 +1,5 @@
 import type { ProfilePresentationCatalog, PresentationRecord } from "../profiles/profile-presentation";
-import type { ModuleCandidate } from "./optimizer-types";
+import type { ModuleCandidate, ModuleSolution, OptimizerCatalog } from "./optimizer-types";
 
 export interface OptimizerPresentationCatalog extends ProfilePresentationCatalog {
   optimizer_label_catalog_provenance: string;
@@ -146,4 +146,38 @@ function moduleQualityName(
 
 function shortInstanceId(value: string): string {
   return value.length <= 8 ? `#${value}` : `…${value.slice(-6)}`;
+}
+
+export function moduleSolutionScoreSummary(solution: ModuleSolution): string {
+  const score = solution.score.toLocaleString("en-US");
+  return solution.ranking_score === solution.score
+    ? `Score ${score}`
+    : `Score ${score} · Priority ${solution.ranking_score.toLocaleString("en-US")}`;
+}
+
+export function scoreModuleSet(
+  modules: readonly ModuleCandidate[],
+  catalog: OptimizerCatalog,
+): number {
+  const totals = new Map<number, number>();
+  let totalLink = 0;
+  for (const module of modules) {
+    for (const part of module.parts) {
+      const link = Math.max(0, part.initial_link_points ?? 0);
+      totalLink += link;
+      totals.set(part.part_id, (totals.get(part.part_id) ?? 0) + link);
+    }
+  }
+  const linkIndex = Math.min(totalLink, catalog.link_power.length - 1);
+  let score = catalog.link_power[linkIndex] ?? 0;
+  for (const attribute of catalog.attributes) {
+    const total = totals.get(attribute.id) ?? 0;
+    for (let index = attribute.thresholds.length - 1; index >= 0; index -= 1) {
+      if (total >= (attribute.thresholds[index] ?? Number.POSITIVE_INFINITY)) {
+        score += attribute.fight_values[index] ?? 0;
+        break;
+      }
+    }
+  }
+  return score;
 }

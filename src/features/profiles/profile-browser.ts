@@ -13,8 +13,11 @@ import {
   isObservedCharacterCatalog,
 } from "../../contracts/public-characters";
 import {
+  localizedClassName,
+  localizedSceneName,
+  localizedSpecializationName,
   loadParsePresentation,
-  presentationForIdentity,
+  semanticPresentationForIdentity,
   type ParsePresentationCatalog,
 } from "../parse-browser/parse-presentation";
 
@@ -195,15 +198,12 @@ export function searchableDirectoryEntry(
   presentation?: ParsePresentationCatalog,
   observedSchemaVersion: 1 | 2 = 1,
 ): string {
-  const observedPresentation = entry.kind === "observed"
-    ? presentationForObservedCharacter(presentation, observedSchemaVersion, entry.character)
-    : undefined;
   const values = entry.kind === "claimed"
     ? [entry.profile.display_name, entry.profile.character_id, entry.profile.deployment, entry.profile.region, entry.profile.realm, entry.profile.world]
     : [
       entry.character.display_name,
-      observedPresentation ? entry.character.class_name : undefined,
-      observedPresentation ? entry.character.specialization_name : undefined,
+      localizedClassName(presentation, entry.character.class_id),
+      localizedSpecializationName(presentation, entry.character.specialization_id),
       entry.character.class_id == null ? undefined : String(entry.character.class_id),
       entry.character.specialization_id == null ? undefined : String(entry.character.specialization_id),
       entry.character.deployment,
@@ -289,10 +289,11 @@ export function observedClassLabel(
   presentation?: ParsePresentationCatalog,
   schemaVersion: 1 | 2 = 1,
 ): string {
-  if (presentationForObservedCharacter(presentation, schemaVersion, character)) {
-    return [character.class_name, character.specialization_name].filter(Boolean).join(" / ") || rawObservedClassLabel(character);
-  }
-  return rawObservedClassLabel(character);
+  void schemaVersion;
+  return [
+    localizedClassName(presentation, character.class_id),
+    localizedSpecializationName(presentation, character.specialization_id),
+  ].filter(Boolean).join(" / ") || "Class not observed";
 }
 
 export function observedReportSceneLabel(
@@ -305,9 +306,8 @@ export function observedReportSceneLabel(
     client_build: report.client_build ?? null,
     protocol_pack_digest: report.protocol_pack_digest ?? null,
   } : null;
-  return presentationForIdentity(presentation, identity)
-    ? report.scene_name ?? rawObservedSceneLabel(report.scene_id)
-    : rawObservedSceneLabel(report.scene_id);
+  void identity;
+  return localizedSceneName(presentation, report.scene_id);
 }
 
 export function observedReportDifficultyLabel(
@@ -328,32 +328,11 @@ function presentationForObservedReport(
   schemaVersion: 1 | 2,
   report: ObservedCharacterReportReference,
 ): ParsePresentationCatalog | undefined {
-  return schemaVersion === 2 ? presentationForIdentity(presentation, {
+  return schemaVersion === 2 ? semanticPresentationForIdentity(presentation, {
     deployment_id: report.deployment_id ?? null,
     client_build: report.client_build ?? null,
     protocol_pack_digest: report.protocol_pack_digest ?? null,
   }) : undefined;
-}
-
-function presentationForObservedCharacter(
-  presentation: ParsePresentationCatalog | undefined,
-  schemaVersion: 1 | 2,
-  character: ObservedCharacterEntry,
-): ParsePresentationCatalog | undefined {
-  return schemaVersion === 2
-    ? presentationForIdentity(presentation, character.presentation_authority)
-    : undefined;
-}
-
-function rawObservedClassLabel(character: ObservedCharacterEntry): string {
-  return [
-    character.class_id == null ? undefined : `Class #${character.class_id}`,
-    character.specialization_id == null ? undefined : `Specialization #${character.specialization_id}`,
-  ].filter(Boolean).join(" / ") || "Class not observed";
-}
-
-function rawObservedSceneLabel(sceneId: number | null): string {
-  return sceneId == null ? "Scene unresolved" : `Scene #${sceneId}`;
 }
 
 function humanize(value: string): string {

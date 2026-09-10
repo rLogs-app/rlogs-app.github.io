@@ -27,8 +27,10 @@ import {
 import {
   loadoutLinkSummary,
   moduleCardModel,
+  moduleSolutionScoreSummary,
   optimizerPresentationIdentityForPublishedSelection,
   optimizerPresentationForIdentity,
+  scoreModuleSet,
   sortModuleInventory,
   type OptimizerPresentationCatalog,
   type OptimizerPresentationIdentity,
@@ -574,7 +576,7 @@ function solutionCard(
   );
   heading.append(identity);
 
-  const attributes = optimizerLinkSummary(solution.modules);
+  const attributes = optimizerLinkSummary(solution.modules, undefined, solution);
   const modules = element("div", "optimizer-solution-modules");
   for (const module of solution.modules) {
     modules.append(moduleCard(module, currentInstanceIds.indexOf(module.instance_id) + 1 || undefined, true));
@@ -605,6 +607,7 @@ function renderInventoryPreview(): void {
 function optimizerLinkSummary(
   modules: readonly ModuleCandidate[],
   id?: string,
+  solution?: ModuleSolution,
 ): HTMLElement {
   const root = element("div", "optimizer-loadout-link-summary");
   if (id) root.id = id;
@@ -618,6 +621,11 @@ function optimizerLinkSummary(
     appendOptimizerIcon(chip, effect.icon, effect.name, "optimizer-result-effect-icon");
     chip.append(element("span", "", `${effect.name} · ${effect.link} Link`));
     root.append(chip);
+  }
+  if (solution) {
+    root.append(element("strong", "optimizer-score-summary", moduleSolutionScoreSummary(solution)));
+  } else if (catalog) {
+    root.append(element("strong", "optimizer-score-summary", `Score ${formatNumber(scoreModuleSet(modules, catalog))}`));
   }
   return root;
 }
@@ -654,7 +662,11 @@ function moduleCard(module: ModuleCandidate, equippedSlot?: number, compact = fa
   const copy = element("div", "optimizer-module-card-copy");
   copy.append(
     element("strong", "", model.name),
-    element("small", "", `${model.quality} · ${model.totalLink} total Link`),
+    element(
+      "small",
+      "",
+      `${model.quality} · ${model.totalLink} total Link${catalog ? ` · Score ${formatNumber(scoreModuleSet([module], catalog))}` : ""}`,
+    ),
   );
   top.append(icon, copy);
   if (equippedSlot != null) top.append(element("span", "optimizer-equipped-badge", `Equipped · Slot ${equippedSlot}`));
@@ -829,7 +841,7 @@ function element<K extends keyof HTMLElementTagNameMap>(
 }
 
 function formatNumber(value: number): string {
-  return value.toLocaleString();
+  return value.toLocaleString("en-US");
 }
 
 function formatBigInt(value: bigint): string {

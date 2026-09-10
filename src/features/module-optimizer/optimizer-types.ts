@@ -25,6 +25,7 @@ export interface OptimizerCatalog {
   scoring_revision: string;
   client_builds: string[];
   attributes: AttributeCatalogEntry[];
+  link_power: number[];
   combination_sizes: number[];
   default_max_solutions: number;
 }

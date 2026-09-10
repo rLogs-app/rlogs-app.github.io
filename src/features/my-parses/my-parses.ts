@@ -16,8 +16,9 @@ import {
 } from "../parse-browser/parse-browser";
 import { createParseDetailModal } from "../parse-browser/parse-detail-modal";
 import {
+  localizedSceneName,
   loadParsePresentation,
-  presentationForCatalogEntry,
+  semanticPresentationForCatalogEntry,
   type ParsePresentationCatalog,
 } from "../parse-browser/parse-presentation";
 import { fetchPublicRead } from "../../public-api";
@@ -261,9 +262,9 @@ export function filterMyParses(
   const terms = search.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
   if (!terms.length) return entries;
   return entries.filter((entry) => {
-    const authorized = Boolean(presentationForCatalogEntry(presentation, schemaVersion, entry));
+    const authorized = Boolean(semanticPresentationForCatalogEntry(presentation, schemaVersion, entry));
     const value = [
-      authorized ? entry.scene_name : undefined,
+      localizedSceneName(presentation, entry.scene_id),
       authorized ? entry.activity_id : undefined,
       authorized ? entry.activity_family_id : undefined,
       entry.region_id,
@@ -293,7 +294,7 @@ export function renderMyParseEntry(
     ? "Submitted by you"
     : `Participant${entry.matched_character_ids.length === 1 ? "" : "s"}: ${entry.matched_character_ids.join(", ")}`;
   const visibility = entry.submitted_by_you
-    ? `<label class="my-parse-visibility"><span>Visibility</span><select data-visibility-report="${escapeHtml(entry.report_id)}" data-current-visibility="${entry.visibility}" aria-label="Visibility for ${escapeHtml(presentationForCatalogEntry(presentation, schemaVersion, entry) ? entry.scene_name ?? entry.report_id : entry.scene_id == null ? entry.report_id : `Scene #${entry.scene_id}`)}"><option value="public"${entry.visibility === "public" ? " selected" : ""}>Public</option><option value="unlisted"${entry.visibility === "unlisted" ? " selected" : ""}>Unlisted</option><option value="private"${entry.visibility === "private" ? " selected" : ""}>Private</option></select></label>`
+    ? `<label class="my-parse-visibility"><span>Visibility</span><select data-visibility-report="${escapeHtml(entry.report_id)}" data-current-visibility="${entry.visibility}" aria-label="Visibility for ${escapeHtml(localizedSceneName(presentation, entry.scene_id))}"><option value="public"${entry.visibility === "public" ? " selected" : ""}>Public</option><option value="unlisted"${entry.visibility === "unlisted" ? " selected" : ""}>Unlisted</option><option value="private"${entry.visibility === "private" ? " selected" : ""}>Private</option></select></label>`
     : `<span class="status-chip neutral">${escapeHtml(title(entry.visibility))}</span>`;
   return `<article class="my-parse-entry">
     <div class="my-parse-entry-meta">${visibility}<span>${escapeHtml(relationship)}</span></div>

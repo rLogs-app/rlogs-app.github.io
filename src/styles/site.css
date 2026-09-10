@@ -4029,6 +4029,17 @@ footer {
   height: 18px;
 }
 
+.optimizer-score-summary {
+  margin-left: auto;
+  padding: 5px 8px;
+  border: 1px solid rgb(92 228 212 / 28%);
+  border-radius: 6px;
+  color: var(--accent);
+  background: rgb(92 228 212 / 6%);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
 .account-token-output {
   display: grid;
   gap: 0.75rem;
