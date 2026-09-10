@@ -27,9 +27,15 @@ describe("parse presentation label gate", () => {
 
   it("ships complete observed-action and rDPS-effect coverage without unsafe labels", () => {
     const catalog = JSON.parse(readFileSync(
-      resolve("public/data/bpsr/parse-presentation.en-US.v1.json"),
+      resolve("public/data/bpsr/parse-presentation.en-US.v2.json"),
       "utf8",
     ));
+    expect(catalog).toMatchObject({
+      schema_version: 2,
+      deployment_id: "global",
+      game_build: "24687926",
+      protocol_pack_digest: "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+    });
     expect(catalog.coverage).toMatchObject({
       observed_action_count: 171,
       localized_observed_action_count: 171,

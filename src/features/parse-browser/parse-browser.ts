@@ -340,15 +340,38 @@ export function renderReport(
   }
   const run = report.runs.find((candidate) => candidate.run_index === runIndex) ?? report.runs[0];
   if (!run) return `<p class="empty-state">${escapeHtml(messages.message("parse.report.empty"))}</p>`;
-  const reportPresentation = presentationForReport(
-    presentation,
-    report.deployment_id,
-    report.client_build,
-  );
   const associatedReconciliation = reconciliation?.run_group_id === run.run_group_id ? reconciliation : null;
   const graph = selectCanonicalGraph(run, associatedReconciliation ?? undefined);
   const reconciled = graph.reconciled;
   const selectedReconciliation = reconciled ? associatedReconciliation! : null;
+  const viewedPresentation = presentationForReport(
+    presentation,
+    report.deployment_id,
+    report.client_build,
+    report.protocol_pack_digest,
+  );
+  const graphPresentationIdentity = selectedReconciliation
+    ? coherentReconciliationPresentationIdentity(selectedReconciliation)
+    : null;
+  const graphPresentation = graphPresentationIdentity
+    ? presentationForReport(
+      presentation,
+      graphPresentationIdentity.deploymentId,
+      graphPresentationIdentity.clientBuild,
+      graphPresentationIdentity.protocolPackDigest,
+    )
+    : selectedReconciliation ? undefined : viewedPresentation;
+  const associatedPresentationIdentity = associatedReconciliation
+    ? coherentReconciliationPresentationIdentity(associatedReconciliation)
+    : null;
+  const associatedPresentation = associatedPresentationIdentity
+    ? presentationForReport(
+      presentation,
+      associatedPresentationIdentity.deploymentId,
+      associatedPresentationIdentity.clientBuild,
+      associatedPresentationIdentity.protocolPackDigest,
+    )
+    : undefined;
   const participants = graph.participants;
   const teamDps = participants.reduce((sum, actor) => sum + actor.dps, 0);
   const teamEdps = participants.reduce((sum, actor) => sum + actor.encounter_dps, 0);
@@ -369,10 +392,13 @@ export function renderReport(
     gaps: messages.message(run.data_gap_count === 1 ? "parse.report.proof.gaps.one" : "parse.report.proof.gaps.other", { count: gapCount }),
     report: report.report_id,
   });
+  const sceneHeading = viewedPresentation
+    ? run.scene_name ?? run.activity_id ?? rawSceneLabel(run.scene_id)
+    : rawSceneLabel(run.scene_id);
   return `<article class="parse-report">
     <div class="parse-report-heading"><div><p class="eyebrow">${escapeHtml(report.region_id)} / ${escapeHtml(report.verification.tier)}</p>
-      <h3>${escapeHtml(run.scene_name ?? run.activity_id ?? `Scene ${run.scene_id ?? "?"}`)}</h3>
-      <p>${escapeHtml(formatDifficulty(run))} / ${escapeHtml(title(run.terminal_state))}</p></div>
+      <h3>${escapeHtml(sceneHeading)}</h3>
+      <p>${escapeHtml(formatDifficulty(run, Boolean(viewedPresentation)))} / ${escapeHtml(title(run.terminal_state))}</p></div>
       ${renderReplayStatus(associatedReconciliation, reconciled, messages)}</div>
     <div class="parse-run-identity" aria-label="Run identifiers">
       <span><small>Run ID</small><code>${escapeHtml(run.run_group_id ?? `${report.report_id}:${run.run_index}`)}</code></span>
@@ -389,12 +415,12 @@ export function renderReport(
     </div>
     ${renderReconciliationProof(associatedReconciliation, reconciliationError, reconciled)}
     ${renderSwiftVortexCandidateAudit(associatedReconciliation)}
-    ${renderPartyTable(participants, reconciled ? graph.rdpsGameTimeMicros : run.game_time_micros, reconciled, graph.rdpsStatus ?? messages.message("parse.timeline.rdps.partial"), messages)}
-    ${renderPartyLoadouts(run, graph.participants, associatedReconciliation ?? undefined, messages)}
-    ${renderCombatLoadoutPhases(run, participants, reportPresentation)}
+    ${renderPartyTable(participants, reconciled ? graph.rdpsGameTimeMicros : run.game_time_micros, reconciled, graph.rdpsStatus ?? messages.message("parse.timeline.rdps.partial"), messages, Boolean(graphPresentation))}
+    ${renderPartyLoadouts(run, graph.participants, associatedReconciliation ?? undefined, messages, Boolean(associatedReconciliation ? associatedPresentation : viewedPresentation))}
+    ${renderCombatLoadoutPhases(run, participants, viewedPresentation)}
     ${graph.timeline ? renderTimeline(graph, messages) : renderRunTimeline(run, participants)}
-    ${renderSkillContributions(participants, skillInfluences, skillEffects, reportPresentation)}
-    ${renderRdpsCalculations(run, selectedReconciliation, participants, reconciled, reportPresentation)}
+    ${renderSkillContributions(participants, skillInfluences, skillEffects, graphPresentation)}
+    ${renderRdpsCalculations(run, selectedReconciliation, participants, reconciled, graphPresentation)}
     ${renderEvidenceCoverage(report, run, associatedReconciliation, participants, reconciled)}
     <p class="parse-proof">${escapeHtml(run.run_group_id ? messages.message("parse.report.proof_group", { proof, group: run.run_group_id }) : proof)}</p>
   </article>`;
@@ -471,6 +497,24 @@ function localizedPartyMetricLabel(metric: PartySortMetric, messages: MessageRes
   return partyMetricLabels[metric];
 }
 
+function coherentReconciliationPresentationIdentity(reconciliation: PublicRunReconciliation): {
+  deploymentId: string;
+  clientBuild: string;
+  protocolPackDigest: string;
+} | null {
+  const canonical = reconciliation.reports.find((source) => source.canonical_spine);
+  if (!canonical?.deployment_id || !canonical.client_build || !canonical.protocol_pack_digest) return null;
+  const coherent = reconciliation.reports.every((source) =>
+    source.deployment_id === canonical.deployment_id &&
+    source.client_build === canonical.client_build &&
+    source.protocol_pack_digest === canonical.protocol_pack_digest);
+  return coherent ? {
+    deploymentId: canonical.deployment_id,
+    clientBuild: canonical.client_build,
+    protocolPackDigest: canonical.protocol_pack_digest,
+  } : null;
+}
+
 function formatPartyMetric(metric: PartySortMetric, value: number, messages: MessageResolver): string {
   return metric === "critRate" ? `${formatNumber(value * 100, messages)}%` : formatNumber(value, messages);
 }
@@ -495,6 +539,7 @@ function renderPartyTable(
   reconciled: boolean,
   rdpsStatus: string,
   messages: MessageResolver,
+  presentationAuthorized = true,
 ): string {
   const ordered = sortPartyParticipants(participants, "adps", "descending", gameTimeMicros);
   const initialMaximum = Math.max(0, ...ordered.map((actor) => partyMetricValue(actor, "adps", gameTimeMicros) ?? 0));
@@ -509,7 +554,7 @@ function renderPartyTable(
     }).join("");
     const initialValue = partyMetricValue(actor, "adps", gameTimeMicros);
     const initialWidth = initialValue == null || initialMaximum <= 0 ? 0 : Math.max(0, initialValue / initialMaximum) * 100;
-    return `<div class="parse-party-row" data-party-row ${data} style="--series-color:${color};--row-fill:${initialWidth.toFixed(2)}%"><span class="parse-party-player"><i></i><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span></span>${cells}</div>`;
+    return `<div class="parse-party-row" data-party-row ${data} style="--series-color:${color};--row-fill:${initialWidth.toFixed(2)}%"><span class="parse-party-player"><i></i><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml(combatIdentityLabel(actor, presentationAuthorized, ""))}</small></span></span>${cells}</div>`;
   }).join("");
   return `<section class="parse-party" data-parse-party-table data-party-sort="adps" data-party-sort-direction="descending">
     <div class="parse-party-head"><span><strong>${escapeHtml(messages.message("parse.report.party.title"))}</strong><small>${escapeHtml(messages.message(participants.length === 1 ? "parse.report.party.summary.one" : "parse.report.party.summary.other", { count: messages.number(participants.length, { maximumFractionDigits: 0 }), status: `${rdpsStatus}${reconciled ? " · reconciled" : ""}` }))}</small></span><small>Choose a metric to sort and scale the row bars</small></div>
@@ -607,7 +652,7 @@ function renderCombatLoadoutPhases(
   const namesByCharacter = new Map(participants.flatMap((actor) =>
     actor.character_id ? [[actor.character_id, participantName(actor)] as const] : []));
   const cards = phases.map((phase, index) => {
-    const identity = [phase.class_name, phase.specialization_name].filter(Boolean).join(" / ") || "Class/spec not present in this snapshot";
+    const identity = combatIdentityLabel(phase, Boolean(presentation), "Class/spec not present in this snapshot");
     const location = phase.in_active_combat
       ? `During combat${phase.encounter_index == null ? "" : ` · Encounter ${phase.encounter_index + 1}`}${phase.attempt_number == null ? "" : ` · Pull ${phase.attempt_number}`}`
       : `Between encounters${phase.segment_index == null ? "" : ` · Segment ${phase.segment_index + 1}`}`;
@@ -688,6 +733,7 @@ export function renderPartyLoadouts(
   participants: readonly PublicParticipant[],
   reconciliation?: PublicRunReconciliation,
   messages = createMessageResolver(),
+  presentationAuthorized = true,
 ): string {
   const summaries = partyLoadoutSummaries(run, participants, reconciliation, messages);
   const exact = summaries.filter((summary) => summary.disposition === "exact").length;
@@ -696,14 +742,14 @@ export function renderPartyLoadouts(
   });
   return `<section class="party-loadouts" aria-label="${escapeHtml(messages.message("parse.loadout.aria"))}">
     <div class="parse-party-head"><strong>${escapeHtml(messages.message("parse.loadout.title"))}</strong><small>${escapeHtml(summary)}</small></div>
-    <div class="party-loadout-grid">${summaries.map((loadout) => renderPartyLoadout(loadout, messages)).join("")}</div>
+    <div class="party-loadout-grid">${summaries.map((loadout) => renderPartyLoadout(loadout, messages, presentationAuthorized)).join("")}</div>
     <p class="timeline-note">${escapeHtml(messages.message("parse.loadout.selection_note"))}</p>
   </section>`;
 }
 
-function renderPartyLoadout(summary: PartyLoadoutSummary, messages: MessageResolver): string {
+function renderPartyLoadout(summary: PartyLoadoutSummary, messages: MessageResolver, presentationAuthorized: boolean): string {
   const name = summary.participant.display_name ?? messages.message("parse.timeline.player", { id: summary.participant.actor_id });
-  const className = summary.participant.class_name ?? messages.message("parse.report.class_unresolved");
+  const className = combatIdentityLabel(summary.participant, presentationAuthorized, messages.message("parse.report.class_unresolved"));
   const statusClass = summary.disposition === "exact" ? "success" : summary.disposition === "conflict" ? "warning" : "neutral";
   if (summary.disposition !== "exact") {
     return `<article class="party-loadout-card"><div class="party-loadout-title"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(className)}</small></span><span class="status-chip ${statusClass}">${escapeHtml(summary.evidenceLabel)}</span></div><p class="party-loadout-empty">${escapeHtml(messages.message("parse.loadout.none_selected"))}</p></article>`;
@@ -714,10 +760,10 @@ function renderPartyLoadout(summary: PartyLoadoutSummary, messages: MessageResol
     : messages.message(moduleCount === 1 ? "parse.loadout.modules.one" : "parse.loadout.modules.other", { count: messages.number(moduleCount, { maximumFractionDigits: 0 }) });
   const phaseCount = messages.message(phases.length === 1 ? "parse.loadout.phases.one" : "parse.loadout.phases.other", { count: messages.number(phases.length, { maximumFractionDigits: 0 }) });
   return `<details class="party-loadout-card"><summary class="party-loadout-title"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(`${className} · ${modules} · ${phaseCount}`)}</small></span><span class="status-chip ${statusClass}">${escapeHtml(summary.evidenceLabel)}</span></summary>
-    <div class="party-loadout-phases">${phases.map((phase, index) => renderLoadoutPhase(phase, index, phases.length, messages)).join("")}</div></details>`;
+    <div class="party-loadout-phases">${phases.map((phase, index) => renderLoadoutPhase(phase, index, phases.length, messages, presentationAuthorized)).join("")}</div></details>`;
 }
 
-function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, count: number, messages: MessageResolver): string {
+function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, count: number, messages: MessageResolver, presentationAuthorized: boolean): string {
   const integer = (value: number) => messages.number(value, { maximumFractionDigits: 0 });
   const context = messages.message(phase.in_active_combat ? "parse.loadout.context.active" : index === 0 ? "parse.loadout.context.baseline" : "parse.loadout.context.between");
   const modules = phase.module_snapshot_disposition === "complete"
@@ -743,10 +789,25 @@ function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, coun
     : messages.message(phase.equipment_count === 1 ? "parse.loadout.equipment.one" : "parse.loadout.equipment.other", { count: integer(phase.equipment_count) });
   const talents = phase.talent_count == null ? messages.message("parse.loadout.talents.unknown")
     : messages.message(phase.talent_count === 1 ? "parse.loadout.talents.one" : "parse.loadout.talents.other", { count: integer(phase.talent_count) });
-  const className = [phase.class_name, phase.specialization_name].filter(Boolean).join(" / ") || messages.message("parse.report.class_unresolved");
+  const className = combatIdentityLabel(phase, presentationAuthorized, messages.message("parse.report.class_unresolved"));
   return `<section class="loadout-phase" data-loadout-at-micros="${phase.run_elapsed_micros}"><div class="loadout-phase-heading"><strong>${escapeHtml(phaseLabel)}</strong><small>${escapeHtml(`${context} · ${formatDuration(phase.run_elapsed_micros)}`)}</small></div>
     <p><strong>${escapeHtml(className)}</strong> · ${escapeHtml(equipment)} · ${escapeHtml(talents)}</p>
     ${modules}<p><small>${escapeHtml(messages.message("parse.loadout.skills"))}</small> ${escapeHtml(skills)}</p><p><small>${escapeHtml(messages.message("parse.loadout.imagines"))}</small> ${escapeHtml(imagines)}</p></section>`;
+}
+
+function combatIdentityLabel(
+  value: Pick<PublicParticipant, "class_id" | "class_name" | "specialization_id" | "specialization_name">,
+  presentationAuthorized: boolean,
+  fallback: string,
+): string {
+  if (presentationAuthorized) {
+    return [value.class_name, value.specialization_name].filter(Boolean).join(" / ") || fallback;
+  }
+  const raw = [
+    value.class_id == null ? null : `Class #${value.class_id}`,
+    value.specialization_id == null ? null : `Specialization #${value.specialization_id}`,
+  ].filter(Boolean).join(" / ");
+  return raw || fallback;
 }
 
 export interface CanonicalGraphSelection {
@@ -1881,12 +1942,12 @@ function renderSkillCard(
   const abilities = allAbilities.filter((ability) => ability.damage > 0).sort((left, right) => right.damage - left.damage);
   const total = abilities.reduce((sum, ability) => sum + ability.damage, 0);
   const visible = abilities.slice(0, 7).map((ability) => ({
-    name: localizedActionName(presentation, ability.ability_id, ability.presentation_name),
+    name: localizedActionName(presentation, ability.ability_id, presentation ? ability.presentation_name : null),
     damage: ability.damage,
     castLabel: skillCastLabel(ability, castContext),
     hits: ability.hits,
     criticalHits: ability.critical_hits,
-    supportGenerated: ability.presentation_kind === "support-generated-damage",
+    supportGenerated: Boolean(presentation && ability.presentation_kind === "support-generated-damage"),
     isOther: false,
   }));
   const other = abilities.slice(7);
@@ -1922,7 +1983,7 @@ function renderSkillCard(
       return `<li><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${escapeHtml(observation)}</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
     })
     .join("");
-  return `<details class="parse-skill-card"${actorIndex === 0 ? " open" : ""}><summary><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span><span>${formatNumber(total)} owned damage</span></summary><div class="parse-skill-content"><div class="parse-skill-pie" style="--skill-pie:conic-gradient(${slices.join(",")})" role="img" aria-label="Skill damage shares for ${escapeHtml(participantName(actor))}"><span>${abilities.length}<small>skills</small></span></div><ol>${rows}</ol></div></details>`;
+  return `<details class="parse-skill-card"${actorIndex === 0 ? " open" : ""}><summary><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml(combatIdentityLabel(actor, Boolean(presentation), ""))}</small></span><span>${formatNumber(total)} owned damage</span></summary><div class="parse-skill-content"><div class="parse-skill-pie" style="--skill-pie:conic-gradient(${slices.join(",")})" role="img" aria-label="Skill damage shares for ${escapeHtml(participantName(actor))}"><span>${abilities.length}<small>skills</small></span></div><ol>${rows}</ol></div></details>`;
 }
 
 function renderOtherSkillDetails(
@@ -1937,8 +1998,8 @@ function renderOtherSkillDetails(
   const rows = abilities.map((ability, index) => {
     const percent = totalDamage > 0 ? (ability.damage / totalDamage) * 100 : 0;
     const criticalRate = ability.hits > 0 ? (ability.critical_hits / ability.hits) * 100 : 0;
-    const name = localizedActionName(presentation, ability.ability_id, ability.presentation_name);
-    const observation = ability.presentation_kind === "support-generated-damage"
+    const name = localizedActionName(presentation, ability.ability_id, presentation ? ability.presentation_name : null);
+    const observation = presentation && ability.presentation_kind === "support-generated-damage"
       ? `${ability.hits.toLocaleString()} generated hits · provider proven`
       : `${skillCastLabel(ability, castContext)} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit`;
     return `<li><span class="parse-skill-drilldown-rank">${index + 8}</span><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(observation)}</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
@@ -2049,7 +2110,9 @@ function groupInfluences(
   presentation?: ParsePresentationCatalog,
 ): GroupedInfluence[] {
   const actorNames = new Map(participants.map((actor) => [actor.actor_id, participantName(actor)]));
-  const effectNames = new Map(effects.map((effect) => [effect.effect_id, effect.presentation_name]));
+  const effectNames = new Map(presentation
+    ? effects.map((effect) => [effect.effect_id, effect.presentation_name] as const)
+    : []);
   const groups = new Map<string, GroupedInfluence>();
   for (const influence of influences) {
     const key = `${influence.provider_actor_id}\0${influence.effect_id}`;
@@ -2234,7 +2297,14 @@ export function filterSearch(
   });
 }
 
-function formatDifficulty(run: PublicRun): string {
+function rawSceneLabel(sceneId: number | null): string {
+  return sceneId == null ? "Scene unresolved" : `Scene #${sceneId}`;
+}
+
+function formatDifficulty(run: PublicRun, presentationAuthorized = true): string {
+  if (!presentationAuthorized) {
+    return run.difficulty_tier == null ? "Difficulty unresolved" : `Tier ${run.difficulty_tier}`;
+  }
   return (
     [title(run.difficulty_family), run.difficulty_tier ? ` ${run.difficulty_tier}` : ""].join("").trim() ||
     "Difficulty unresolved"

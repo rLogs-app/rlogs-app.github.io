@@ -1,8 +1,9 @@
 export interface ParsePresentationCatalog {
-  schema_version: 1;
+  schema_version: 2;
   locale: "en-US";
   deployment_id: string;
   game_build: string;
+  protocol_pack_digest: string;
   source: string;
   coverage?: {
     scope: string;
@@ -18,7 +19,7 @@ export interface ParsePresentationCatalog {
   effects: Readonly<Record<string, string>>;
 }
 
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/parse-presentation.en-US.v1.json?schema=1&labels=reviewed-observed-v1`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/parse-presentation.en-US.v2.json?schema=2&labels=reviewed-observed-v1&authority=protocol-v1`;
 let request: Promise<ParsePresentationCatalog> | undefined;
 
 export function loadParsePresentation(): Promise<ParsePresentationCatalog> {
@@ -53,11 +54,13 @@ export function presentationForReport(
   catalog: ParsePresentationCatalog | undefined,
   deploymentId: string,
   clientBuild: string,
+  protocolPackDigest: string | undefined,
 ): ParsePresentationCatalog | undefined {
   if (
     !catalog ||
     catalog.deployment_id !== deploymentId ||
-    catalog.game_build !== clientBuild
+    catalog.game_build !== clientBuild ||
+    catalog.protocol_pack_digest !== protocolPackDigest
   ) {
     return undefined;
   }
@@ -91,12 +94,14 @@ function unlocalizedLabel(kind: "action" | "effect", id: string): string {
 function isCatalog(value: unknown): value is ParsePresentationCatalog {
   return (
     isRecord(value) &&
-    value.schema_version === 1 &&
+    value.schema_version === 2 &&
     value.locale === "en-US" &&
     typeof value.deployment_id === "string" &&
     value.deployment_id.length > 0 &&
     typeof value.game_build === "string" &&
     value.game_build.length > 0 &&
+    typeof value.protocol_pack_digest === "string" &&
+    /^sha256:[a-f0-9]{64}$/u.test(value.protocol_pack_digest) &&
     typeof value.source === "string" &&
     isStringRecord(value.actions) &&
     isStringRecord(value.effects)

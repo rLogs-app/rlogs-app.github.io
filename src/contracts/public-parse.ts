@@ -31,7 +31,7 @@ export interface SceneFacetValue { id: number; label?: string; count: number }
 export interface PublicParseReport {
   schema_version: 6 | 7 | 8 | 9 | 10 | 11 | 12 | 14 | 15; projection_revision?: number; report_id: string; visibility: "public" | "unlisted" | "private";
   created_unix_millis: number; game_plugin_id: string; deployment_id: string; region_id: string;
-  world_id: string | null; client_build: string; protocol_pack_digest: string; verification: PublicVerification;
+  world_id: string | null; client_build: string; protocol_pack_digest?: string; verification: PublicVerification;
   submission_provenance: PublicSubmissionProvenance; runs: PublicRun[];
 }
 export interface PublicSubmissionProvenance { submitter_id: string | null; authentication: string }
@@ -167,6 +167,7 @@ export interface UpdateParseVisibilityResponse {
 const reportIdPattern = /^rpt_[a-f0-9]{32}$/;
 const groupIdPattern = /^run_[a-f0-9]{32}$/;
 const reconciliationIdPattern = /^rec_[a-f0-9]{32}$/;
+const protocolDigestPattern = /^sha256:[a-f0-9]{64}$/;
 const legacyReportSchemas = new Set([6, 7, 8, 9, 10, 11, 12]);
 const legacyReconciliationSchemas = new Set([5, 6, 7, 8, 9, 10, 11, 12]);
 const reconciliationStatuses = new Set<ReconciliationStatus>(["single_vantage", "multiple_reports_no_additional_vantage", "cross_vantage_evidence_available", "reconciled"]);
@@ -189,10 +190,15 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
   }
   const timelineSchema = value.schema_version === 14 && value.projection_revision === 4 ? 1
     : value.schema_version === 14 && value.projection_revision === 5 ? 2
-    : value.schema_version === 15 && value.projection_revision === 6 ? 3 : null;
+    : value.schema_version === 15 && (value.projection_revision === 6 || value.projection_revision === 7) ? 3 : null;
   if (timelineSchema == null) return false;
+  const requireProtocolIdentity = value.schema_version === 15 && value.projection_revision === 7;
   return typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) && (value.visibility === "public" || value.visibility === "unlisted" || value.visibility === "private") &&
+    typeof value.deployment_id === "string" && value.deployment_id.length > 0 &&
+    typeof value.client_build === "string" && value.client_build.length > 0 &&
+    (value.protocol_pack_digest === undefined || (typeof value.protocol_pack_digest === "string" && value.protocol_pack_digest.length > 0)) &&
+    (!requireProtocolIdentity || (typeof value.protocol_pack_digest === "string" && protocolDigestPattern.test(value.protocol_pack_digest))) &&
     isVerification(value.verification) && Array.isArray(value.runs) &&
     value.runs.every((run) => isPublicRun(run, value.report_id, timelineSchema));
 }

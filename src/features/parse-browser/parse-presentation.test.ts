@@ -8,10 +8,11 @@ import {
 } from "./parse-presentation";
 
 const catalog: ParsePresentationCatalog = {
-  schema_version: 1,
+  schema_version: 2,
   locale: "en-US",
   deployment_id: "global",
   game_build: "24687926",
+  protocol_pack_digest: "sha256:localization-authority",
   source: "test",
   actions: { "2900840": "Arcane! Divine Reliance" },
   effects: { "3003052": "Harmony Grace" },
@@ -69,14 +70,16 @@ describe("parse presentation", () => {
     );
   });
 
-  it("only exposes a catalog to its exact deployment and client build", () => {
-    expect(presentationForReport(catalog, "global", "24687926")).toBe(catalog);
-    expect(presentationForReport(catalog, "starsea", "24687926")).toBeUndefined();
-    expect(presentationForReport(catalog, "global", "24687927")).toBeUndefined();
+  it("only exposes a catalog to its exact deployment, client build, and protocol digest", () => {
+    expect(presentationForReport(catalog, "global", "24687926", "sha256:localization-authority")).toBe(catalog);
+    expect(presentationForReport(catalog, "starsea", "24687926", "sha256:localization-authority")).toBeUndefined();
+    expect(presentationForReport(catalog, "global", "24687927", "sha256:localization-authority")).toBeUndefined();
+    expect(presentationForReport(catalog, "global", "24687926", "sha256:other")).toBeUndefined();
+    expect(presentationForReport(catalog, "global", "24687926", undefined)).toBeUndefined();
   });
 
   it("fails closed instead of borrowing labels across builds", () => {
-    const mismatched = presentationForReport(catalog, "global", "24687927");
+    const mismatched = presentationForReport(catalog, "global", "24687927", "sha256:localization-authority");
     expect(localizedActionName(mismatched, "2900840", "Skill 2900840")).toBe(
       "Unlocalized combat action #2900840",
     );

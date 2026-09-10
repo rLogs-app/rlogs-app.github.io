@@ -32,17 +32,33 @@ const reviewedActions = readJson(
 const rdpsEffects = readJson(
   path.join(runtimeRoot, "rdps-attribution-effect-presentation.v1.json"),
 );
+const localizationRuntime = readJson(
+  path.join(runtimeRoot, "localization-runtime.v1.json"),
+);
 const observedCatalogRoot = path.join(gameDataRoot, "catalog/combat-actions");
 const observedCoverage = readJson(
   path.join(observedCatalogRoot, "observed-presentation-coverage.v1.json"),
 );
 if (
+  localizationRuntime.schema_version !== 1 ||
+  typeof localizationRuntime.deployment_id !== "string" ||
+  localizationRuntime.deployment_id.length === 0 ||
+  typeof localizationRuntime.client_build !== "string" ||
+  localizationRuntime.client_build.length === 0 ||
+  typeof localizationRuntime.protocol_pack_digest !== "string" ||
+  localizationRuntime.protocol_pack_digest.length === 0 ||
   typeof rdpsEffects.deployment_id !== "string" ||
   rdpsEffects.deployment_id.length === 0 ||
   typeof rdpsEffects.game_build !== "string" ||
   rdpsEffects.game_build.length === 0
 ) {
-  throw new Error("The parse presentation source must declare an exact deployment and game build.");
+  throw new Error("The parse presentation source must declare an exact localization runtime identity.");
+}
+if (
+  rdpsEffects.deployment_id !== localizationRuntime.deployment_id ||
+  rdpsEffects.game_build !== localizationRuntime.client_build
+) {
+  throw new Error("The rDPS effect presentation does not match the localization runtime identity.");
 }
 
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -72,8 +88,8 @@ for (const id of [...observedIds].sort((left, right) => Number(left) - Number(ri
   if (!actions[id]) uncoveredActionIds.push(id);
 }
 if (
-  observedCoverage.deployment_id !== rdpsEffects.deployment_id ||
-  String(observedCoverage.game_build) !== rdpsEffects.game_build ||
+  observedCoverage.deployment_id !== localizationRuntime.deployment_id ||
+  String(observedCoverage.game_build) !== localizationRuntime.client_build ||
   observedIds.size !== observedCoverage.summary?.observed_action_count ||
   uncoveredActionIds.length > 0
 ) {
@@ -95,10 +111,11 @@ if (uncoveredEffectIds.length > 0) {
 }
 
 const output = {
-  schema_version: 1,
+  schema_version: 2,
   locale: "en-US",
-  deployment_id: rdpsEffects.deployment_id,
-  game_build: rdpsEffects.game_build,
+  deployment_id: localizationRuntime.deployment_id,
+  game_build: localizationRuntime.client_build,
+  protocol_pack_digest: localizationRuntime.protocol_pack_digest,
   source: "Reviewed observed rLogs BPSR presentation catalogs",
   coverage: {
     scope: observedCoverage.scope,
@@ -113,7 +130,7 @@ const output = {
   actions,
   effects,
 };
-const outputPath = path.join(websiteRoot, "public/data/bpsr/parse-presentation.en-US.v1.json");
+const outputPath = path.join(websiteRoot, "public/data/bpsr/parse-presentation.en-US.v2.json");
 mkdirSync(path.dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, `${JSON.stringify(output)}\n`);
 console.log(`Wrote ${Object.keys(actions).length} actions and ${Object.keys(effects).length} effects to ${outputPath}`);

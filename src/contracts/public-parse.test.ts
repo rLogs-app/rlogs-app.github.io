@@ -96,6 +96,8 @@ describe("public parse contract", () => {
     expect(current.runs[0].timeline.schema_version).toBe(3);
     expect(isPublicParseReport(current)).toBe(true);
     expect(isPublicParseReport({ ...current, projection_revision: 5 })).toBe(false);
+    expect(isPublicParseReport({ ...current, projection_revision: 7 })).toBe(true);
+    expect(isPublicParseReport({ ...current, projection_revision: 8 })).toBe(false);
 
     const legacy = structuredClone(current);
     legacy.schema_version = 14;
@@ -119,6 +121,31 @@ describe("public parse contract", () => {
     expect(isPublicParseReport(legacy)).toBe(true);
     legacy.runs[0].timeline.schema_version = 2;
     expect(isPublicParseReport(legacy)).toBe(false);
+  });
+  it("requires a complete current report envelope while keeping revision 6 digest-compatible", () => {
+    const revision7 = fixture("parse-report.v1.json") as any;
+    revision7.projection_revision = 7;
+    expect(isPublicParseReport(revision7)).toBe(true);
+
+    for (const field of ["deployment_id", "client_build"]) {
+      const missing = structuredClone(revision7);
+      delete missing[field];
+      expect(isPublicParseReport(missing), field).toBe(false);
+    }
+    const missingDigest = structuredClone(revision7);
+    delete missingDigest.protocol_pack_digest;
+    expect(isPublicParseReport(missingDigest)).toBe(false);
+    const emptyDigest = structuredClone(revision7);
+    emptyDigest.protocol_pack_digest = "";
+    expect(isPublicParseReport(emptyDigest)).toBe(false);
+    const malformedDigest = structuredClone(revision7);
+    malformedDigest.protocol_pack_digest = "pack";
+    expect(isPublicParseReport(malformedDigest)).toBe(false);
+
+    const revision6 = structuredClone(revision7);
+    revision6.projection_revision = 6;
+    delete revision6.protocol_pack_digest;
+    expect(isPublicParseReport(revision6)).toBe(true);
   });
   it("keeps published legacy reports and reconciliations readable without weakening current schemas", () => {
     const legacyReport = fixture("parse-report.v1.json") as any;

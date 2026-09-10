@@ -41,6 +41,7 @@ const load = <T>(name: string): T => JSON.parse(
 ) as T;
 
 const siteStyles = readFileSync(new URL("../../styles/site.css", import.meta.url), "utf8");
+const localizationDigest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 
 const parse: PublicParseCatalogEntry = {
   report_id: `rpt_${"a".repeat(32)}`,
@@ -366,7 +367,7 @@ describe("parse search", () => {
       region_id: "global",
       world_id: null,
       client_build: "24687926",
-      protocol_pack_digest: "pack",
+      protocol_pack_digest: localizationDigest,
       verification: {
         tier: "replayed",
         artifact_sha256: "artifact",
@@ -460,7 +461,7 @@ describe("parse search", () => {
       ],
     };
     const reconciliation: PublicRunReconciliation = {
-      schema_version: 16,
+      schema_version: 17,
       reconciliation_id: `rec_${"c".repeat(32)}`,
       run_group_id: runGroupId,
       status: "reconciled",
@@ -478,7 +479,9 @@ describe("parse search", () => {
           report_id: reportId,
           run_index: 0,
           artifact_sha256: "artifact",
-          protocol_pack_digest: "pack",
+          deployment_id: "global",
+          client_build: "24687926",
+          protocol_pack_digest: localizationDigest,
           created_unix_millis: 1,
           canonical_spine: true,
           local_profile_witnesses: [],
@@ -539,7 +542,20 @@ describe("parse search", () => {
       timeline: { ...runTimeline, source: "reconciled_canonical_spine" },
     };
 
-    const html = renderReport(report, 0, reconciliation, null);
+    const presentation: ParsePresentationCatalog = {
+      schema_version: 2,
+      locale: "en-US",
+      deployment_id: "global",
+      game_build: "24687926",
+      protocol_pack_digest: localizationDigest,
+      source: "test",
+      actions: {
+        "2900840": "Arcane! Divine Reliance",
+        "2220329107": "Canonical Falcon Strike",
+      },
+      effects: {},
+    };
+    const html = renderReport(report, 0, reconciliation, null, presentation);
     expect(html).toContain("Combat timeline");
     expect(html).toContain("Skill contribution");
     expect(html).toContain("Falcon Strike");
@@ -553,22 +569,66 @@ describe("parse search", () => {
     expect(html).toContain("rDPS calculations");
     expect(html).toContain("Harmony Grace");
 
-    const presentation: ParsePresentationCatalog = {
-      schema_version: 1,
-      locale: "en-US",
-      deployment_id: "global",
-      game_build: "24687926",
-      source: "test",
-      actions: { "2900840": "Arcane! Divine Reliance" },
-      effects: {},
-    };
     expect(renderReport(report, 0, reconciliation, null, presentation)).toContain(
       "Arcane! Divine Reliance",
     );
-    const mismatchedBuild = { ...report, client_build: "24687927" };
-    const mismatchedHtml = renderReport(mismatchedBuild, 0, reconciliation, null, presentation);
-    expect(mismatchedHtml).toContain("Unlocalized combat action");
-    expect(mismatchedHtml).not.toContain("Arcane! Divine Reliance");
+    const viewedWrongDigest = structuredClone(report);
+    viewedWrongDigest.protocol_pack_digest = "sha256:viewed-pov-does-not-own-reconciled-presentation";
+    viewedWrongDigest.runs[0]!.scene_name = "Viewed derived scene";
+    viewedWrongDigest.runs[0]!.activity_id = "viewed.derived-activity";
+    viewedWrongDigest.runs[0]!.difficulty_family = "viewed-derived-difficulty";
+    viewedWrongDigest.runs[0]!.combat_loadout_phases![0]!.class_name = "Viewed Derived Class";
+    viewedWrongDigest.runs[0]!.combat_loadout_phases![0]!.specialization_name = "Viewed Derived Specialization";
+    const viewedWrongDigestHtml = renderReport(viewedWrongDigest, 0, reconciliation, null, presentation);
+    expect(viewedWrongDigestHtml).toContain("Canonical Falcon Strike");
+    expect(viewedWrongDigestHtml).not.toContain("Viewed derived scene");
+    expect(viewedWrongDigestHtml).not.toContain("viewed.derived-activity");
+    expect(viewedWrongDigestHtml).not.toContain("viewed-derived-difficulty");
+    expect(viewedWrongDigestHtml).not.toContain("Viewed Derived Class");
+    expect(viewedWrongDigestHtml).not.toContain("Viewed Derived Specialization");
+    expect(viewedWrongDigestHtml).toContain("Scene #30120");
+    expect(viewedWrongDigestHtml).toContain("Tier 20");
+    expect(viewedWrongDigestHtml).toContain("Class #4 / Specialization #2");
+    const wrongReconciliationDigest = structuredClone(reconciliation);
+    wrongReconciliationDigest.reports[0]!.protocol_pack_digest = "sha256:wrong-canonical-authority";
+    const wrongReconciliationHtml = renderReport(report, 0, wrongReconciliationDigest, null, presentation);
+    expect(wrongReconciliationHtml).toContain("Unlocalized combat action #2220329107");
+    expect(wrongReconciliationHtml).not.toContain("Canonical Falcon Strike");
+    expect(wrongReconciliationHtml).toContain("Arcane! Divine Reliance");
+    const singlePovHtml = renderReport(report, 0, null, null, presentation);
+    expect(singlePovHtml).toContain("Arcane! Divine Reliance");
+    const wrongDigest = structuredClone(report);
+    wrongDigest.protocol_pack_digest = "sha256:wrong-localization-authority";
+    wrongDigest.runs[0]!.activity_id = "derived.secret-activity";
+    wrongDigest.runs[0]!.difficulty_family = "derived-secret-difficulty";
+    const wrongDigestHtml = renderReport(wrongDigest, 0, null, null, presentation);
+    expect(wrongDigestHtml).toContain("Unlocalized combat action #2900840");
+    expect(wrongDigestHtml).not.toContain("Arcane! Divine Reliance");
+    expect(wrongDigestHtml).not.toContain("Falcon Strike");
+    expect(wrongDigestHtml).not.toContain("Stimen Remains - Floor 20");
+    expect(wrongDigestHtml).not.toContain("derived.secret-activity");
+    expect(wrongDigestHtml).not.toContain("derived-secret-difficulty");
+    expect(wrongDigestHtml).not.toContain("Derived Secret Difficulty");
+    expect(wrongDigestHtml).toContain("Scene #30120");
+    expect(wrongDigestHtml).toContain("Tier 20");
+    expect(wrongDigestHtml).toContain("MarieRose");
+    expect(wrongDigestHtml).not.toContain("Marksman / Falconry");
+    expect(wrongDigestHtml).toContain("Class #4 / Specialization #2");
+    const missingDigest = structuredClone(report);
+    missingDigest.protocol_pack_digest = undefined;
+    missingDigest.runs[0]!.activity_id = "derived.missing-digest-activity";
+    missingDigest.runs[0]!.difficulty_family = "derived-missing-digest-difficulty";
+    const missingDigestHtml = renderReport(missingDigest, 0, null, null, presentation);
+    expect(missingDigestHtml).toContain("Unlocalized combat action #2900840");
+    expect(missingDigestHtml).not.toContain("Arcane! Divine Reliance");
+    expect(missingDigestHtml).not.toContain("derived.missing-digest-activity");
+    expect(missingDigestHtml).not.toContain("derived-missing-digest-difficulty");
+    expect(missingDigestHtml).not.toContain("Derived Missing Digest Difficulty");
+    expect(missingDigestHtml).toContain("Scene #30120");
+    expect(missingDigestHtml).toContain("Tier 20");
+    expect(missingDigestHtml).toContain("MarieRose");
+    expect(missingDigestHtml).not.toContain("Marksman / Falconry");
+    expect(missingDigestHtml).toContain("Class #4 / Specialization #2");
     expect(html).toContain("Evidence coverage");
     expect(html).toContain("Cross-vantage reconciled");
     expect(html).toContain("Time-gated profile evidence");
