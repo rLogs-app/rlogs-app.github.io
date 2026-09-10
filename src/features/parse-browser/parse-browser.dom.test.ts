@@ -239,6 +239,41 @@ describe("combat timeline DOM interactions", () => {
     expect(root.querySelector<HTMLButtonElement>("[data-timeline-event-next]")?.disabled).toBe(true);
   });
 
+  it("focuses an exact endpoint but excludes a legacy bucket ending at the zoomed viewport start", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    const timeline = report.runs[0]!.timeline!;
+    const marker = timeline.death_markers[0]!;
+    timeline.death_markers = [
+      { ...marker, at_micros: 3_000_000, precision: "exact_microsecond" },
+      { ...marker, at_micros: 2_000_000, precision: "one_second_bucket" },
+    ];
+    timeline.loadout_markers = [];
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const markers = [...root.querySelectorAll<SVGGraphicsElement>(".timeline-marker.death")];
+    const exact = markers.find((candidate) => candidate.dataset.timelineMarkerAtMicros === "3000000")!;
+    const legacy = markers.find((candidate) => candidate.dataset.timelineMarkerAtMicros === "2000000")!;
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    const end = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-end]")!;
+    const preview = root.querySelector<HTMLElement>("[data-timeline-lane-preview]")!;
+
+    end.value = "5";
+    end.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    start.value = "3";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+
+    expect(exact.getAttribute("tabindex")).toBe("0");
+    expect(legacy.getAttribute("tabindex")).toBe("-1");
+    legacy.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);
+    expect(preview.hidden).toBe(true);
+    exact.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);
+    expect(preview.hidden).toBe(false);
+    expect(preview.textContent).toContain("1 nearby event");
+    expect(preview.textContent).not.toContain("2 nearby events");
+  });
+
   it("gives the live legacy route canonical playback and accessible bucket death disclosure", () => {
     const root = mountedLiveLegacyTimeline();
     const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
@@ -466,6 +501,47 @@ describe("combat timeline DOM interactions", () => {
     expect(inspector.getAttribute("aria-valuenow")).toBe("4");
     expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("Marksman death observed");
     expect(play.textContent).toBe("Play");
+  });
+
+  it("aggregates only nearby same-lane events and supports mouse, keyboard, touch pinning, Escape, and outside close", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    const timeline = report.runs[0]!.timeline!;
+    const mine = timeline.loadout_markers[0]!;
+    const teammate = timeline.loadout_markers[1]!;
+    timeline.loadout_markers = [mine,
+      ...Array.from({ length: 7 }, (_, index) => ({
+        ...mine, at_micros: 1_010_000 + index * 10_000, phase_index: 20 + index,
+      })),
+      { ...teammate, at_micros: 1_020_000, phase_index: 99 },
+    ];
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const trigger = root.querySelector<SVGGraphicsElement>('[data-timeline-marker-lane="participant-0"]')!;
+    const preview = root.querySelector<HTMLElement>("[data-timeline-lane-preview]")!;
+
+    trigger.dispatchEvent(new window.PointerEvent("pointerenter", { pointerType: "mouse" }) as unknown as Event);
+    expect(preview.hidden).toBe(false);
+    expect(preview.textContent).toContain("8 nearby events");
+    expect(preview.textContent).toContain("2 more nearby events");
+    expect(preview.textContent).not.toContain("Verdant Oracle");
+    trigger.dispatchEvent(new window.PointerEvent("pointerleave", { pointerType: "mouse" }) as unknown as Event);
+    expect(preview.hidden).toBe(true);
+
+    trigger.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);
+    expect(preview.hidden).toBe(false);
+    trigger.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }) as unknown as Event);
+    expect(preview.hidden).toBe(true);
+
+    trigger.dispatchEvent(new window.PointerEvent("pointerenter", { pointerType: "touch" }) as unknown as Event);
+    expect(preview.hidden).toBe(true);
+    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }) as unknown as Event);
+    expect(preview.hidden).toBe(false);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    window.document.body.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true }));
+    expect(preview.hidden).toBe(true);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("opens death details on hover and focus, closes on Escape and participant hide", () => {
@@ -1341,5 +1417,8 @@ describe("combat timeline raid snapshot readability", () => {
     expect(styles).toMatch(/\.timeline-overview-slider\s*\{[^}]*min-height:\s*44px;[^}]*touch-action:\s*pan-y;/su);
     expect(styles).toMatch(/\.timeline-overview-slider:focus-visible\s*\{[^}]*outline:/su);
     expect(styles).toMatch(/@media \(max-width:\s*620px\)[\s\S]*?\.timeline-viewport-actions button\s*\{[^}]*min-height:\s*44px;/u);
+    expect(styles).toMatch(/@media \(pointer:\s*coarse\)[\s\S]*?\.timeline-lane-marker-hitbox,[\s\S]*?width:\s*44px;[\s\S]*?height:\s*44px;/u);
+    expect(styles).toMatch(/@media \(pointer:\s*coarse\)[\s\S]*?\.timeline-marker-lanes-svg\s*\{[^}]*touch-action:\s*pan-y;/u);
+    expect(styles).toMatch(/\.timeline-lane-preview\[hidden\]\s*\{[^}]*display:\s*none;/u);
   });
 });

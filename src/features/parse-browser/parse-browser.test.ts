@@ -35,6 +35,7 @@ import {
   timelineClosestBoundary,
   timelineMaximumBoundary,
   timelineMarkerBoundary,
+  timelineLaneHoverEvents,
   clampTimelineViewport,
   panTimelineViewport,
   timelineViewportAtStart,
@@ -1066,6 +1067,25 @@ describe("canonical timeline selection", () => {
 });
 
 describe("timeline rolling windows", () => {
+  it("selects deterministic same-lane hover events with zoom-aware tolerance, dedupe, and a hard cap", () => {
+    const event = (sourceIndex: number, atMicros: number, label = `event ${sourceIndex}`) => ({
+      kind: "loadout" as const, atMicros, label, sourceIndex,
+    });
+    const events = [
+      event(7, 1_000_000, "duplicate"), event(2, 1_000_000, "duplicate"),
+      event(4, 1_010_000), event(3, 990_000), event(8, 1_020_000),
+      event(9, 1_030_000), event(10, 1_040_000), event(11, 1_050_000),
+      event(12, 1_200_000),
+    ];
+    const compact = timelineLaneHoverEvents(events, 1_000_000, 1_000_000, 3);
+    expect(compact.toleranceMicros).toBe(30_000);
+    expect(compact.events.map(({ sourceIndex }) => sourceIndex)).toEqual([2, 3, 4]);
+    expect(compact.omitted).toBe(2);
+    const wide = timelineLaneHoverEvents(events, 1_000_000, 20_000_000, 20);
+    expect(wide.toleranceMicros).toBe(240_000);
+    expect(wide.events.at(-1)?.sourceIndex).toBe(12);
+  });
+
   it("maps exact and one-second-bucket markers onto the cursor boundary that can authoritatively expose them", () => {
     expect(timelineMarkerBoundary(0, 2_200_000, "exact_microsecond")).toBe(0);
     expect(timelineMarkerBoundary(1_000_000, 2_200_000, "exact_microsecond")).toBe(1);
@@ -1089,8 +1109,8 @@ describe("timeline rolling windows", () => {
     expect(deathMarker).toContain('tabindex="0"');
     expect(html).toContain('class="timeline-death-skull"');
     expect(html).toContain('class="timeline-death-bones"');
-    expect(html.indexOf("timeline-inspector-hitbox")).toBeLessThan(html.indexOf('class="timeline-marker death"'));
-    expect(html.match(/<line[^>]+class="timeline-marker loadout"[^>]*>/u)?.[0]).toContain('data-timeline-marker-participant="0"');
+    expect(html.indexOf('class="timeline-marker death"')).toBeLessThan(html.indexOf("timeline-inspector-hitbox"));
+    expect(html.match(/<g[^>]+class="timeline-marker loadout"[^>]*>/u)?.[0]).toContain('data-timeline-marker-participant="0"');
 
     const exact = renderTimeline({ ...graph, timeline: { ...graph.timeline!, death_markers: [{
       ...graph.timeline!.death_markers[0]!, at_micros: 1_400_000, precision: "exact_microsecond",
@@ -1377,13 +1397,35 @@ describe("timeline rolling windows", () => {
     };
     const html = renderTimeline({ ...graph, participants, timeline });
     const death = html.match(/<g[^>]+class="timeline-marker death"[^>]*>/u)?.[0] ?? "";
-    const loadouts = [...html.matchAll(/<line[^>]+class="timeline-marker loadout"[^>]*>/gu)].map((match) => match[0]);
+    const loadouts = [...html.matchAll(/<g[^>]+class="timeline-marker loadout"[^>]*>/gu)].map((match) => match[0]);
     expect(death).not.toContain("data-timeline-marker-participant");
-    expect(death).toContain('style="color:#ff5e82"');
+    expect(death).toContain('style="color:#b8c8d9"');
     expect(loadouts).toHaveLength(2);
     expect(loadouts.every((marker) => !marker.includes("data-timeline-marker-participant"))).toBe(true);
+    expect(html).toContain('data-timeline-lane-key="unscoped"');
+    expect(html.indexOf('data-timeline-lane-key="participant-3"')).toBeLessThan(html.indexOf('data-timeline-lane-key="unscoped"'));
     expect(html).toContain("Player 11 death observed");
     expect(html).toContain("Character unmatched-character loadout changed");
+  });
+
+  it("discloses omitted death/loadout facts without changing the public timeline contract", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const html = renderTimeline({
+      ...graph,
+      timeline: { ...graph.timeline!, omitted: { ...graph.timeline!.omitted, death_markers: 2, loadout_markers: 3 } },
+    });
+    expect(html).toContain("5 events were omitted from publication");
+    expect(html).toContain("deaths and loadout changes from the public timeline only");
+    const fullyOmitted = renderTimeline({
+      ...graph,
+      timeline: {
+        ...graph.timeline!, death_markers: [], loadout_markers: [],
+        omitted: { ...graph.timeline!.omitted, death_markers: 1, loadout_markers: 0 },
+      },
+    });
+    expect(fullyOmitted).not.toContain("timeline-marker-lanes-svg");
+    expect(fullyOmitted).toContain("1 event was omitted from publication");
   });
 
   it("averages sparse bucket totals across a trailing window without filling the whole encounter", () => {

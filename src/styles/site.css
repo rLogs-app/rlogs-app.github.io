@@ -2188,6 +2188,127 @@ summary.party-loadout-title {
   height: auto;
 }
 
+.timeline-marker-lanes-svg {
+  display: block;
+  width: 100%;
+  min-width: 760px;
+  height: auto;
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+}
+
+.timeline-lane-row line {
+  stroke: color-mix(in srgb, var(--line) 72%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-lane-row circle {
+  fill: var(--track);
+}
+
+.timeline-lane-row text {
+  fill: var(--text);
+  font: 600 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.timeline-lane-row[hidden],
+.timeline-marker[data-timeline-marker-lane][hidden] {
+  display: none;
+}
+
+.timeline-marker[data-timeline-marker-lane] {
+  cursor: pointer;
+  outline: none;
+}
+
+.timeline-lane-marker-hitbox {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: all;
+}
+
+.timeline-lane-loadout-glyph {
+  fill: color-mix(in srgb, currentColor 18%, var(--surface-raised));
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-dasharray: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 2px rgb(3 16 20 / 82%));
+}
+
+.timeline-marker[data-timeline-marker-lane] .timeline-death-skull {
+  fill: currentColor;
+  stroke: var(--surface-raised);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-marker[data-timeline-marker-lane]:focus-visible .timeline-lane-marker-hitbox,
+.timeline-marker[data-timeline-marker-lane]:focus-visible .timeline-death-hitbox,
+.timeline-marker[data-timeline-lane-pinned="true"] .timeline-lane-marker-hitbox,
+.timeline-marker[data-timeline-lane-pinned="true"] .timeline-death-hitbox {
+  fill: color-mix(in srgb, currentColor 16%, transparent);
+  stroke: currentColor;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-lane-preview {
+  display: grid;
+  gap: 5px;
+  margin-top: 7px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-raised) 96%, black 4%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 22%);
+  font-size: 12px;
+}
+
+.timeline-lane-preview[hidden] {
+  display: none;
+}
+
+.timeline-lane-preview ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-lane-preview li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 7px;
+  align-items: baseline;
+}
+
+.timeline-lane-preview i {
+  width: 7px;
+  height: 7px;
+  background: #ffcc66;
+  transform: rotate(45deg);
+}
+
+.timeline-lane-preview i.death {
+  background: #ff5e82;
+  border-radius: 50%;
+  transform: none;
+}
+
+.timeline-lane-preview small {
+  color: var(--muted);
+}
+
+.timeline-lane-coverage {
+  margin-top: 8px;
+}
+
 .timeline-svg polyline[hidden] {
   display: none;
 }
@@ -2243,24 +2364,6 @@ summary.party-loadout-title {
   color: #ff5e82;
 }
 
-.timeline-marker.loadout,
-.timeline-marker .timeline-marker-line {
-  stroke-width: 1.5;
-  stroke-dasharray: 5 4;
-}
-
-.timeline-marker.death .timeline-marker-line {
-  stroke: currentColor;
-  pointer-events: none;
-}
-.timeline-marker.loadout { stroke: #ffcc66; }
-
-.timeline-death-icon {
-  fill: currentColor;
-  filter: drop-shadow(0 0 2px rgb(3 16 20 / 82%));
-  cursor: help;
-}
-
 .timeline-death-hitbox {
   fill: transparent;
   stroke: transparent;
@@ -2293,8 +2396,6 @@ summary.party-loadout-title {
   stroke-width: 3;
   filter: drop-shadow(0 0 3px currentColor);
 }
-
-.timeline-marker.death.is-current .timeline-marker-line { stroke-width: 3; }
 
 .timeline-death-tooltips:empty {
   display: none;
@@ -6849,5 +6950,19 @@ footer p {
     gap: 10px;
     flex-direction: column;
     width: calc(100% - 28px);
+  }
+}
+
+@media (pointer: coarse) {
+  .timeline-lane-marker-hitbox,
+  .timeline-marker[data-timeline-marker-lane] .timeline-death-hitbox {
+    x: -22px;
+    y: -22px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .timeline-marker-lanes-svg {
+    touch-action: pan-y;
   }
 }

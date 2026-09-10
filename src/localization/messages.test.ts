@@ -43,6 +43,14 @@ describe("website message resolver", () => {
     expect(messages.message("parse.timeline.viewport_gesture_hint")).toContain("Shift-drag");
   });
 
+  it("localizes recorded lane coverage and aggregate previews", () => {
+    const messages = createMessageResolver("en-US");
+    expect(messages.message("parse.timeline.lanes.aria")).toBe("Recorded event lanes");
+    expect(messages.message("parse.timeline.lanes.preview.other", { count: 4 })).toBe("4 nearby events");
+    expect(messages.message("parse.timeline.lanes.coverage.other", { omitted: 3 })).toContain("3 events were omitted");
+    expect(messages.message("parse.timeline.lanes.coverage.one")).toContain("1 event was omitted");
+  });
+
   it("localizes death-cause evidence and fallback summaries", () => {
     const messages = createMessageResolver("en-US");
     expect(messages.message("parse.timeline.death.terminal_hit")).toBe("Terminal recorded hit");

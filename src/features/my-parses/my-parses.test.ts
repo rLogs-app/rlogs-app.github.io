@@ -82,6 +82,7 @@ describe("My Parses", () => {
 
     refresh();
     expect(queried).toEqual([
+      "[data-timeline-metric]",
       "[data-metric]",
       "[data-window]",
       "[data-timeline-death-trigger]",
