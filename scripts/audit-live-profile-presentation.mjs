@@ -113,7 +113,8 @@ console.log(JSON.stringify({
 }));
 
 function checkObservedCharacters(value, claimedProfiles) {
-  if (value?.schema_version !== 1 || !Array.isArray(value.characters)) {
+  const schemaVersion = value?.schema_version;
+  if ((schemaVersion !== 1 && schemaVersion !== 2) || !Array.isArray(value.characters)) {
     failures.push("the production observed-character catalog has an unsupported contract");
     return;
   }
@@ -129,6 +130,9 @@ function checkObservedCharacters(value, claimedProfiles) {
     else if (observedKeys.has(key)) failures.push(`duplicate observed character key: ${key}`);
     else observedKeys.add(key);
     if (!name) failures.push(`${key ?? "unknown character"}: display name is missing`);
+    if (schemaVersion === 2 && !nullablePresentationAuthority(character?.presentation_authority)) {
+      failures.push(`${name ?? key ?? "unknown character"}: malformed presentation authority`);
+    }
 
     const reports = array(character?.reports);
     if (!Number.isSafeInteger(character?.report_count) || character.report_count !== reports.length) {
@@ -140,6 +144,10 @@ function checkObservedCharacters(value, claimedProfiles) {
       const runIndex = integer(report?.run_index);
       if (!reportId || runIndex === null || runIndex < 0) {
         failures.push(`${name ?? key ?? "unknown character"}: malformed involved-parse reference`);
+        continue;
+      }
+      if (schemaVersion === 2 && !nullableIdentityTriple(report)) {
+        failures.push(`${name ?? key ?? "unknown character"}: malformed involved-parse protocol identity`);
         continue;
       }
       const reportKey = `${reportId}:${runIndex}`;
@@ -170,6 +178,25 @@ function checkObservedCharacters(value, claimedProfiles) {
       failures.push(`${characterId}: observed name ${name} disagrees with claimed name ${string(claimed.display_name) ?? "missing"}`);
     }
   }
+}
+
+function nullablePresentationAuthority(value) {
+  return value === null || completeIdentityTriple(record(value));
+}
+
+function nullableIdentityTriple(value) {
+  const row = record(value);
+  if (!row) return false;
+  const fields = [row.deployment_id, row.client_build, row.protocol_pack_digest];
+  return fields.every((field) => field === null) || completeIdentityTriple(row);
+}
+
+function completeIdentityTriple(value) {
+  return Boolean(value)
+    && typeof value.deployment_id === "string" && value.deployment_id.length > 0
+    && typeof value.client_build === "string" && value.client_build.length > 0
+    && typeof value.protocol_pack_digest === "string"
+    && /^sha256:[0-9a-f]{64}$/u.test(value.protocol_pack_digest);
 }
 
 function checkPresentation(uid, kind, id, collection) {
