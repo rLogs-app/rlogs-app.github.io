@@ -2141,6 +2141,11 @@ summary.party-loadout-title {
 .timeline-marker.death { stroke: #ff5e82; }
 .timeline-marker.loadout { stroke: #ffcc66; }
 
+.timeline-marker.is-current {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
 .timeline-rdps-evidence {
   fill: color-mix(in srgb, var(--accent) 72%, transparent);
   stroke: color-mix(in srgb, var(--accent) 88%, white 12%);
@@ -2202,6 +2207,29 @@ summary.party-loadout-title {
 
 .timeline-inspection span strong {
   color: var(--text);
+}
+
+.timeline-events {
+  min-height: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.timeline-events:not(:empty) {
+  margin-top: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+}
+
+.timeline-events > strong {
+  color: var(--text);
+}
+
+.timeline-events ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
 }
 
 .timeline-snapshot-scroll {

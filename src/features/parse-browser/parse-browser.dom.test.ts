@@ -79,6 +79,33 @@ describe("combat timeline DOM interactions", () => {
     expect(inspector.getAttribute("aria-valuenow")).toBe("0");
   });
 
+  it("keeps authoritative marker context synchronized across scrub, keyboard, and playback cursors", () => {
+    const root = mountedTimeline();
+    const events = root.querySelector<HTMLElement>("[data-timeline-events]")!;
+    const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+    const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
+
+    expect(events.textContent).toBe("");
+    scrubber.value = "2";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(events.textContent).toContain("Heavy Guardian loadout phase 1 at 0:01.400");
+    expect(inspector.getAttribute("aria-valuetext")).toContain("Events at this point");
+
+    inspector.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }) as unknown as Event);
+    expect(events.textContent).not.toContain("death observed");
+    inspector.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }) as unknown as Event);
+    expect(events.textContent).toContain("Marksman death observed in the 0:03.000–0:04.000 one-second bucket");
+    expect(root.querySelector(".timeline-marker.death")?.classList.contains("is-current")).toBe(true);
+
+    inspector.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Home", bubbles: true }) as unknown as Event);
+    play.click();
+    animationFrame!(0);
+    animationFrame!(1_000);
+    expect(events.textContent).toContain("MarieRose loadout phase 1 at 0:01");
+    expect(root.querySelector(".timeline-marker.death")?.classList.contains("is-current")).toBe(false);
+  });
+
   it("does not advance a bucket early and completes a fractional run at its exact endpoint", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     report.runs[0]!.timeline!.duration_micros = 2_200_000;

@@ -795,6 +795,7 @@ function combatIdentityLabel(
 export interface CanonicalGraphSelection {
   participants: PublicParticipant[];
   timeline: PublicRun["timeline"];
+  loadoutPhaseSources: TimelineLoadoutPhaseSource[];
   reconciled: boolean;
   trustKind: "reconciled" | "pending" | "single";
   contributingReportCount: number;
@@ -805,6 +806,21 @@ export interface CanonicalGraphSelection {
   /// The clock authorized for rDPS graph rates and cursor playback. Legacy
   /// reconciliations may contain a canonical-POV clock, so they expose none.
   rdpsRateClock: PublicTimelineRateClockPoint[] | null;
+}
+
+interface TimelineLoadoutPhaseSource {
+  sourceReportId: string;
+  phaseIndex: number;
+  phase: PublicCombatLoadoutPhase;
+}
+
+function timelineLoadoutPhaseSources(sourceReportId: string, phases: PublicCombatLoadoutPhase[]): TimelineLoadoutPhaseSource[] {
+  const nextIndexByCharacter = new Map<string, number>();
+  return phases.map((phase) => {
+    const phaseIndex = nextIndexByCharacter.get(phase.character_id) ?? 0;
+    nextIndexByCharacter.set(phase.character_id, phaseIndex + 1);
+    return { sourceReportId, phaseIndex, phase };
+  });
 }
 
 export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunReconciliation): CanonicalGraphSelection {
@@ -820,6 +836,10 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
       typeof reconciliation.rdps_status === "string" && reconciliation.rdps_status.length > 0;
     const replayGameTimeMicros = replayAuthority ? completeTimelineGameTimeMicros(reconciliationTimeline) : null;
     return { participants: reconciliation.reconciled_participants, timeline: reconciliationTimeline, reconciled: true,
+      loadoutPhaseSources: reconciliation.characters.flatMap((character) => character.selected_report_id == null ? []
+        : (character.selected_combat_loadout_phases ?? []).map((phase, phaseIndex) => ({
+          sourceReportId: character.selected_report_id!, phaseIndex, phase,
+        }))),
       trustKind: "reconciled", contributingReportCount: reconciliation.reports.length,
       rdpsStatus: replayAuthority ? reconciliation.rdps_status! : null,
       rdpsGameTimeMicros: replayGameTimeMicros,
@@ -827,6 +847,8 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
         ? reconciliationTimeline.rate_clock ?? null : null };
   }
   return { participants: run.participants, timeline: run.timeline, reconciled: false,
+    loadoutPhaseSources: run.timeline
+      ? timelineLoadoutPhaseSources(run.timeline.canonical_report_id, run.combat_loadout_phases ?? []) : [],
     trustKind: reconciliation ? "pending" : "single", contributingReportCount: reconciliation?.reports.length ?? 1,
     rdpsStatus: run.rdps_status, rdpsGameTimeMicros: run.game_time_micros,
     rdpsRateClock: run.timeline?.rate_clock_complete ? run.timeline.rate_clock ?? null : null };
@@ -923,9 +945,10 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
       <button type="button" data-timeline-play aria-pressed="false">${escapeHtml(messages.message("parse.timeline.play"))}</button>
       <input type="range" data-timeline-scrubber min="0" max="${durationSeconds}" step="1" value="0" aria-label="${escapeHtml(messages.message("parse.timeline.position"))}" />
     </div>
-    <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, authorizedRateClock, rdpsLabel, messages)}</div>
+    <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, graph.loadoutPhaseSources, authorizedRateClock, rdpsLabel, messages)}</div>
     <div class="timeline-range-scroll" data-timeline-range></div>
     <div class="timeline-inspection" data-timeline-inspection><strong>${escapeHtml(messages.message("parse.timeline.inspection.title"))}</strong><span>${escapeHtml(messages.message("parse.timeline.inspection.hint"))}</span></div>
+    <div class="timeline-events" data-timeline-events></div>
     <output class="timeline-live" data-timeline-live aria-live="polite" aria-atomic="true"></output>
     <div class="timeline-snapshot-scroll" data-timeline-snapshot></div>
     <div class="timeline-participant-toolbar" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">
@@ -942,7 +965,7 @@ type CombatTimeline = NonNullable<PublicRun["timeline"]>;
 type CombatTimelineTrack = CombatTimeline["participant_tracks"][number];
 type ParticipantSeriesPoint = NonNullable<PublicParticipant["series"]>[number];
 
-function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: PublicParticipant; track: CombatTimelineTrack; color: string; pattern: typeof timelineLinePatterns[number] }>, rdpsRateClock: PublicTimelineRateClockPoint[] | null, rdpsLabel: string, messages: MessageResolver): string {
+function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: PublicParticipant; track: CombatTimelineTrack; color: string; pattern: typeof timelineLinePatterns[number] }>, loadoutPhaseSources: TimelineLoadoutPhaseSource[], rdpsRateClock: PublicTimelineRateClockPoint[] | null, rdpsLabel: string, messages: MessageResolver): string {
   const width = 1040, height = 320, left = 68, right = 18, top = 22, bottom = 42;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const seconds = Math.max(1, Math.ceil(timeline.duration_micros / 1_000_000));
@@ -987,8 +1010,34 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
     const visible = metric === "damage" && windowSeconds === 5;
     return `<g data-series="${metric}" data-series-window="${windowSeconds}" data-series-scale-maximum="${max}"${visible ? "" : " hidden"}>${grid}<g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)"><g data-timeline-scale-geometry>${lines}</g></g><text x="${left}" y="14" class="timeline-axis-label">${escapeHtml(metricLabel)}</text></g>`;
   })).join("");
-  const deaths = timeline.death_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.death"), time: formatDuration(marker.at_micros) }))).join("");
-  const loadouts = timeline.loadout_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.loadout"), time: formatDuration(marker.at_micros) }))).join("");
+  const deaths = timeline.death_markers.map((marker) => {
+    const actor = plotted.find(({ actor }) => actor.actor_id === marker.actor_id)?.actor;
+    const player = actor?.display_name ?? messages.message("parse.timeline.player", { id: marker.actor_id });
+    const boundary = timelineMarkerBoundary(marker.at_micros, timeline.duration_micros, marker.precision);
+    const label = marker.precision === "one_second_bucket"
+      ? messages.message("parse.timeline.event.death_bucket", {
+        player,
+        start: formatDuration(marker.at_micros),
+        end: formatDuration(Math.min(timeline.duration_micros, marker.at_micros + timeline.series_bucket_micros)),
+      })
+      : messages.message("parse.timeline.event.death_exact", { player, time: formatDuration(marker.at_micros) });
+    return markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", boundary, label);
+  }).join("");
+  const loadouts = timeline.loadout_markers.map((marker) => {
+    const matchingActors = plotted.filter(({ actor }) => actor.character_id === marker.character_id);
+    const player = matchingActors.length === 1
+      ? matchingActors[0]!.actor.display_name ?? messages.message("parse.timeline.character", { id: marker.character_id })
+      : messages.message("parse.timeline.character", { id: marker.character_id });
+    const sources = loadoutPhaseSources.filter(({ sourceReportId, phaseIndex, phase }) =>
+      sourceReportId === marker.source_report_id && phaseIndex === marker.phase_index &&
+      phase.character_id === marker.character_id && phase.run_elapsed_micros === marker.at_micros);
+    const label = sources.length === 1
+      ? messages.message("parse.timeline.event.loadout_phase", {
+        player, phase: messages.number(marker.phase_index + 1, { maximumFractionDigits: 0 }), time: formatDuration(marker.at_micros),
+      })
+      : messages.message("parse.timeline.event.loadout_generic", { player, time: formatDuration(marker.at_micros) });
+    return markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", timelineMarkerBoundary(marker.at_micros, timeline.duration_micros, "exact_microsecond"), label);
+  }).join("");
   const rdpsEvidence = renderRdpsEvidenceLane(timeline, left, plotWidth, top + plotHeight, messages);
   const rateClock = rdpsRateClock?.length
     ? rdpsRateClock.map((point) => `${point.second}:${point.edps_elapsed_micros}:${point.adps_elapsed_micros}`).join(",") : "";
@@ -1462,9 +1511,16 @@ export function timelineVisibleTotalAtSecond(
   };
 }
 
-function markerLine(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, kind: string, title: string): string {
+export function timelineMarkerBoundary(atMicros: number, durationMicros: number, precision: "exact_microsecond" | "one_second_bucket"): number {
+  const boundary = precision === "one_second_bucket"
+    ? Math.floor(Math.max(0, atMicros) / 1_000_000) + 1
+    : Math.ceil(Math.max(0, atMicros) / 1_000_000);
+  return Math.min(timelineMaximumBoundary(durationMicros), boundary);
+}
+
+function markerLine(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, kind: string, boundary: number, title: string): string {
   const x = left + Math.min(1, atMicros / Math.max(1, durationMicros)) * width;
-  return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}"><title>${escapeHtml(title)}</title></line>`;
+  return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-label="${escapeHtml(title)}"><title>${escapeHtml(title)}</title></line>`;
 }
 
 function timelineViewportFor(timeline: HTMLElement, durationMicros: number): TimelineViewport {
@@ -1897,6 +1953,11 @@ function showTimelineInspection(timeline: HTMLElement, second: number, announce 
     : timeline.dataset.timelineMetric === "damage_taken" ? messages.message("parse.timeline.metric.taken")
     : timeline.dataset.timelineMetric === "rdps_damage" ? timeline.dataset.timelineRdpsLabel ?? messages.message("parse.timeline.rdps.exact") : messages.message("parse.timeline.metric.damage");
   const time = formatDuration(frame.elapsedMicros);
+  const eventLabels = [...svg.querySelectorAll<SVGLineElement>("[data-timeline-marker-boundary]")].flatMap((marker) => {
+    marker.classList.toggle("is-current", Number(marker.dataset.timelineMarkerBoundary) === bounded);
+    return Number(marker.dataset.timelineMarkerBoundary) === bounded && marker.dataset.timelineMarkerLabel
+      ? [marker.dataset.timelineMarkerLabel] : [];
+  });
   const cumulative = (row: TimelineCursorRateRow): string => row.damageRates
     ? messages.message("parse.timeline.inspection.edps_adps", { edps: messages.number(row.damageRates.edps, { maximumFractionDigits: 1 }), adps: messages.number(row.damageRates.adps, { maximumFractionDigits: 1 }) })
     : timeline.dataset.timelineMetric === "damage" ? messages.message("parse.timeline.inspection.rate_unavailable")
@@ -1922,6 +1983,10 @@ function showTimelineInspection(timeline: HTMLElement, second: number, announce 
       ? `<span><i style="--track:${active[0]!.color}"></i>${escapeHtml(metric)} <strong>${escapeHtml(rateLine(active[0]!))}</strong></span>`
       : `<span>${escapeHtml(messages.message("parse.timeline.inspection.none"))}</span>`;
   output.innerHTML = `<strong>${time}</strong>${details}`;
+  const events = timeline.querySelector<HTMLElement>("[data-timeline-events]");
+  if (events) events.innerHTML = eventLabels.length
+    ? `<strong>${escapeHtml(messages.message("parse.timeline.events.title"))}</strong><ul>${eventLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join("")}</ul>`
+    : "";
   const snapshot = timeline.querySelector<HTMLElement>("[data-timeline-snapshot]");
   if (snapshot) snapshot.innerHTML = renderTimelineSnapshotTable(
     timeline.dataset.timelineMetric as TimelineMetric,
@@ -1933,7 +1998,8 @@ function showTimelineInspection(timeline: HTMLElement, second: number, announce 
   );
   const totalAria = visibleTotal && active.length > 1 ? `${messages.message("parse.timeline.inspection.visible_total")}: ${rateLine(visibleTotal)}; ` : "";
   const announcement = messages.message("parse.timeline.cursor_announcement", { metric, time });
-  inspector.setAttribute("aria-valuetext", `${time}; ${totalAria}${active.map((row) => `${row.label}: ${rateLine(row)}`).join("; ") || messages.message("parse.timeline.inspection.none")}`);
+  const eventAria = eventLabels.length ? `; ${messages.message("parse.timeline.events.title")}: ${eventLabels.join("; ")}` : "";
+  inspector.setAttribute("aria-valuetext", `${time}; ${totalAria}${active.map((row) => `${row.label}: ${rateLine(row)}`).join("; ") || messages.message("parse.timeline.inspection.none")}${eventAria}`);
   scrubber?.setAttribute("aria-valuetext", time);
   const live = timeline.querySelector<HTMLOutputElement>("[data-timeline-live]");
   if (announce && live) live.textContent = announcement;

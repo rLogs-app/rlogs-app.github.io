@@ -33,6 +33,7 @@ import {
   timelineBoundaryElapsedMicros,
   timelineClosestBoundary,
   timelineMaximumBoundary,
+  timelineMarkerBoundary,
   clampTimelineViewport,
   timelineDamageRatesAtSecond,
   timelineRateVariantsAtSecond,
@@ -804,7 +805,13 @@ describe("canonical timeline selection", () => {
 
   it("uses reconciled participants only after a conserved replay completes", () => {
     const reconciled = conservedReconciliation();
-    expect(selectCanonicalGraph(report.runs[0], reconciled).participants).toBe(reconciled.reconciled_participants);
+    const selection = selectCanonicalGraph(report.runs[0], reconciled);
+    expect(selection.participants).toBe(reconciled.reconciled_participants);
+    expect(selection.loadoutPhaseSources).toContainEqual({
+      sourceReportId: reconciled.characters[0]!.selected_report_id,
+      phaseIndex: 0,
+      phase: reconciled.characters[0]!.selected_combat_loadout_phases![0],
+    });
     expect(selectCanonicalGraph(report.runs[0], { ...reconciled, attribution_replay_completed: false }).reconciled).toBe(false);
     expect(selectCanonicalGraph(report.runs[0], { ...reconciled, conservation: { ...reconciled.conservation!, conserved: false } }).reconciled).toBe(false);
     const mismatched = { ...reconciled, timeline: { ...reconciled.timeline!, participant_tracks: [
@@ -901,6 +908,33 @@ describe("canonical timeline selection", () => {
 });
 
 describe("timeline rolling windows", () => {
+  it("maps exact and one-second-bucket markers onto the cursor boundary that can authoritatively expose them", () => {
+    expect(timelineMarkerBoundary(0, 2_200_000, "exact_microsecond")).toBe(0);
+    expect(timelineMarkerBoundary(1_000_000, 2_200_000, "exact_microsecond")).toBe(1);
+    expect(timelineMarkerBoundary(1_000_001, 2_200_000, "exact_microsecond")).toBe(2);
+    expect(timelineMarkerBoundary(0, 2_200_000, "one_second_bucket")).toBe(1);
+    expect(timelineMarkerBoundary(1_000_000, 2_200_000, "one_second_bucket")).toBe(2);
+    expect(timelineMarkerBoundary(2_000_000, 2_200_000, "one_second_bucket")).toBe(3);
+  });
+
+  it("renders authoritative marker context and fails closed when loadout source identity does not resolve", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const html = renderTimeline(graph);
+    expect(html).toContain("Marksman death observed in the 0:03.000–0:04.000 one-second bucket");
+    expect(html).toContain("MarieRose loadout phase 1 at 0:01");
+    expect(html).toContain('data-timeline-marker-boundary="4"');
+
+    const exact = renderTimeline({ ...graph, timeline: { ...graph.timeline!, death_markers: [{
+      ...graph.timeline!.death_markers[0]!, at_micros: 1_400_000, precision: "exact_microsecond",
+    }] } });
+    expect(exact).toContain('data-timeline-marker-boundary="2" data-timeline-marker-label="Marksman died at 0:01.400"');
+
+    const unresolved = renderTimeline({ ...graph, loadoutPhaseSources: [] });
+    expect(unresolved).toContain("MarieRose loadout changed at 0:01");
+    expect(unresolved).not.toContain("MarieRose loadout phase 1 at 0:01");
+  });
+
   it("averages sparse bucket totals across a trailing window without filling the whole encounter", () => {
     const points = [
       { second: 1, damage: 30, effective_healing: 0, damage_taken: 0 },
