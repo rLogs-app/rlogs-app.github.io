@@ -825,6 +825,10 @@ describe("canonical timeline selection", () => {
     viewed.runs[0].game_time_micros = 5_000_000;
     viewed.runs[0].rdps_status = "viewed_pov_status_must_not_leak";
     const reconciled = conservedReconciliation();
+    expect(reconciled.timeline!.duration_micros % reconciled.timeline!.series_bucket_micros).not.toBe(0);
+    expect(reconciled.timeline!.rate_clock).toHaveLength(
+      Math.ceil(reconciled.timeline!.duration_micros / reconciled.timeline!.series_bucket_micros),
+    );
     const finalGameTime = reconciled.timeline!.rate_clock!.at(-1)!.edps_elapsed_micros;
     const expectedTeam = reconciled.conservation!.rdps_damage * 1_000_000 / finalGameTime;
     const first = reconciled.reconciled_participants[0]!;
@@ -889,7 +893,7 @@ describe("canonical timeline selection", () => {
     expect(html).not.toContain('data-metric="rdps_damage"');
   });
 
-  it("accepts a complete floor-count rate clock for a fractional canonical tail", () => {
+  it("fails closed across aggregate, party, and timeline rDPS when a fractional tail clock stops at the floor boundary", () => {
     const reconciled = conservedReconciliation();
     const timeline = reconciled.timeline!;
     expect(timeline.duration_micros % timeline.series_bucket_micros).not.toBe(0);
@@ -897,13 +901,27 @@ describe("canonical timeline selection", () => {
     timeline.rate_clock = timeline.rate_clock!.slice(0, floorCount);
     timeline.rate_clock_complete = true;
     timeline.omitted.rate_clock_points = 0;
-    const expectedGameTime = timeline.rate_clock.at(-1)!.edps_elapsed_micros;
 
     const selection = selectCanonicalGraph(report.runs[0], reconciled);
+    const html = renderReport(report, 0, reconciled);
     expect(selection.reconciled).toBe(true);
     expect(timeline.rate_clock).toHaveLength(floorCount);
-    expect(selection.rdpsGameTimeMicros).toBe(expectedGameTime);
-    expect(renderReport(report, 0, reconciled)).not.toContain("<small>Team rDPS</small><strong>Unavailable</strong>");
+    expect(selection.rdpsGameTimeMicros).toBeNull();
+    expect(selection.rdpsRateClock).toBeNull();
+    expect(html).toContain("<small>Team rDPS</small><strong>Unavailable</strong>");
+    expect(html).toContain('data-sort-rdps="-1"');
+    expect(html).not.toContain('data-metric="rdps_damage"');
+  });
+
+  it("accepts a terminal-count clock when the canonical duration ends on an integer boundary", () => {
+    const reconciled = conservedReconciliation();
+    const timeline = reconciled.timeline!;
+    timeline.duration_micros = timeline.rate_clock!.length * timeline.series_bucket_micros;
+
+    const selection = selectCanonicalGraph(report.runs[0], reconciled);
+    expect(timeline.duration_micros % timeline.series_bucket_micros).toBe(0);
+    expect(selection.rdpsGameTimeMicros).toBe(timeline.rate_clock!.at(-1)!.edps_elapsed_micros);
+    expect(selection.rdpsRateClock).toBe(timeline.rate_clock);
   });
 });
 

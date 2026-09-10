@@ -855,13 +855,12 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
 }
 
 function completeTimelineGameTimeMicros(timeline: NonNullable<PublicRun["timeline"]>): number | null {
-  const completedPoints = Math.floor(timeline.duration_micros / timeline.series_bucket_micros);
   const terminalPoints = Math.ceil(timeline.duration_micros / timeline.series_bucket_micros);
   const rateClock = timeline.rate_clock ?? [];
-  if (!timeline.rate_clock_complete || timeline.omitted.rate_clock_points !== 0 || rateClock.length <= 0 ||
-      (rateClock.length !== completedPoints && rateClock.length !== terminalPoints)) return null;
+  if (!timeline.rate_clock_complete || timeline.omitted.rate_clock_points !== 0 || terminalPoints <= 0 ||
+      rateClock.length !== terminalPoints) return null;
   const final = rateClock.at(-1);
-  return final?.second === rateClock.length - 1 && final.edps_elapsed_micros > 0
+  return final?.second === terminalPoints - 1 && final.edps_elapsed_micros > 0
     ? final.edps_elapsed_micros : null;
 }
 
