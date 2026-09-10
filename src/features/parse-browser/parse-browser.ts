@@ -1310,6 +1310,50 @@ export function timelineDamageRatesAtSecond(
   };
 }
 
+export function timelineDamageRateVariantsAtSecond(
+  oneSecondDamage: readonly [number, number][],
+  rateClock: readonly PublicTimelineRateClockPoint[] | null,
+  second: number,
+  durationMicros: number,
+): TimelineDamageRateVariants | null {
+  if (!rateClock?.length) return null;
+  const maximumBoundary = timelineMaximumBoundary(durationMicros);
+  const boundary = Math.max(0, Math.min(maximumBoundary, Math.round(second)));
+  const rate = (
+    field: "edps_elapsed_micros" | "adps_elapsed_micros",
+    window: 1 | 5 | 10 | "cumulative",
+  ): number | null => {
+    const fractionalTerminal = boundary === maximumBoundary && durationMicros % 1_000_000 !== 0;
+    if (window !== "cumulative" && window !== 1 && fractionalTerminal && durationMicros > window * 1_000_000) {
+      // Starting an N-second window at this fractional endpoint would split an
+      // earlier aggregate bucket. The public timeline has no sub-second
+      // numerator for that cut, so only the terminal 1s bucket and the full
+      // cumulative range remain exactly computable.
+      return null;
+    }
+    const startBoundary = window === "cumulative" ? 0 : Math.max(0, boundary - window);
+    const started = timelineRateClockFieldAtBoundary(rateClock, startBoundary, field);
+    const ended = timelineRateClockFieldAtBoundary(rateClock, boundary, field);
+    if (started == null || ended == null || ended <= started) return null;
+    const damage = oneSecondDamage.reduce(
+      (total, [sampleBoundary, value]) => sampleBoundary > startBoundary && sampleBoundary <= boundary
+        ? total + value : total,
+      0,
+    );
+    return damage * 1_000_000 / (ended - started);
+  };
+  const variants = (field: "edps_elapsed_micros" | "adps_elapsed_micros"): TimelineRateVariants => ({
+    one: rate(field, 1),
+    five: rate(field, 5),
+    ten: rate(field, 10),
+    cumulative: rate(field, "cumulative"),
+  });
+  return {
+    edps: variants("edps_elapsed_micros"),
+    adps: variants("adps_elapsed_micros"),
+  };
+}
+
 export function timelineRdpsAtSecond(
   oneSecondAdjustedDamage: readonly [number, number][],
   rateClock: readonly PublicTimelineRateClockPoint[] | null,
@@ -1415,9 +1459,22 @@ export function timelineCursorFrame(durationMicros: number, second: number): {
   };
 }
 
+export interface TimelineRateVariants {
+  one: number | null;
+  five: number | null;
+  ten: number | null;
+  cumulative: number | null;
+}
+
+export interface TimelineDamageRateVariants {
+  edps: TimelineRateVariants;
+  adps: TimelineRateVariants;
+}
+
 export interface TimelineCursorRateRow {
-  variants: { one: number | null; five: number | null; ten: number | null; cumulative: number | null };
+  variants: TimelineRateVariants;
   damageRates: { edps: number; adps: number } | null;
+  damageRateVariants?: TimelineDamageRateVariants | null;
   rdps: number | null;
 }
 
@@ -1530,6 +1587,22 @@ export function timelineVisibleTotalAtSecond(
   const rdps = !rdpsCoverageComplete || rows.some((row) => row.rdps === null)
     ? null
     : sum((row) => row.rdps!);
+  const hasDamageRateVariants = rows.some((row) => row.damageRateVariants !== undefined);
+  const damageRateVariants = hasDamageRateVariants && rows.every((row) => row.damageRateVariants != null)
+    ? {
+      edps: {
+        one: sumVariant((row) => row.damageRateVariants!.edps.one),
+        five: sumVariant((row) => row.damageRateVariants!.edps.five),
+        ten: sumVariant((row) => row.damageRateVariants!.edps.ten),
+        cumulative: sumVariant((row) => row.damageRateVariants!.edps.cumulative),
+      },
+      adps: {
+        one: sumVariant((row) => row.damageRateVariants!.adps.one),
+        five: sumVariant((row) => row.damageRateVariants!.adps.five),
+        ten: sumVariant((row) => row.damageRateVariants!.adps.ten),
+        cumulative: sumVariant((row) => row.damageRateVariants!.adps.cumulative),
+      },
+    } : null;
   return {
     variants: {
       one: sumVariant((row) => row.variants.one),
@@ -1538,6 +1611,7 @@ export function timelineVisibleTotalAtSecond(
       cumulative: sumVariant((row) => row.variants.cumulative),
     },
     damageRates,
+    ...(hasDamageRateVariants ? { damageRateVariants } : {}),
     rdps,
   };
 }
@@ -2230,7 +2304,7 @@ function showTimelineInspection(timeline: HTMLElement, second: number, announce 
     const participant = line.dataset.participant ?? "";
     const metricKey = timeline.dataset.timelineMetric ?? "damage";
     const oneSecond = timelineSamplesFor(svg, metricKey, "1", participant);
-    const variants = isRdpsTimelineMetric(metricKey)
+    const derivedVariants = isRdpsTimelineMetric(metricKey)
       ? (() => {
         const rates = timelineRdpsRateVariantsAtSecond(oneSecond, rateClock, bounded, Number(svg.dataset.durationMicros));
         return line.dataset.cumulativeComplete === "true" ? rates : { ...rates, cumulative: null };
@@ -2240,6 +2314,9 @@ function showTimelineInspection(timeline: HTMLElement, second: number, announce 
         five: timelineSamplesFor(svg, metricKey, "5", participant),
         ten: timelineSamplesFor(svg, metricKey, "10", participant),
       }, bounded, frame.elapsedMicros);
+    const variants = metricKey === "damage" && svg.dataset.seriesComplete !== "true"
+      ? { one: null, five: null, ten: null, cumulative: null }
+      : derivedVariants;
     return {
       participant,
       label: line.dataset.label ?? "Player",
@@ -2247,6 +2324,8 @@ function showTimelineInspection(timeline: HTMLElement, second: number, announce 
       variants,
       damageRates: metricKey === "damage" && svg.dataset.seriesComplete === "true"
         ? timelineDamageRatesAtSecond(oneSecond, rateClock, bounded) : null,
+      damageRateVariants: metricKey === "damage" && svg.dataset.seriesComplete === "true"
+        ? timelineDamageRateVariantsAtSecond(oneSecond, rateClock, bounded, durationMicros) : undefined,
       rdps: metricKey === "rdps_damage" && svg.dataset.seriesComplete === "true" && line.dataset.cumulativeComplete === "true"
         ? timelineRdpsAtSecond(oneSecond, rateClock, bounded) : null,
     };
@@ -2272,12 +2351,25 @@ function showTimelineInspection(timeline: HTMLElement, second: number, announce 
       : row.variants.cumulative == null ? messages.message("parse.timeline.inspection.rate_unavailable")
         : messages.message("parse.timeline.inspection.run_rate", { metric, value: messages.number(row.variants.cumulative as number, { maximumFractionDigits: 1 }) });
   const variant = (value: number | null): string => value == null ? "—" : messages.number(value, { maximumFractionDigits: 1 });
-  const rateLine = (row: TimelineCursorRateRow): string => messages.message("parse.timeline.inspection.rates", {
-    one: variant(row.variants.one),
-    five: variant(row.variants.five),
-    ten: variant(row.variants.ten),
-    cumulative: cumulative(row),
-  });
+  const rateLine = (row: TimelineCursorRateRow): string => row.damageRateVariants
+    ? messages.message("parse.timeline.inspection.clock_rates", {
+      oneEdps: variant(row.damageRateVariants.edps.one),
+      oneAdps: variant(row.damageRateVariants.adps.one),
+      fiveEdps: variant(row.damageRateVariants.edps.five),
+      fiveAdps: variant(row.damageRateVariants.adps.five),
+      tenEdps: variant(row.damageRateVariants.edps.ten),
+      tenAdps: variant(row.damageRateVariants.adps.ten),
+      runEdps: variant(row.damageRateVariants.edps.cumulative),
+      runAdps: variant(row.damageRateVariants.adps.cumulative),
+    })
+    : messages.message(timeline.dataset.timelineMetric === "damage"
+      ? "parse.timeline.inspection.wall_rates" : "parse.timeline.inspection.rates", {
+      one: variant(row.variants.one),
+      five: variant(row.variants.five),
+      ten: variant(row.variants.ten),
+      cumulative: timeline.dataset.timelineMetric === "damage"
+        ? variant(row.variants.cumulative) : cumulative(row),
+    });
   const allRdpsTracksExact = Number(timeline.dataset.timelineExactRdpsTrackCount) === Number(timeline.dataset.timelineParticipantCount);
   const visibleTotal = timelineVisibleTotalAtSecond(active, selectedMetric === "rdps_damage" && allRdpsTracksExact);
   const total = visibleTotal && active.length > 1
@@ -2325,19 +2417,35 @@ export function renderTimelineSnapshotTable(
   messages = createMessageResolver(),
 ): string {
   if (!rows.length || !visibleTotal) return `<p class="timeline-snapshot-empty">${escapeHtml(messages.message("parse.timeline.inspection.none"))}</p>`;
+  const pairedDamageRates = metric === "damage" && rows.some((row) => row.damageRateVariants != null);
+  const pair = (rates: TimelineDamageRateVariants | null | undefined, key: keyof TimelineRateVariants): string => {
+    const format = (value: number | null | undefined): string => value == null ? "—" : messages.number(value, { maximumFractionDigits: 1 });
+    return `${format(rates?.edps[key])} / ${format(rates?.adps[key])}`;
+  };
+  if (pairedDamageRates) {
+    const columns = (["one", "five", "ten", "run"] as const).map((window) => ({
+      key: window === "run" ? "cumulative" as const : window,
+      label: messages.message(`parse.timeline.snapshot.${window}_clock_pair`),
+    }));
+    const cells = (row: TimelineCursorRateRow) => columns
+      .map((column) => `<td>${escapeHtml(pair(row.damageRateVariants, column.key))}</td>`).join("");
+    const playerRows = rows.map((row) => `<tr><th scope="row"><i aria-hidden="true" style="--track:${row.color}"></i>${escapeHtml(row.label)}</th>${cells(row)}</tr>`).join("");
+    return `<table class="timeline-snapshot-table">
+      <caption>${escapeHtml(messages.message("parse.timeline.snapshot.caption", { metric: metricLabel, time }))}</caption>
+      <thead><tr><th scope="col">${escapeHtml(messages.message("parse.timeline.snapshot.player"))}</th>${columns.map((column) => `<th scope="col">${escapeHtml(column.label)}</th>`).join("")}</tr></thead>
+      <tbody><tr class="timeline-snapshot-total"><th scope="row">${escapeHtml(messages.message("parse.timeline.inspection.visible_total"))}</th>${cells(visibleTotal)}</tr>${playerRows}</tbody>
+    </table>`;
+  }
   const contextualColumns = metric === "damage"
-    ? [
-      { label: messages.message("parse.timeline.snapshot.edps"), value: (row: TimelineCursorRateRow) => row.damageRates?.edps ?? null },
-      { label: messages.message("parse.timeline.snapshot.adps"), value: (row: TimelineCursorRateRow) => row.damageRates?.adps ?? null },
-    ]
+    ? []
     : metric === "rdps_damage"
       ? [{ label: messages.message("parse.timeline.snapshot.rdps"), value: (row: TimelineCursorRateRow) => row.rdps }]
       : [];
   const columns = [
-    { label: messages.message("parse.timeline.snapshot.one"), value: (row: TimelineCursorRateRow) => row.variants.one },
-    { label: messages.message("parse.timeline.snapshot.five"), value: (row: TimelineCursorRateRow) => row.variants.five },
-    { label: messages.message("parse.timeline.snapshot.ten"), value: (row: TimelineCursorRateRow) => row.variants.ten },
-    { label: messages.message("parse.timeline.snapshot.run"), value: (row: TimelineCursorRateRow) => row.variants.cumulative },
+    { label: messages.message(metric === "damage" ? "parse.timeline.snapshot.one_wall" : "parse.timeline.snapshot.one"), value: (row: TimelineCursorRateRow) => row.variants.one },
+    { label: messages.message(metric === "damage" ? "parse.timeline.snapshot.five_wall" : "parse.timeline.snapshot.five"), value: (row: TimelineCursorRateRow) => row.variants.five },
+    { label: messages.message(metric === "damage" ? "parse.timeline.snapshot.ten_wall" : "parse.timeline.snapshot.ten"), value: (row: TimelineCursorRateRow) => row.variants.ten },
+    { label: messages.message(metric === "damage" ? "parse.timeline.snapshot.run_wall" : "parse.timeline.snapshot.run"), value: (row: TimelineCursorRateRow) => row.variants.cumulative },
     ...contextualColumns,
   ];
   const format = (value: number | null): string => value == null ? "—" : messages.number(value, { maximumFractionDigits: 1 });

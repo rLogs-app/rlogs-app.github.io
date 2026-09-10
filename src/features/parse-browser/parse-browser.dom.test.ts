@@ -145,6 +145,8 @@ describe("combat timeline DOM interactions", () => {
     scrubber.value = "4";
     scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
     expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("death observed");
+    expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("1s run-time DPS");
+    expect(root.querySelector("[data-timeline-inspection]")?.textContent).toContain("run-time DPS");
 
     trigger.dispatchEvent(new window.MouseEvent("pointerenter", { bubbles: false }) as unknown as Event);
     expect(summary.hidden).toBe(false);
@@ -154,6 +156,116 @@ describe("combat timeline DOM interactions", () => {
     trigger.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }) as unknown as Event);
     trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }) as unknown as Event);
     expect(summary.hidden).toBe(false);
+  });
+
+  it("shows exact paired eDPS/aDPS variants at a v5 playhead and updates visible totals", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    report.schema_version = 17;
+    report.projection_revision = 9;
+    const run = report.runs[0]!;
+    const timeline = run.timeline!;
+    timeline.schema_version = 5;
+    timeline.duration_micros = 4_000_000;
+    timeline.rate_clock_complete = true;
+    timeline.rate_clock = [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 2, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 3, edps_elapsed_micros: 3_000_000, adps_elapsed_micros: 2_000_000 },
+    ];
+    timeline.omitted.rate_clock_points = 0;
+    timeline.omitted.series_points = 0;
+    run.participants = run.participants.slice(0, 2);
+    run.participants[0]!.series = [
+      { second: 0, damage: 100, effective_healing: 0, damage_taken: 0 },
+      { second: 1, damage: 100, effective_healing: 0, damage_taken: 0 },
+      { second: 3, damage: 100, effective_healing: 0, damage_taken: 0 },
+    ];
+    run.participants[1]!.series = [
+      { second: 0, damage: 50, effective_healing: 0, damage_taken: 0 },
+      { second: 1, damage: 50, effective_healing: 0, damage_taken: 0 },
+      { second: 3, damage: 50, effective_healing: 0, damage_taken: 0 },
+    ];
+    timeline.participant_tracks = run.participants.map((participant, index) => ({
+      actor_id: participant.actor_id,
+      character_id: participant.character_id,
+      observed_character_key: participant.observed_character_key ?? null,
+      display_name: participant.display_name,
+      canonical_participant_index: index,
+      series_point_count: participant.series!.length,
+    }));
+    timeline.death_markers = [];
+    timeline.loadout_markers = [];
+    timeline.rdps_influence_spans = [];
+
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(run));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    scrubber.value = "3";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("1s eDPS / aDPS");
+    expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("100 / 200");
+    expect(root.querySelector("[data-timeline-inspector]")?.getAttribute("aria-valuetext"))
+      .toContain("1s eDPS — / aDPS —");
+
+    scrubber.value = "4";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(root.querySelector(".timeline-snapshot-table .timeline-snapshot-total")?.textContent).toContain("150 / 225");
+    root.querySelector<HTMLButtonElement>('[data-participant-toggle="1"]')!.click();
+    expect(root.querySelector(".timeline-snapshot-table .timeline-snapshot-total")?.textContent).toContain("100 / 150");
+    expect(root.querySelector(".timeline-snapshot-table .timeline-snapshot-total")?.textContent).not.toContain("150 / 225");
+  });
+
+  it("marks unprovable 5s and 10s fractional-tail pairs unavailable in the table and ARIA text", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    report.schema_version = 17;
+    report.projection_revision = 9;
+    const run = report.runs[0]!;
+    const timeline = run.timeline!;
+    timeline.schema_version = 5;
+    timeline.duration_micros = 10_100_000;
+    timeline.rate_clock_complete = true;
+    timeline.rate_clock = Array.from({ length: 11 }, (_, second) => ({
+      second,
+      edps_elapsed_micros: Math.min((second + 1) * 1_000_000, timeline.duration_micros),
+      adps_elapsed_micros: Math.min((second + 1) * 1_000_000, timeline.duration_micros),
+    }));
+    timeline.omitted.rate_clock_points = 0;
+    timeline.omitted.series_points = 0;
+    run.participants = run.participants.slice(0, 1);
+    run.participants[0]!.series = Array.from({ length: 11 }, (_, second) => ({
+      second,
+      damage: second === 10 ? 10 : 100,
+      effective_healing: 0,
+      damage_taken: 0,
+    }));
+    timeline.participant_tracks = [{
+      actor_id: run.participants[0]!.actor_id,
+      character_id: run.participants[0]!.character_id,
+      observed_character_key: run.participants[0]!.observed_character_key ?? null,
+      display_name: run.participants[0]!.display_name,
+      canonical_participant_index: 0,
+      series_point_count: 11,
+    }];
+    timeline.death_markers = [];
+    timeline.loadout_markers = [];
+    timeline.rdps_influence_spans = [];
+
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(run));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    scrubber.value = "11";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    const cells = [...root.querySelectorAll<HTMLElement>(".timeline-snapshot-table tbody tr:last-child td")]
+      .map((cell) => cell.textContent);
+    expect(cells).toEqual(["100 / 100", "— / —", "— / —", "100 / 100"]);
+    const aria = root.querySelector("[data-timeline-inspector]")?.getAttribute("aria-valuetext");
+    expect(aria).toContain("5s eDPS — / aDPS —");
+    expect(aria).toContain("10s eDPS — / aDPS —");
   });
 
   it("keeps authoritative marker context synchronized across scrub, keyboard, and playback cursors", () => {
@@ -745,7 +857,7 @@ describe("combat timeline DOM interactions", () => {
   it("plays and scrubs conserved reconciliation snapshots on the canonical timeline", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const reconciliation = load<PublicRunReconciliation>("parse-reconciliation.v1.json");
-    reconciliation.schema_version = 18;
+    reconciliation.schema_version = 20;
     reconciliation.rdps_status = "complete";
     reconciliation.status = "reconciled";
     reconciliation.attribution_replay_completed = true;
@@ -757,6 +869,7 @@ describe("combat timeline DOM interactions", () => {
       rdps_incomplete: false,
     }));
     reconciliation.timeline!.source = "reconciled_canonical_spine";
+    reconciliation.timeline!.schema_version = 5;
     reconciliation.timeline!.participant_tracks = report.runs[0].timeline!.participant_tracks;
     reconciliation.conservation = {
       raw_damage: reconciliation.reconciled_participants.reduce((sum, participant) => sum + participant.damage, 0),
@@ -771,10 +884,11 @@ describe("combat timeline DOM interactions", () => {
     const root = window.document.createElement("main") as unknown as HTMLElement;
     root.innerHTML = renderTimeline(selection);
     bindParseReportInteractions(root)();
-    root.querySelector<HTMLButtonElement>('[data-metric="rdps_damage"]')!.click();
     const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
     scrubber.value = "2";
     scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("1s eDPS / aDPS");
+    root.querySelector<HTMLButtonElement>('[data-metric="rdps_damage"]')!.click();
     expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("rDPS at 0:02");
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("rDPS");
 

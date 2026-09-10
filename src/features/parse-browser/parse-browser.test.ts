@@ -36,6 +36,7 @@ import {
   timelineMaximumBoundary,
   timelineMarkerBoundary,
   clampTimelineViewport,
+  timelineDamageRateVariantsAtSecond,
   timelineDamageRatesAtSecond,
   timelineRateVariantsAtSecond,
   timelineRangeRates,
@@ -1497,6 +1498,62 @@ describe("timeline rolling windows", () => {
     expect(timelineDamageRatesAtSecond([[1, 100], [2, 100], [4, 100]], clock, 4)).toEqual({ edps: 100, adps: 150 });
     expect(timelineDamageRatesAtSecond([[0, 100]], null, 0)).toBeNull();
 
+    expect(timelineDamageRateVariantsAtSecond(
+      [[1, 100], [2, 100], [4, 100]], clock, 4, 4_000_000,
+    )).toEqual({
+      edps: { one: 100, five: 100, ten: 100, cumulative: 100 },
+      adps: { one: 100, five: 150, ten: 150, cumulative: 150 },
+    });
+    const plateau = timelineDamageRateVariantsAtSecond(
+      [[1, 100], [2, 100]], clock, 3, 4_000_000,
+    );
+    expect(plateau?.edps.one).toBeNull();
+    expect(plateau?.adps.one).toBeNull();
+    expect(plateau?.edps.cumulative).toBe(100);
+    expect(plateau?.adps.cumulative).toBe(200);
+    expect(timelineDamageRateVariantsAtSecond([[1, 100]], null, 1, 1_000_000)).toBeNull();
+
+  });
+
+  it("normalizes paired damage rates by the exact fractional terminal clocks", () => {
+    const clock = [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 800_000 },
+      { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_800_000 },
+      { second: 2, edps_elapsed_micros: 2_100_000, adps_elapsed_micros: 1_850_000 },
+    ];
+    expect(timelineDamageRateVariantsAtSecond(
+      [[1, 100], [2, 100], [3, 10]], clock, 3, 2_100_000,
+    )).toEqual({
+      edps: { one: 100, five: 100, ten: 100, cumulative: 100 },
+      adps: { one: 200, five: 210_000_000 / 1_850_000, ten: 210_000_000 / 1_850_000, cumulative: 210_000_000 / 1_850_000 },
+    });
+  });
+
+  it("withholds paired fractional-tail windows whose starts split aggregate buckets", () => {
+    const exactClock = (durationMicros: number) => Array.from(
+      { length: Math.ceil(durationMicros / 1_000_000) },
+      (_, second) => ({
+        second,
+        edps_elapsed_micros: Math.min((second + 1) * 1_000_000, durationMicros),
+        adps_elapsed_micros: Math.min((second + 1) * 1_000_000, durationMicros),
+      }),
+    );
+    const exactDamage = (durationMicros: number) => Array.from(
+      { length: Math.ceil(durationMicros / 1_000_000) },
+      (_, index) => [index + 1, index + 1 === Math.ceil(durationMicros / 1_000_000)
+        ? durationMicros % 1_000_000 / 10_000 : 100] as [number, number],
+    );
+    const fivePointOne = timelineDamageRateVariantsAtSecond(
+      exactDamage(5_100_000), exactClock(5_100_000), 6, 5_100_000,
+    )!;
+    expect(fivePointOne.edps).toEqual({ one: 100, five: null, ten: 100, cumulative: 100 });
+    expect(fivePointOne.adps).toEqual(fivePointOne.edps);
+
+    const tenPointOne = timelineDamageRateVariantsAtSecond(
+      exactDamage(10_100_000), exactClock(10_100_000), 11, 10_100_000,
+    )!;
+    expect(tenPointOne.edps).toEqual({ one: 100, five: null, ten: null, cumulative: 100 });
+    expect(tenPointOne.adps).toEqual(tenPointOne.edps);
   });
 
   it("uses the reviewed Game-time clock for cumulative and windowed rDPS", () => {
@@ -1550,6 +1607,20 @@ describe("timeline rolling windows", () => {
     expect(timelineVisibleTotalAtSecond(exactRows, false)?.rdps).toBeNull();
     expect(timelineVisibleTotalAtSecond([{ ...exactRows[0], rdps: null }, exactRows[1]], true)?.rdps).toBeNull();
     expect(timelineVisibleTotalAtSecond([{ ...exactRows[0], damageRates: null }, exactRows[1]], true)?.damageRates).toBeNull();
+    const pairedRows = exactRows.map((row, index) => ({
+      ...row,
+      damageRateVariants: {
+        edps: { one: 10 + index, five: 20 + index, ten: 30 + index, cumulative: 40 + index },
+        adps: { one: 50 + index, five: 60 + index, ten: 70 + index, cumulative: 80 + index },
+      },
+    }));
+    expect(timelineVisibleTotalAtSecond(pairedRows, true)?.damageRateVariants).toEqual({
+      edps: { one: 21, five: 41, ten: 61, cumulative: 81 },
+      adps: { one: 101, five: 121, ten: 141, cumulative: 161 },
+    });
+    expect(timelineVisibleTotalAtSecond([
+      pairedRows[0]!, { ...pairedRows[1]!, damageRateVariants: null },
+    ], true)?.damageRateVariants).toBeNull();
     expect(timelineVisibleTotalAtSecond([])).toBeNull();
   });
 
