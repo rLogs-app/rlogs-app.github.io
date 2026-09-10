@@ -1064,7 +1064,13 @@ describe("timeline rolling windows", () => {
     expect(html).toContain("Marksman death observed in the 0:03.000–0:04.000 one-second bucket");
     expect(html).toContain("MarieRose loadout phase 1 at 0:01");
     expect(html).toContain('data-timeline-marker-boundary="4"');
-    expect(html.match(/<line[^>]+class="timeline-marker death"[^>]*>/u)?.[0]).toContain('data-timeline-marker-participant="2"');
+    const deathMarker = html.match(/<g[^>]+class="timeline-marker death"[^>]*>/u)?.[0];
+    expect(deathMarker).toContain('data-timeline-marker-participant="2"');
+    expect(deathMarker).toContain('style="color:#91e6a5"');
+    expect(deathMarker).toContain('role="img"');
+    expect(html).toContain('class="timeline-death-skull"');
+    expect(html).toContain('class="timeline-death-bones"');
+    expect(html.indexOf("timeline-inspector-hitbox")).toBeLessThan(html.indexOf('class="timeline-marker death"'));
     expect(html.match(/<line[^>]+class="timeline-marker loadout"[^>]*>/u)?.[0]).toContain('data-timeline-marker-participant="0"');
 
     const exact = renderTimeline({ ...graph, timeline: { ...graph.timeline!, death_markers: [{
@@ -1106,9 +1112,10 @@ describe("timeline rolling windows", () => {
       }],
     };
     const html = renderTimeline({ ...graph, participants, timeline });
-    const death = html.match(/<line[^>]+class="timeline-marker death"[^>]*>/u)?.[0] ?? "";
+    const death = html.match(/<g[^>]+class="timeline-marker death"[^>]*>/u)?.[0] ?? "";
     const loadouts = [...html.matchAll(/<line[^>]+class="timeline-marker loadout"[^>]*>/gu)].map((match) => match[0]);
     expect(death).not.toContain("data-timeline-marker-participant");
+    expect(death).toContain('style="color:#ff5e82"');
     expect(loadouts).toHaveLength(2);
     expect(loadouts.every((marker) => !marker.includes("data-timeline-marker-participant"))).toBe(true);
     expect(html).toContain("Player 11 death observed");

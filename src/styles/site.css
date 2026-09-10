@@ -2134,17 +2134,40 @@ summary.party-loadout-title {
 }
 
 .timeline-marker {
+  color: #ff5e82;
+}
+
+.timeline-marker.loadout,
+.timeline-marker .timeline-marker-line {
   stroke-width: 1.5;
   stroke-dasharray: 5 4;
 }
 
-.timeline-marker.death { stroke: #ff5e82; }
+.timeline-marker.death .timeline-marker-line { stroke: currentColor; }
 .timeline-marker.loadout { stroke: #ffcc66; }
+
+.timeline-death-icon {
+  fill: currentColor;
+  filter: drop-shadow(0 0 2px rgb(3 16 20 / 82%));
+}
+
+.timeline-death-bones {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-dasharray: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-death-eye { fill: #071117; stroke: none; }
 
 .timeline-marker.is-current {
   stroke-width: 3;
   filter: drop-shadow(0 0 3px currentColor);
 }
+
+.timeline-marker.death.is-current .timeline-marker-line { stroke-width: 3; }
 
 .timeline-rdps-evidence {
   fill: color-mix(in srgb, var(--accent) 72%, transparent);

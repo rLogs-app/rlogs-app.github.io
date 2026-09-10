@@ -106,6 +106,38 @@ describe("combat timeline DOM interactions", () => {
     expect(root.querySelector(".timeline-marker.death")?.classList.contains("is-current")).toBe(false);
   });
 
+  it("keeps pointer scrubbing active while the pointer is over a hoverable death marker", () => {
+    const root = mountedTimeline();
+    const svg = root.querySelector<SVGSVGElement>(".timeline-svg")!;
+    const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+    const death = root.querySelector<SVGGraphicsElement>(".timeline-marker.death")!;
+    const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 980, bottom: 360, width: 980, height: 360,
+      toJSON: () => ({}),
+    });
+    const deathViewX = Number(svg.dataset.plotLeft)
+      + Number(svg.dataset.plotWidth) * 3.5 / (Number(svg.dataset.durationMicros) / 1_000_000);
+
+    play.click();
+    svg.dispatchEvent(new window.MouseEvent("pointermove", {
+      bubbles: true,
+      clientX: 20,
+      clientY: 100,
+    }) as unknown as Event);
+    expect(play.textContent).toBe("Pause");
+
+    death.dispatchEvent(new window.MouseEvent("pointermove", {
+      bubbles: true,
+      clientX: deathViewX / 1_040 * 980,
+      clientY: 100,
+    }) as unknown as Event);
+
+    expect(inspector.getAttribute("aria-valuenow")).toBe("4");
+    expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("Marksman death observed");
+    expect(play.textContent).toBe("Play");
+  });
+
   it("hides and restores participant-scoped markers and cursor evidence without resetting timeline state", () => {
     const root = mountedTimeline();
     const timeline = root.querySelector<HTMLElement>("[data-timeline-metric]")!;
@@ -114,6 +146,7 @@ describe("combat timeline DOM interactions", () => {
     const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
     const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
     const marker = root.querySelector<SVGLineElement>('[data-timeline-marker-participant="3"][data-timeline-marker-boundary="2"]')!;
+    const death = root.querySelector<SVGGraphicsElement>('.timeline-marker.death[data-timeline-marker-participant="2"]')!;
 
     start.value = "1";
     start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
@@ -127,7 +160,9 @@ describe("combat timeline DOM interactions", () => {
     expect(marker.classList.contains("is-current")).toBe(true);
 
     root.querySelector<HTMLButtonElement>('[data-participant-toggle="3"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-participant-toggle="2"]')!.click();
     expect(marker.hasAttribute("hidden")).toBe(true);
+    expect(death.hasAttribute("hidden")).toBe(true);
     expect(marker.classList.contains("is-current")).toBe(false);
     expect(root.querySelector("[data-timeline-events]")?.textContent).not.toContain("Heavy Guardian");
     expect(inspector.getAttribute("aria-valuetext")).not.toContain("Heavy Guardian");
@@ -139,6 +174,7 @@ describe("combat timeline DOM interactions", () => {
 
     root.querySelector<HTMLButtonElement>("[data-participant-show-all]")!.click();
     expect(marker.hasAttribute("hidden")).toBe(false);
+    expect(death.hasAttribute("hidden")).toBe(false);
     expect(marker.classList.contains("is-current")).toBe(true);
     expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("Heavy Guardian loadout phase 1");
     expect(inspector.getAttribute("aria-valuetext")).toContain("Heavy Guardian loadout phase 1");
@@ -252,6 +288,11 @@ describe("combat timeline DOM interactions", () => {
     expect(root.querySelector(".timeline-range-table")?.textContent).toContain("eDPS");
     expect(inspector.getAttribute("aria-valuenow")).toBe("2");
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toBe(ratesAtTwo);
+    const deathSymbol = root.querySelector<SVGGElement>("[data-timeline-marker-symbol]")!;
+    const viewportGeometry = deathSymbol.closest<SVGGElement>("[data-timeline-viewport-elapsed-geometry]")!;
+    const elapsedScale = Number(viewportGeometry.getAttribute("transform")?.match(/^matrix\(([^ ]+)/u)?.[1]);
+    const symbolScale = Number(deathSymbol.getAttribute("transform")?.match(/scale\(([^ ]+)/u)?.[1]);
+    expect(elapsedScale * symbolScale).toBeCloseTo(1, 5);
 
     root.querySelector<HTMLButtonElement>('[data-metric="rdps_damage"]')!.click();
     const rdpsAtTwo = root.querySelector(".timeline-snapshot-table")?.textContent;

@@ -1028,8 +1028,8 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
     return `<g data-series="${metric}" data-series-window="${windowSeconds}" data-series-scale-maximum="${max}"${visible ? "" : " hidden"}>${grid}<g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)"><g data-timeline-scale-geometry>${lines}</g></g><text x="${left}" y="14" class="timeline-axis-label">${escapeHtml(metricLabel)}</text></g>`;
   })).join("");
   const deaths = timeline.death_markers.map((marker) => {
-    const matchingActors = plotted.flatMap(({ actor }, participantIndex) =>
-      actor.actor_id === marker.actor_id ? [{ actor, participantIndex }] : []);
+    const matchingActors = plotted.flatMap(({ actor, color }, participantIndex) =>
+      actor.actor_id === marker.actor_id ? [{ actor, color, participantIndex }] : []);
     const match = matchingActors.length === 1 ? matchingActors[0] : undefined;
     const player = match?.actor.display_name ?? messages.message("parse.timeline.player", { id: marker.actor_id });
     const boundary = timelineMarkerBoundary(marker.at_micros, timeline.duration_micros, marker.precision);
@@ -1040,7 +1040,8 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
         end: formatDuration(Math.min(timeline.duration_micros, marker.at_micros + timeline.series_bucket_micros)),
       })
       : messages.message("parse.timeline.event.death_exact", { player, time: formatDuration(marker.at_micros) });
-    return markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", boundary, label, match?.participantIndex);
+    return deathMarker(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight,
+      boundary, label, match?.color ?? "#ff5e82", match?.participantIndex);
   }).join("");
   const loadouts = timeline.loadout_markers.map((marker) => {
     const matchingActors = plotted.flatMap(({ actor }, participantIndex) =>
@@ -1070,9 +1071,9 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
   }).join("");
   return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.graph_aria", { duration: formatDuration(timeline.duration_micros) }))}" data-duration-seconds="${seconds}" data-duration-micros="${timeline.duration_micros}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-plot-top="${top}" data-plot-height="${plotHeight}" data-series-complete="${timeline.omitted.series_points === 0}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
     <defs><clipPath id="timeline-plot-clip"><rect x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" /></clipPath></defs>
-    ${timeTicks}${groups}<g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)">${rdpsEvidence}${loadouts}${deaths}</g>
+    ${timeTicks}${groups}<rect class="timeline-inspector-hitbox" data-timeline-inspector x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" tabindex="0" role="slider" aria-label="${escapeHtml(messages.message("parse.timeline.inspector_aria"))}" aria-valuemin="0" aria-valuemax="${seconds}" aria-valuenow="0" aria-valuetext="0:00" />
+    <g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)">${rdpsEvidence}${loadouts}${deaths}</g>
     <g class="timeline-crosshair" data-timeline-crosshair hidden aria-hidden="true"><line x1="${left}" y1="${top}" x2="${left}" y2="${top + plotHeight}" /></g>
-    <rect class="timeline-inspector-hitbox" data-timeline-inspector x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" tabindex="0" role="slider" aria-label="${escapeHtml(messages.message("parse.timeline.inspector_aria"))}" aria-valuemin="0" aria-valuemax="${seconds}" aria-valuenow="0" aria-valuetext="0:00" />
   </svg>`;
 }
 
@@ -1545,6 +1546,13 @@ function markerLine(atMicros: number, durationMicros: number, left: number, widt
   return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-label="${escapeHtml(title)}"${scope}><title>${escapeHtml(title)}</title></line>`;
 }
 
+function deathMarker(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, boundary: number, title: string, color: string, participant?: number): string {
+  const x = left + Math.min(1, atMicros / Math.max(1, durationMicros)) * width;
+  const scope = participant === undefined ? "" : ` data-timeline-marker-participant="${participant}"`;
+  const label = escapeHtml(title);
+  return `<g class="timeline-marker death" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(color)}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-label="${label}"${scope} role="img" aria-label="${label}"><line class="timeline-marker-line" x1="0" y1="${top}" x2="0" y2="${top + height}" vector-effect="non-scaling-stroke"/><g class="timeline-death-icon" data-timeline-marker-symbol transform="translate(0 ${top + 12})"><path class="timeline-death-bones" d="M-7-6L7 7M7-6L-7 7"/><circle cx="-7" cy="-6" r="1.5"/><circle cx="7" cy="7" r="1.5"/><circle cx="7" cy="-6" r="1.5"/><circle cx="-7" cy="7" r="1.5"/><path class="timeline-death-skull" d="M-6-3A6 6 0 1 1 6-3C6 1 4 3 3 3V7H-3V3C-4 3-6 1-6-3Z"/><circle class="timeline-death-eye" cx="-2.3" cy="-2" r="1.25"/><circle class="timeline-death-eye" cx="2.3" cy="-2" r="1.25"/><path class="timeline-death-eye" d="M0 0.5L-1.2 2.5H1.2Z"/></g><title>${label}</title></g>`;
+}
+
 function timelineViewportFor(timeline: HTMLElement, durationMicros: number): TimelineViewport {
   return clampTimelineViewport(
     durationMicros,
@@ -1600,6 +1608,7 @@ function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" =
   timeline.dataset.timelineViewportEnd = String(viewport.endBoundary);
 
   const left = Number(svg.dataset.plotLeft), width = Number(svg.dataset.plotWidth);
+  const top = Number(svg.dataset.plotTop);
   const duration = Math.max(1, durationMicros);
   const startElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
   const endElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
@@ -1607,6 +1616,9 @@ function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" =
   const elapsedOffset = left - elapsedScale * (left + (startElapsed / duration) * width);
   svg.querySelectorAll<SVGGElement>("[data-timeline-viewport-elapsed-geometry]").forEach((geometry) => {
     geometry.setAttribute("transform", `matrix(${elapsedScale} 0 0 1 ${elapsedOffset} 0)`);
+  });
+  svg.querySelectorAll<SVGGElement>("[data-timeline-marker-symbol]").forEach((symbol) => {
+    symbol.setAttribute("transform", `translate(0 ${top + 12}) scale(${(1 / elapsedScale).toFixed(9)} 1)`);
   });
   svg.querySelectorAll<SVGTextElement>("[data-timeline-time-tick]").forEach((tick) => {
     const index = Number(tick.dataset.timelineTimeTick ?? "0");
@@ -1657,7 +1669,7 @@ function setTimelineParticipantVisibility(timeline: HTMLElement, participant: st
     if (visible) track.removeAttribute("hidden");
     else track.setAttribute("hidden", "");
   });
-  timeline.querySelectorAll<SVGLineElement>(`[data-timeline-marker-participant="${participant}"]`).forEach((marker) => {
+  timeline.querySelectorAll<SVGGraphicsElement>(`[data-timeline-marker-participant="${participant}"]`).forEach((marker) => {
     if (visible) marker.removeAttribute("hidden");
     else {
       marker.setAttribute("hidden", "");
@@ -1801,14 +1813,18 @@ function wireTimelineControls(root: HTMLElement): void {
       stopPlayback();
       showTimelineInspection(timeline, Number(scrubber.value));
     });
-    inspector.addEventListener("pointermove", (event) => {
-      stopPlayback();
-      const svg = inspector.ownerSVGElement;
-      if (!svg) return;
+    const inspectorSvg = inspector.ownerSVGElement;
+    inspectorSvg?.addEventListener("pointermove", (event) => {
+      const svg = inspectorSvg;
       const bounds = svg.getBoundingClientRect();
       const left = Number(svg.dataset.plotLeft), plotWidth = Number(svg.dataset.plotWidth);
+      const top = Number(svg.dataset.plotTop), plotHeight = Number(svg.dataset.plotHeight);
       const viewBoxWidth = svg.viewBox.baseVal.width || bounds.width;
+      const viewBoxHeight = svg.viewBox.baseVal.height || bounds.height;
       const viewX = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * viewBoxWidth;
+      const viewY = ((event.clientY - bounds.top) / Math.max(1, bounds.height)) * viewBoxHeight;
+      if (viewX < left || viewX > left + plotWidth || viewY < top || viewY > top + plotHeight) return;
+      stopPlayback();
       const viewport = timelineViewportFor(timeline, Number(svg.dataset.durationMicros));
       const fraction = Math.max(0, Math.min(1, (viewX - left) / Math.max(1, plotWidth)));
       const startElapsed = timelineBoundaryElapsedMicros(Number(svg.dataset.durationMicros), viewport.startBoundary);
@@ -1985,7 +2001,7 @@ function showTimelineInspection(timeline: HTMLElement, second: number, announce 
   const partialRdps = (timeline.dataset.timelineRdpsLabel ?? messages.message("parse.timeline.rdps.exact")) === messages.message("parse.timeline.rdps.partial");
   const metric = timelineMetricLabel(selectedMetric, timeline.dataset.timelineRdpsLabel ?? messages.message("parse.timeline.rdps.exact"), partialRdps, messages);
   const time = formatDuration(frame.elapsedMicros);
-  const eventLabels = [...svg.querySelectorAll<SVGLineElement>("[data-timeline-marker-boundary]")].flatMap((marker) => {
+  const eventLabels = [...svg.querySelectorAll<SVGGraphicsElement>("[data-timeline-marker-boundary]")].flatMap((marker) => {
     const current = !marker.hasAttribute("hidden") && Number(marker.dataset.timelineMarkerBoundary) === bounded;
     marker.classList.toggle("is-current", current);
     return current && marker.dataset.timelineMarkerLabel
