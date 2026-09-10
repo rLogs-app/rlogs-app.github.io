@@ -889,7 +889,9 @@ const timelineLinePatterns = ["solid", "long", "dot", "dash-dot"] as const;
 export function renderTimeline(graph: CanonicalGraphSelection, messages = createMessageResolver()): string {
   const { timeline, participants } = graph;
   if (!timeline) return "";
-  const durationSeconds = Math.max(1, Math.ceil(timeline.duration_micros / 1_000_000));
+  const durationSeconds = timelineMaximumBoundary(timeline.duration_micros);
+  const rangeStart = formatDuration(0);
+  const rangeEnd = formatDuration(timeline.duration_micros);
   const plotted = timeline.participant_tracks.flatMap((track, trackIndex) => {
     const actor = participants[track.canonical_participant_index];
     if (!actor || actor.actor_id !== track.actor_id) return [];
@@ -927,7 +929,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
     timeline.omitted.series_points ? messages.message("parse.timeline.note.series_truncated") : "",
     omissions ? messages.message(omissions === 1 ? "parse.timeline.note.omissions.one" : "parse.timeline.note.omissions.other", { count: count(omissions) }) : "",
   ].filter(Boolean).join(" ");
-  return `<section class="combat-timeline" data-timeline-metric="damage" data-timeline-window="5" data-timeline-rdps-label="${escapeHtml(rdpsLabel)}" data-timeline-participant-count="${plotted.length}" data-timeline-exact-rdps-track-count="${exactCumulativeRdpsTracks.length}" data-locale="${escapeHtml(messages.locale)}" aria-label="${escapeHtml(messages.message("parse.timeline.aria"))}">
+  return `<section class="combat-timeline" data-timeline-metric="damage" data-timeline-window="5" data-timeline-viewport-start="0" data-timeline-viewport-end="${durationSeconds}" data-timeline-rdps-label="${escapeHtml(rdpsLabel)}" data-timeline-participant-count="${plotted.length}" data-timeline-exact-rdps-track-count="${exactCumulativeRdpsTracks.length}" data-locale="${escapeHtml(messages.locale)}" aria-label="${escapeHtml(messages.message("parse.timeline.aria"))}">
     <div class="timeline-heading"><div><strong>${escapeHtml(messages.message("parse.timeline.title"))}</strong><small>${escapeHtml(trustLabel)}</small></div>
       <div class="timeline-controls" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.metric_group"))}">
         <button type="button" data-metric="damage" aria-pressed="true">${escapeHtml(messages.message("parse.timeline.metric.damage"))}</button>
@@ -942,12 +944,19 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
       <button type="button" data-window="10" aria-pressed="false">${escapeHtml(messages.message("parse.timeline.window.ten"))}</button>
     </div>
     <div class="timeline-trust"><span class="status-chip ${graph.reconciled ? "success" : "neutral"}">${escapeHtml(trustChip)}</span><span>${escapeHtml(coverage)}</span><span>${escapeHtml(gaps)}</span><span>${escapeHtml(rateClock)}</span></div>
+    <fieldset class="timeline-viewport-controls"><legend>${escapeHtml(messages.message("parse.timeline.viewport_group"))}</legend>
+      <label><span>${escapeHtml(messages.message("parse.timeline.viewport_start"))}</span><input type="range" data-timeline-viewport-start min="0" max="${Math.max(0, durationSeconds - 1)}" step="1" value="0" aria-valuetext="${escapeHtml(rangeStart)}" /></label>
+      <label><span>${escapeHtml(messages.message("parse.timeline.viewport_end"))}</span><input type="range" data-timeline-viewport-end min="1" max="${durationSeconds}" step="1" value="${durationSeconds}" aria-valuetext="${escapeHtml(rangeEnd)}" /></label>
+      <button type="button" data-timeline-viewport-reset disabled>${escapeHtml(messages.message("parse.timeline.viewport_reset"))}</button>
+      <output data-timeline-viewport-status aria-live="polite" aria-atomic="true">${escapeHtml(messages.message("parse.timeline.viewport_full", { start: rangeStart, end: rangeEnd }))}</output>
+    </fieldset>
     <div class="timeline-playback" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.playback_group"))}">
       <button type="button" data-timeline-play aria-pressed="false">${escapeHtml(messages.message("parse.timeline.play"))}</button>
       <input type="range" data-timeline-scrubber min="0" max="${durationSeconds}" step="1" value="0" aria-label="${escapeHtml(messages.message("parse.timeline.position"))}" />
     </div>
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, authorizedRateClock, rdpsLabel, messages)}</div>
-    <div class="timeline-inspection" data-timeline-inspection aria-live="polite"><strong>${escapeHtml(messages.message("parse.timeline.inspection.title"))}</strong><span>${escapeHtml(messages.message("parse.timeline.inspection.hint"))}</span></div>
+    <div class="timeline-inspection" data-timeline-inspection><strong>${escapeHtml(messages.message("parse.timeline.inspection.title"))}</strong><span>${escapeHtml(messages.message("parse.timeline.inspection.hint"))}</span></div>
+    <output class="timeline-live" data-timeline-live aria-live="polite" aria-atomic="true"></output>
     <div class="timeline-snapshot-scroll" data-timeline-snapshot></div>
     <div class="timeline-legend" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">${plotted.map(({ actor, color, pattern }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i class="line-pattern-${pattern}"></i><span>${escapeHtml(actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id }))}</span></button>`).join("")}</div>
     ${notes ? `<p class="timeline-note">${escapeHtml(notes)}</p>` : ""}
@@ -987,7 +996,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
     const lines = curves.map(({ actor, color, pattern, participantIndex, buckets, points: samples }) => {
       const actorLabel = actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id });
       const coords = samples.map(([second, value]) => {
-        const x = left + (second / seconds) * plotWidth;
+        const x = left + (timelineBoundaryElapsedMicros(timeline.duration_micros, second) / Math.max(1, timeline.duration_micros)) * plotWidth;
         const y = top + plotHeight - (value / max) * plotHeight;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       });
@@ -1001,7 +1010,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
       return `<polyline class="timeline-trace line-pattern-${pattern}" data-participant="${participantIndex}" data-label="${escapeHtml(actorLabel)}" data-cumulative-complete="${cumulativeComplete}"${values} points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2.2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actorLabel)} ${escapeHtml(metricLabel)}</title></polyline>`;
     }).join("");
     const visible = metric === "damage" && windowSeconds === 5;
-    return `<g data-series="${metric}" data-series-window="${windowSeconds}"${visible ? "" : " hidden"}>${grid}${lines}<text x="${left}" y="14" class="timeline-axis-label">${escapeHtml(metricLabel)}</text></g>`;
+    return `<g data-series="${metric}" data-series-window="${windowSeconds}"${visible ? "" : " hidden"}>${grid}<g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)">${lines}</g><text x="${left}" y="14" class="timeline-axis-label">${escapeHtml(metricLabel)}</text></g>`;
   })).join("");
   const deaths = timeline.death_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.death"), time: formatDuration(marker.at_micros) }))).join("");
   const loadouts = timeline.loadout_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.loadout"), time: formatDuration(marker.at_micros) }))).join("");
@@ -1012,10 +1021,11 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
     const fraction = index / 4;
     const x = left + plotWidth * fraction;
     const anchor = index === 0 ? "start" : index === 4 ? "end" : "middle";
-    return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + plotHeight}" class="timeline-time-grid"/><text x="${x.toFixed(1)}" y="${height - 10}" text-anchor="${anchor}" class="timeline-tick">${escapeHtml(formatDuration(timeline.duration_micros * fraction))}</text>`;
+    return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + plotHeight}" class="timeline-time-grid"/><text data-timeline-time-tick="${index}" x="${x.toFixed(1)}" y="${height - 10}" text-anchor="${anchor}" class="timeline-tick">${escapeHtml(formatDuration(timeline.duration_micros * fraction))}</text>`;
   }).join("");
   return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.graph_aria", { duration: formatDuration(timeline.duration_micros) }))}" data-duration-seconds="${seconds}" data-duration-micros="${timeline.duration_micros}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-series-complete="${timeline.omitted.series_points === 0}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
-    ${timeTicks}${groups}${rdpsEvidence}${loadouts}${deaths}
+    <defs><clipPath id="timeline-plot-clip"><rect x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" /></clipPath></defs>
+    ${timeTicks}${groups}<g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)">${rdpsEvidence}${loadouts}${deaths}</g>
     <g class="timeline-crosshair" data-timeline-crosshair hidden aria-hidden="true"><line x1="${left}" y1="${top}" x2="${left}" y2="${top + plotHeight}" /></g>
     <rect class="timeline-inspector-hitbox" data-timeline-inspector x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" tabindex="0" role="slider" aria-label="${escapeHtml(messages.message("parse.timeline.inspector_aria"))}" aria-valuemin="0" aria-valuemax="${seconds}" aria-valuenow="0" aria-valuetext="0:00" />
   </svg>`;
@@ -1274,6 +1284,49 @@ export function timelineRdpsRateVariantsAtSecond(
   };
 }
 
+export interface TimelineViewport {
+  startBoundary: number;
+  endBoundary: number;
+}
+
+export function timelineMaximumBoundary(durationMicros: number): number {
+  return Math.max(1, Math.ceil(Math.max(0, durationMicros) / 1_000_000));
+}
+
+export function timelineBoundaryElapsedMicros(durationMicros: number, boundary: number): number {
+  const maximumBoundary = timelineMaximumBoundary(durationMicros);
+  const bounded = Math.max(0, Math.min(maximumBoundary, Math.round(boundary)));
+  return bounded === maximumBoundary
+    ? Math.max(0, durationMicros)
+    : Math.min(Math.max(0, durationMicros), bounded * 1_000_000);
+}
+
+export function timelineClosestBoundary(durationMicros: number, elapsedMicros: number): number {
+  const maximumBoundary = timelineMaximumBoundary(durationMicros);
+  const boundedElapsed = Math.max(0, Math.min(Math.max(0, durationMicros), elapsedMicros));
+  const lower = Math.max(0, Math.min(maximumBoundary, Math.floor(boundedElapsed / 1_000_000)));
+  const upper = Math.min(maximumBoundary, lower + 1);
+  const lowerDistance = Math.abs(boundedElapsed - timelineBoundaryElapsedMicros(durationMicros, lower));
+  const upperDistance = Math.abs(timelineBoundaryElapsedMicros(durationMicros, upper) - boundedElapsed);
+  return upperDistance <= lowerDistance ? upper : lower;
+}
+
+export function clampTimelineViewport(
+  durationMicros: number,
+  startBoundary: number,
+  endBoundary: number,
+  changed: "start" | "end" = "end",
+): TimelineViewport {
+  const maximumBoundary = timelineMaximumBoundary(durationMicros);
+  let start = Math.max(0, Math.min(maximumBoundary - 1, Math.round(Number.isFinite(startBoundary) ? startBoundary : 0)));
+  let end = Math.max(1, Math.min(maximumBoundary, Math.round(Number.isFinite(endBoundary) ? endBoundary : maximumBoundary)));
+  if (start >= end) {
+    if (changed === "start") start = Math.max(0, end - 1);
+    else end = Math.min(maximumBoundary, start + 1);
+  }
+  return { startBoundary: start, endBoundary: end };
+}
+
 export function timelineCursorFrame(durationMicros: number, second: number): {
   boundary: number;
   elapsedMicros: number;
@@ -1281,13 +1334,11 @@ export function timelineCursorFrame(durationMicros: number, second: number): {
 } {
   // The last integer boundary represents the exact published endpoint, which
   // can be a fractional second. Its reducer clock entry is still N - 1.
-  const maximumBoundary = Math.max(1, Math.ceil(durationMicros / 1_000_000));
+  const maximumBoundary = timelineMaximumBoundary(durationMicros);
   const boundary = Math.max(0, Math.min(maximumBoundary, Math.round(second)));
   return {
     boundary,
-    elapsedMicros: boundary === maximumBoundary
-      ? Math.max(0, durationMicros)
-      : Math.min(Math.max(0, durationMicros), boundary * 1_000_000),
+    elapsedMicros: timelineBoundaryElapsedMicros(durationMicros, boundary),
     clockIndex: boundary === 0 ? null : boundary - 1,
   };
 }
@@ -1327,6 +1378,77 @@ export function timelineVisibleTotalAtSecond(
 function markerLine(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, kind: string, title: string): string {
   const x = left + Math.min(1, atMicros / Math.max(1, durationMicros)) * width;
   return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}"><title>${escapeHtml(title)}</title></line>`;
+}
+
+function timelineViewportFor(timeline: HTMLElement, durationMicros: number): TimelineViewport {
+  return clampTimelineViewport(
+    durationMicros,
+    Number(timeline.dataset.timelineViewportStart ?? "0"),
+    Number(timeline.dataset.timelineViewportEnd ?? timelineMaximumBoundary(durationMicros)),
+  );
+}
+
+function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" = "end"): TimelineViewport | null {
+  const svg = timeline.querySelector<SVGSVGElement>(".timeline-svg");
+  if (!svg) return null;
+  const durationMicros = Number(svg.dataset.durationMicros);
+  const maximumBoundary = timelineMaximumBoundary(durationMicros);
+  const viewport = clampTimelineViewport(
+    durationMicros,
+    Number(timeline.dataset.timelineViewportStart ?? "0"),
+    Number(timeline.dataset.timelineViewportEnd ?? maximumBoundary),
+    changed,
+  );
+  timeline.dataset.timelineViewportStart = String(viewport.startBoundary);
+  timeline.dataset.timelineViewportEnd = String(viewport.endBoundary);
+
+  const left = Number(svg.dataset.plotLeft), width = Number(svg.dataset.plotWidth);
+  const duration = Math.max(1, durationMicros);
+  const startElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+  const endElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+  const elapsedScale = duration / Math.max(1, endElapsed - startElapsed);
+  const elapsedOffset = left - elapsedScale * (left + (startElapsed / duration) * width);
+  svg.querySelectorAll<SVGGElement>("[data-timeline-viewport-elapsed-geometry]").forEach((geometry) => {
+    geometry.setAttribute("transform", `matrix(${elapsedScale} 0 0 1 ${elapsedOffset} 0)`);
+  });
+  svg.querySelectorAll<SVGTextElement>("[data-timeline-time-tick]").forEach((tick) => {
+    const index = Number(tick.dataset.timelineTimeTick ?? "0");
+    const startElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+    const endElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+    const elapsed = Math.round(startElapsed + (endElapsed - startElapsed) * (index / 4));
+    tick.textContent = formatDuration(elapsed);
+  });
+
+  const start = timeline.querySelector<HTMLInputElement>("[data-timeline-viewport-start]");
+  const end = timeline.querySelector<HTMLInputElement>("[data-timeline-viewport-end]");
+  const scrubber = timeline.querySelector<HTMLInputElement>("[data-timeline-scrubber]");
+  const inspector = timeline.querySelector<SVGRectElement>("[data-timeline-inspector]");
+  if (start) {
+    start.value = String(viewport.startBoundary);
+    start.max = String(Math.max(0, viewport.endBoundary - 1));
+    start.setAttribute("aria-valuetext", formatDuration(timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary)));
+  }
+  if (end) {
+    end.value = String(viewport.endBoundary);
+    end.min = String(Math.min(maximumBoundary, viewport.startBoundary + 1));
+    end.setAttribute("aria-valuetext", formatDuration(timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary)));
+  }
+  if (scrubber) {
+    scrubber.min = String(viewport.startBoundary);
+    scrubber.max = String(viewport.endBoundary);
+  }
+  inspector?.setAttribute("aria-valuemin", String(viewport.startBoundary));
+  inspector?.setAttribute("aria-valuemax", String(viewport.endBoundary));
+
+  const messages = createMessageResolver(timeline.dataset.locale);
+  const startText = formatDuration(timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary));
+  const endText = formatDuration(timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary));
+  const full = viewport.startBoundary === 0 && viewport.endBoundary === maximumBoundary;
+  const status = timeline.querySelector<HTMLOutputElement>("[data-timeline-viewport-status]");
+  if (status) status.textContent = messages.message(full ? "parse.timeline.viewport_full" : "parse.timeline.viewport_selected", { start: startText, end: endText });
+  const reset = timeline.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]");
+  if (reset) reset.disabled = full;
+  return viewport;
 }
 
 function wireTimelineControls(root: HTMLElement): void {
@@ -1390,7 +1512,7 @@ function wireTimelineControls(root: HTMLElement): void {
     let playing = false;
     let playbackFrame: number | null = null;
     let playbackOriginMillis = 0;
-    let playbackOriginSecond = 0;
+    let playbackOriginElapsedSeconds = 0;
     const stopPlayback = () => {
       playing = false;
       if (playbackFrame !== null) cancelAnimationFrame(playbackFrame);
@@ -1406,14 +1528,19 @@ function wireTimelineControls(root: HTMLElement): void {
         stopPlayback();
         return;
       }
-      const duration = Number(inspector.getAttribute("aria-valuemax") ?? "0");
-      const second = playbackOriginSecond + (now - playbackOriginMillis) / 1_000;
-      const boundedSecond = Math.min(duration, Math.round(second));
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return stopPlayback();
+      const durationMicros = Number(svg.dataset.durationMicros);
+      const viewport = timelineViewportFor(timeline, durationMicros);
+      if (!Number.isFinite(playbackOriginMillis)) playbackOriginMillis = now;
+      const elapsedSeconds = playbackOriginElapsedSeconds + (now - playbackOriginMillis) / 1_000;
+      const endElapsedSeconds = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary) / 1_000_000;
+      const boundedSecond = Math.max(viewport.startBoundary, Math.min(viewport.endBoundary - 1, Math.floor(elapsedSeconds)));
       if (Number(inspector.getAttribute("aria-valuenow") ?? "-1") !== boundedSecond) {
         showTimelineInspection(timeline, boundedSecond);
       }
-      if (second >= duration) {
-        showTimelineInspection(timeline, duration);
+      if (elapsedSeconds >= endElapsedSeconds) {
+        showTimelineInspection(timeline, viewport.endBoundary);
         stopPlayback();
         return;
       }
@@ -1421,14 +1548,19 @@ function wireTimelineControls(root: HTMLElement): void {
     };
     const startPlayback = () => {
       if (playing || !play) return;
-      const duration = Number(inspector.getAttribute("aria-valuemax") ?? "0");
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return;
+      const durationMicros = Number(svg.dataset.durationMicros);
+      const viewport = timelineViewportFor(timeline, durationMicros);
       const current = Number(inspector.getAttribute("aria-valuenow") ?? "0");
-      playbackOriginSecond = current >= duration ? 0 : current;
-      playbackOriginMillis = performance.now();
+      const playbackOriginBoundary = current < viewport.startBoundary || current >= viewport.endBoundary
+        ? viewport.startBoundary : current;
+      playbackOriginElapsedSeconds = timelineBoundaryElapsedMicros(durationMicros, playbackOriginBoundary) / 1_000_000;
+      playbackOriginMillis = Number.NaN;
       playing = true;
       play.textContent = messages.message("parse.timeline.pause");
       play.setAttribute("aria-pressed", "true");
-      showTimelineInspection(timeline, playbackOriginSecond);
+      showTimelineInspection(timeline, playbackOriginBoundary);
       playbackFrame = requestAnimationFrame(tickPlayback);
     };
     play?.addEventListener("click", () => playing ? stopPlayback() : startPlayback());
@@ -1444,21 +1576,51 @@ function wireTimelineControls(root: HTMLElement): void {
       const left = Number(svg.dataset.plotLeft), plotWidth = Number(svg.dataset.plotWidth);
       const viewBoxWidth = svg.viewBox.baseVal.width || bounds.width;
       const viewX = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * viewBoxWidth;
-      const second = Math.round(((viewX - left) / Math.max(1, plotWidth)) * Number(svg.dataset.durationSeconds));
-      showTimelineInspection(timeline, Math.max(0, Math.min(Number(svg.dataset.durationSeconds), second)));
+      const viewport = timelineViewportFor(timeline, Number(svg.dataset.durationMicros));
+      const fraction = Math.max(0, Math.min(1, (viewX - left) / Math.max(1, plotWidth)));
+      const startElapsed = timelineBoundaryElapsedMicros(Number(svg.dataset.durationMicros), viewport.startBoundary);
+      const endElapsed = timelineBoundaryElapsedMicros(Number(svg.dataset.durationMicros), viewport.endBoundary);
+      const second = timelineClosestBoundary(Number(svg.dataset.durationMicros), startElapsed + fraction * (endElapsed - startElapsed));
+      showTimelineInspection(timeline, second);
     });
     inspector.addEventListener("focus", () => showTimelineInspection(timeline, Number(inspector.getAttribute("aria-valuenow") ?? "0")));
     inspector.addEventListener("keydown", (event) => {
-      const duration = Number(inspector.getAttribute("aria-valuemax") ?? "0");
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return;
+      const viewport = timelineViewportFor(timeline, Number(svg.dataset.durationMicros));
       const current = Number(inspector.getAttribute("aria-valuenow") ?? "0");
       const next = event.key === "ArrowLeft" || event.key === "ArrowDown" ? current - 1
         : event.key === "ArrowRight" || event.key === "ArrowUp" ? current + 1
-        : event.key === "Home" ? 0 : event.key === "End" ? duration : undefined;
+        : event.key === "Home" ? viewport.startBoundary : event.key === "End" ? viewport.endBoundary : undefined;
       if (next == null) return;
       event.preventDefault();
       stopPlayback();
-      showTimelineInspection(timeline, Math.max(0, Math.min(duration, next)));
+      showTimelineInspection(timeline, Math.max(viewport.startBoundary, Math.min(viewport.endBoundary, next)), true);
     });
+    const start = timeline.querySelector<HTMLInputElement>("[data-timeline-viewport-start]");
+    const end = timeline.querySelector<HTMLInputElement>("[data-timeline-viewport-end]");
+    const reset = timeline.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]");
+    const updateViewport = (changed: "start" | "end") => {
+      stopPlayback();
+      if (start) timeline.dataset.timelineViewportStart = start.value;
+      if (end) timeline.dataset.timelineViewportEnd = end.value;
+      const viewport = applyTimelineViewport(timeline, changed);
+      if (!viewport) return;
+      const current = Number(inspector.getAttribute("aria-valuenow") ?? "0");
+      showTimelineInspection(timeline, Math.max(viewport.startBoundary, Math.min(viewport.endBoundary, current)));
+    };
+    start?.addEventListener("input", () => updateViewport("start"));
+    end?.addEventListener("input", () => updateViewport("end"));
+    reset?.addEventListener("click", () => {
+      const svg = inspector.ownerSVGElement;
+      if (!svg) return;
+      stopPlayback();
+      timeline.dataset.timelineViewportStart = "0";
+      timeline.dataset.timelineViewportEnd = String(timelineMaximumBoundary(Number(svg.dataset.durationMicros)));
+      const viewport = applyTimelineViewport(timeline);
+      if (viewport) showTimelineInspection(timeline, Math.max(viewport.startBoundary, Math.min(viewport.endBoundary, Number(inspector.getAttribute("aria-valuenow") ?? "0"))));
+    });
+    applyTimelineViewport(timeline);
     showTimelineInspection(timeline, 0);
   });
 }
@@ -1470,17 +1632,22 @@ function refreshTimelineInspection(timeline: HTMLElement): void {
   }
 }
 
-function showTimelineInspection(timeline: HTMLElement, second: number): void {
+function showTimelineInspection(timeline: HTMLElement, second: number, announce = false): void {
   const messages = createMessageResolver(timeline.dataset.locale);
   const svg = timeline.querySelector<SVGSVGElement>(".timeline-svg");
   const inspector = svg?.querySelector<SVGRectElement>("[data-timeline-inspector]");
   const crosshair = svg?.querySelector<SVGGElement>("[data-timeline-crosshair]");
   const output = timeline.querySelector<HTMLElement>("[data-timeline-inspection]");
   if (!svg || !inspector || !crosshair || !output) return;
-  const duration = Number(svg.dataset.durationSeconds), left = Number(svg.dataset.plotLeft), width = Number(svg.dataset.plotWidth);
-  const frame = timelineCursorFrame(Number(svg.dataset.durationMicros), second);
-  const bounded = frame.boundary;
-  const x = left + (bounded / Math.max(1, duration)) * width;
+  const left = Number(svg.dataset.plotLeft), width = Number(svg.dataset.plotWidth);
+  const durationMicros = Number(svg.dataset.durationMicros);
+  const viewport = timelineViewportFor(timeline, durationMicros);
+  const unclampedFrame = timelineCursorFrame(durationMicros, second);
+  const bounded = Math.max(viewport.startBoundary, Math.min(viewport.endBoundary, unclampedFrame.boundary));
+  const frame = timelineCursorFrame(durationMicros, bounded);
+  const startElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+  const endElapsed = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+  const x = left + ((frame.elapsedMicros - startElapsed) / Math.max(1, endElapsed - startElapsed)) * width;
   crosshair.removeAttribute("hidden");
   crosshair.querySelector("line")?.setAttribute("x1", x.toFixed(1));
   crosshair.querySelector("line")?.setAttribute("x2", x.toFixed(1));
@@ -1549,7 +1716,11 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
     messages,
   );
   const totalAria = visibleTotal && active.length > 1 ? `${messages.message("parse.timeline.inspection.visible_total")}: ${rateLine(visibleTotal)}; ` : "";
+  const announcement = messages.message("parse.timeline.cursor_announcement", { metric, time });
   inspector.setAttribute("aria-valuetext", `${time}; ${totalAria}${active.map((row) => `${row.label}: ${rateLine(row)}`).join("; ") || messages.message("parse.timeline.inspection.none")}`);
+  scrubber?.setAttribute("aria-valuetext", time);
+  const live = timeline.querySelector<HTMLOutputElement>("[data-timeline-live]");
+  if (announce && live) live.textContent = announcement;
 }
 
 interface TimelineSnapshotRow extends TimelineCursorRateRow {

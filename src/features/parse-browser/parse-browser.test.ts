@@ -30,6 +30,10 @@ import {
   selectCanonicalGraph,
   timelineCumulativeRateLabel,
   timelineCursorFrame,
+  timelineBoundaryElapsedMicros,
+  timelineClosestBoundary,
+  timelineMaximumBoundary,
+  clampTimelineViewport,
   timelineDamageRatesAtSecond,
   timelineRateVariantsAtSecond,
   timelineRdpsAtSecond,
@@ -975,6 +979,16 @@ describe("timeline rolling windows", () => {
     expect(timelineRdpsAtSecond(buckets, clock, frame.boundary)).toBe(100);
   });
 
+  it("preserves the exact fractional endpoint while clamping integer viewport boundaries", () => {
+    expect(timelineMaximumBoundary(2_200_000)).toBe(3);
+    expect(timelineBoundaryElapsedMicros(2_200_000, 2)).toBe(2_000_000);
+    expect(timelineBoundaryElapsedMicros(2_200_000, 3)).toBe(2_200_000);
+    expect(timelineClosestBoundary(2_200_000, 2_090_000)).toBe(2);
+    expect(timelineClosestBoundary(2_200_000, 2_110_000)).toBe(3);
+    expect(clampTimelineViewport(2_200_000, 2, 2, "start")).toEqual({ startBoundary: 1, endBoundary: 2 });
+    expect(clampTimelineViewport(2_200_000, 2, 2, "end")).toEqual({ startBoundary: 2, endBoundary: 3 });
+  });
+
   it("withholds fractional trailing windows that would require invented sub-second damage", () => {
     const durationMicros = 10_100_000;
     const buckets = Array.from({ length: 11 }, (_, index) => [index + 1, index === 10 ? 10 : 100] as [number, number]);
@@ -1342,7 +1356,10 @@ describe("timeline interaction markup", () => {
     expect(html).toContain("1 verified rDPS affected-damage span is shown");
     expect(html).toContain("1 rDPS influence span is capture-clock evidence");
     expect(html).toContain('tabindex="0" role="slider"');
-    expect(html).toContain('data-timeline-inspection aria-live="polite"');
+    expect(html).toContain('class="timeline-viewport-controls"');
+    expect(html).toContain('data-timeline-viewport-reset disabled');
+    expect(html).toContain('data-timeline-inspection><strong>');
+    expect(html).toContain('data-timeline-live aria-live="polite"');
   });
 
   it("batches more than one thousand exact rDPS spans into a bounded accessible evidence lane", () => {

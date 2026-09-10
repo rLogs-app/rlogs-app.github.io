@@ -45,6 +45,7 @@ describe("combat timeline DOM interactions", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const root = window.document.createElement("main") as unknown as HTMLElement;
     root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]));
+    window.document.body.append(root as never);
     const initialize = bindParseReportInteractions(root);
     initialize();
     return root;
@@ -76,6 +77,75 @@ describe("combat timeline DOM interactions", () => {
     expect(inspector.getAttribute("aria-valuenow")).toBe("3");
     inspector.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Home", bubbles: true }) as unknown as Event);
     expect(inspector.getAttribute("aria-valuenow")).toBe("0");
+  });
+
+  it("does not advance a bucket early and completes a fractional run at its exact endpoint", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    report.runs[0]!.timeline!.duration_micros = 2_200_000;
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
+    const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+
+    play.click();
+    animationFrame!(0);
+    animationFrame!(499);
+    expect(inspector.getAttribute("aria-valuenow")).toBe("0");
+    animationFrame!(1_000);
+    expect(inspector.getAttribute("aria-valuenow")).toBe("1");
+    animationFrame!(2_199);
+    expect(inspector.getAttribute("aria-valuenow")).toBe("2");
+    expect(play.textContent).toBe("Pause");
+    animationFrame!(2_200);
+    expect(inspector.getAttribute("aria-valuenow")).toBe("3");
+    expect(play.textContent).toBe("Play");
+  });
+
+  it("zooms the visible range, bounds navigation and playback, and resets without rebasing snapshots", () => {
+    const root = mountedTimeline();
+    const timeline = root.querySelector<HTMLElement>(".combat-timeline")!;
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    const end = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-end]")!;
+    const reset = root.querySelector<HTMLButtonElement>("[data-timeline-viewport-reset]")!;
+    const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+
+    scrubber.value = "2";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    const ratesAtTwo = root.querySelector(".timeline-snapshot-table")?.textContent;
+
+    start.value = "1";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    end.value = "3";
+    end.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+
+    expect(timeline.dataset.timelineViewportStart).toBe("1");
+    expect(timeline.dataset.timelineViewportEnd).toBe("3");
+    expect(scrubber.min).toBe("1");
+    expect(scrubber.max).toBe("3");
+    expect(reset.disabled).toBe(false);
+    expect(root.querySelector("[data-timeline-viewport-status]")?.textContent).toContain("Visible");
+    expect(inspector.getAttribute("aria-valuenow")).toBe("2");
+    expect(root.querySelector(".timeline-snapshot-table")?.textContent).toBe(ratesAtTwo);
+
+    root.querySelector<HTMLButtonElement>('[data-metric="rdps_damage"]')!.click();
+    const rdpsAtTwo = root.querySelector(".timeline-snapshot-table")?.textContent;
+    expect(rdpsAtTwo).toContain("rDPS");
+
+    inspector.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Home", bubbles: true }) as unknown as Event);
+    expect(inspector.getAttribute("aria-valuenow")).toBe("1");
+    inspector.dispatchEvent(new window.KeyboardEvent("keydown", { key: "End", bubbles: true }) as unknown as Event);
+    expect(inspector.getAttribute("aria-valuenow")).toBe("3");
+    expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("DPS at 0:03");
+
+    reset.click();
+    expect(timeline.dataset.timelineViewportStart).toBe("0");
+    expect(reset.disabled).toBe(true);
+    scrubber.value = "2";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(root.querySelector(".timeline-snapshot-table")?.textContent).toBe(rdpsAtTwo);
   });
 
   it("updates snapshot rows when participants or metrics change and keeps partial rDPS unavailable", () => {
