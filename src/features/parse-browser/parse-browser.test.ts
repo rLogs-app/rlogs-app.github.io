@@ -1068,10 +1068,61 @@ describe("timeline interaction markup", () => {
     expect(html).toContain('data-timeline-inspector');
     expect(html).toContain('data-timeline-play aria-pressed="false">Play');
     expect(html).toContain('data-timeline-scrubber');
-    expect(html.match(/class="timeline-rdps-evidence"/gu)).toHaveLength(1);
+    expect(html.match(/class="timeline-rdps-evidence (?:complete|partial)"/gu)).toHaveLength(1);
     expect(html).toContain("1 verified rDPS affected-damage span is shown");
     expect(html).toContain("1 rDPS influence span is capture-clock evidence");
     expect(html).toContain('tabindex="0" role="slider"');
     expect(html).toContain('data-timeline-inspection aria-live="polite"');
+  });
+
+  it("batches more than one thousand exact rDPS spans into a bounded accessible evidence lane", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const spans = Array.from({ length: 1_130 }, (_, index) => ({
+      influence_index: index,
+      time_basis: "run_elapsed" as const,
+      start_micros: index * 2_000,
+      end_micros: index * 2_000 + 1_000,
+      complete_lifecycle: index % 3 !== 0,
+    }));
+    const html = renderTimeline({ ...graph, timeline: {
+      ...graph.timeline!,
+      duration_micros: 3_000_000,
+      rdps_influence_spans: spans,
+    } });
+    const paths = [...html.matchAll(/<path class="timeline-rdps-evidence (?:complete|partial)"[^>]+data-evidence-span-count="(\d+)"[^>]+d="([^"]+)"/gu)];
+    expect(paths).toHaveLength(2);
+    expect(paths.reduce((sum, match) => sum + Number(match[1]), 0)).toBe(1_130);
+    expect(paths.reduce((sum, match) => sum + (match[2].match(/M/gu)?.length ?? 0), 0)).toBe(1_130);
+    expect(html.match(/<g class="timeline-rdps-evidence-lane"/gu)).toHaveLength(1);
+    expect(html).toContain('data-evidence-span-count="1130"');
+    expect(html).toContain('data-evidence-complete-count="753"');
+    expect(html).toContain('data-evidence-partial-count="377"');
+    expect(html).toContain("1,130 verified rDPS affected-damage spans are shown");
+    expect(html).toContain("all exact intervals are retained in one bounded evidence lane");
+    expect(html.match(/<rect class="timeline-rdps-evidence/gu)).toBeNull();
+  });
+
+  it("handles the 65,536-span contract maximum without argument-limit failures or extra nodes", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const spans = Array.from({ length: 65_536 }, (_, index) => ({
+      influence_index: index,
+      time_basis: "run_elapsed" as const,
+      start_micros: index * 10,
+      end_micros: index * 10 + 5,
+      complete_lifecycle: index % 2 === 0,
+    }));
+    const html = renderTimeline({ ...graph, timeline: {
+      ...graph.timeline!,
+      duration_micros: 1_000_000,
+      rdps_influence_spans: spans,
+    } });
+    expect(html.match(/<g class="timeline-rdps-evidence-lane"/gu)).toHaveLength(1);
+    expect(html.match(/<path class="timeline-rdps-evidence (?:complete|partial)"/gu)).toHaveLength(2);
+    expect(html).toContain('data-evidence-span-count="65536"');
+    expect(html).toContain('data-evidence-complete-count="32768"');
+    expect(html).toContain('data-evidence-partial-count="32768"');
+    expect(html).toContain("65,536 verified rDPS affected-damage spans are shown");
   });
 });

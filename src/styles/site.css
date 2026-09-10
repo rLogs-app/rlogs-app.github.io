@@ -2085,6 +2085,11 @@ summary.party-loadout-title {
   vector-effect: non-scaling-stroke;
 }
 
+.timeline-rdps-evidence.partial {
+  fill: color-mix(in srgb, var(--violet) 66%, transparent);
+  stroke: color-mix(in srgb, var(--violet) 88%, white 12%);
+}
+
 .timeline-crosshair {
   pointer-events: none;
 }

@@ -70,6 +70,8 @@ const enUsMessages: MessageCatalog = {
   "parse.timeline.note.omissions.one": "{count} bounded item was omitted by the public projection.",
   "parse.timeline.note.omissions.other": "{count} bounded items were omitted by the public projection.",
   "parse.timeline.evidence_span": "Verified rDPS affected-damage span {index}: {start}–{end}",
+  "parse.timeline.evidence_batch.one": "{count} verified rDPS affected-damage span is shown from {start} to {end}; all exact intervals are retained in one bounded evidence lane. Lifecycle evidence: {complete} complete, {partial} partial.",
+  "parse.timeline.evidence_batch.other": "{count} verified rDPS affected-damage spans are shown from earliest start {start} to latest end {end}; all exact intervals are retained in one bounded evidence lane. Lifecycle evidence: {complete} complete, {partial} partial.",
   "parse.report.empty": "This report contains no public run.",
   "parse.report.scene": "Scene {id}",
   "parse.report.server_replayed": "Server replayed",

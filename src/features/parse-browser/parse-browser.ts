@@ -883,15 +883,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
   })).join("");
   const deaths = timeline.death_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.death"), time: formatDuration(marker.at_micros) }))).join("");
   const loadouts = timeline.loadout_markers.map((marker) => markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", messages.message("parse.timeline.marker_at", { label: messages.message("parse.timeline.marker.loadout"), time: formatDuration(marker.at_micros) }))).join("");
-  const rdpsEvidence = timeline.rdps_influence_spans.filter((span) => span.time_basis === "run_elapsed").map((span) => {
-    const start = left + Math.min(1, span.start_micros / Math.max(1, timeline.duration_micros)) * plotWidth;
-    const end = left + Math.min(1, span.end_micros / Math.max(1, timeline.duration_micros)) * plotWidth;
-    const title = messages.message("parse.timeline.evidence_span", {
-      index: messages.number(span.influence_index + 1, { maximumFractionDigits: 0 }),
-      start: formatDuration(span.start_micros), end: formatDuration(span.end_micros),
-    });
-    return `<rect class="timeline-rdps-evidence" x="${start.toFixed(1)}" y="${top + plotHeight - 6}" width="${Math.max(1.5, end - start).toFixed(1)}" height="6"><title>${escapeHtml(title)}</title></rect>`;
-  }).join("");
+  const rdpsEvidence = renderRdpsEvidenceLane(timeline, left, plotWidth, top + plotHeight, messages);
   const rateClock = timeline.rate_clock_complete === true && timeline.rate_clock?.length
     ? timeline.rate_clock.map((point) => `${point.second}:${point.edps_elapsed_micros}:${point.adps_elapsed_micros}`).join(",") : "";
   const timeTicks = Array.from({ length: 5 }, (_, index) => {
@@ -913,6 +905,52 @@ export function niceTimelineScaleMaximum(value: number): number {
   const normalized = value / magnitude;
   const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10;
   return nice * magnitude;
+}
+
+function renderRdpsEvidenceLane(
+  timeline: CombatTimeline,
+  left: number,
+  plotWidth: number,
+  plotBottom: number,
+  messages: MessageResolver,
+): string {
+  let spanCount = 0;
+  let completeCount = 0;
+  let partialCount = 0;
+  let earliest = Number.POSITIVE_INFINITY;
+  let latest = Number.NEGATIVE_INFINITY;
+  const completeGeometry: string[] = [];
+  const partialGeometry: string[] = [];
+  const duration = Math.max(1, timeline.duration_micros);
+  for (const span of timeline.rdps_influence_spans) {
+    if (span.time_basis !== "run_elapsed") continue;
+    spanCount += 1;
+    if (span.complete_lifecycle) completeCount += 1;
+    else partialCount += 1;
+    if (span.start_micros < earliest) earliest = span.start_micros;
+    if (span.end_micros > latest) latest = span.end_micros;
+    const startFraction = Math.max(0, Math.min(1, span.start_micros / duration));
+    const endFraction = Math.max(startFraction, Math.min(1, span.end_micros / duration));
+    const x = left + startFraction * plotWidth;
+    const width = Math.max(1.5, (endFraction - startFraction) * plotWidth);
+    const y = span.complete_lifecycle ? plotBottom - 11 : plotBottom - 5;
+    const geometry = `M${x.toFixed(1)} ${y}h${width.toFixed(1)}v5h-${width.toFixed(1)}Z`;
+    (span.complete_lifecycle ? completeGeometry : partialGeometry).push(geometry);
+  }
+  if (!spanCount) return "";
+  const number = (value: number) => messages.number(value, { maximumFractionDigits: 0 });
+  const summary = messages.message(spanCount === 1 ? "parse.timeline.evidence_batch.one" : "parse.timeline.evidence_batch.other", {
+    count: number(spanCount),
+    start: formatDuration(earliest),
+    end: formatDuration(latest),
+    complete: number(completeCount),
+    partial: number(partialCount),
+  });
+  const path = (lifecycle: "complete" | "partial", geometry: string[], count: number) => {
+    if (!count) return "";
+    return `<path class="timeline-rdps-evidence ${lifecycle}" data-evidence-lifecycle="${lifecycle}" data-evidence-span-count="${count}" d="${geometry.join("")}" aria-hidden="true"/>`;
+  };
+  return `<g class="timeline-rdps-evidence-lane" role="img" aria-label="${escapeHtml(summary)}" data-evidence-span-count="${spanCount}" data-evidence-complete-count="${completeCount}" data-evidence-partial-count="${partialCount}"><title>${escapeHtml(summary)}</title>${path("complete", completeGeometry, completeCount)}${path("partial", partialGeometry, partialCount)}</g>`;
 }
 
 export function rollingBucketSeries(points: readonly ParticipantSeriesPoint[], metric: TimelineMetric, totalSeconds: number, windowSeconds: number, durationMicros = totalSeconds * 1_000_000): Array<[number, number]> {
