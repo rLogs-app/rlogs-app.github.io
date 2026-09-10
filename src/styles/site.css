@@ -2099,6 +2099,75 @@ summary.party-loadout-title {
   color: var(--text);
 }
 
+.timeline-snapshot-scroll {
+  max-height: 340px;
+  margin-top: 8px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.timeline-snapshot-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  color: var(--text);
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-snapshot-table caption {
+  padding: 8px 10px;
+  color: var(--muted);
+  text-align: left;
+}
+
+.timeline-snapshot-table th,
+.timeline-snapshot-table td {
+  padding: 7px 10px;
+  border-top: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.timeline-snapshot-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.timeline-snapshot-table th:first-child {
+  left: 0;
+  text-align: left;
+}
+
+.timeline-snapshot-table tbody th:first-child {
+  position: sticky;
+  background: var(--panel);
+}
+
+.timeline-snapshot-table i {
+  display: inline-block;
+  width: 12px;
+  height: 2px;
+  margin-right: 7px;
+  vertical-align: middle;
+  background: var(--track);
+}
+
+.timeline-snapshot-total {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.timeline-snapshot-empty {
+  margin: 0;
+  padding: 10px;
+  color: var(--muted);
+}
+
 .timeline-inspection-total {
   padding-right: 12px;
   border-right: 1px solid var(--line);

@@ -362,7 +362,7 @@ export function renderReport(
     ? (reconciliation?.rdps_effects ?? [])
     : (run.rdps_effects ?? []);
   const teamRdps = reconciled
-    ? damageRate(reconciliation!.conservation!.rdps_damage, run.active_combat_micros)
+    ? (run.game_time_micros == null ? null : damageRate(reconciliation!.conservation!.rdps_damage, run.game_time_micros))
     : null;
   const eventCount = messages.number(report.verification.event_count, { maximumFractionDigits: 0 });
   const gapCount = messages.number(run.data_gap_count, { maximumFractionDigits: 0 });
@@ -387,12 +387,12 @@ export function renderReport(
       ${metric(messages.message("parse.report.metric.active"), formatDuration(run.active_combat_micros))}
       ${metric(messages.message("parse.report.metric.team_edps"), formatNumber(teamDps, messages))}
       ${metric(messages.message("parse.report.metric.team_adps"), formatNumber(teamEdps, messages))}
-      ${reconciled ? metric("Team rDPS", formatNumber(teamRdps ?? 0, messages)) : ""}
+      ${reconciled ? metric("Team rDPS", teamRdps == null ? "Unavailable" : formatNumber(teamRdps, messages)) : ""}
       ${metric(messages.message("parse.report.metric.retries"), messages.message(run.boss_retry_count === 1 ? "parse.report.retry_summary.one" : "parse.report.retry_summary.other", { retries: run.retry_count, boss: run.boss_retry_count }))}
     </div>
     ${renderReconciliationProof(reconciliation, reconciliationError, reconciled)}
     ${renderSwiftVortexCandidateAudit(reconciliation)}
-    ${renderPartyTable(participants, run.active_combat_micros, reconciled, run.rdps_status, messages)}
+    ${renderPartyTable(participants, run.game_time_micros, reconciled, run.rdps_status, messages)}
     ${renderPartyLoadouts(run, graph.participants, reconciliation ?? undefined, messages)}
     ${renderCombatLoadoutPhases(run, participants, reportPresentation)}
     ${graph.timeline ? renderTimeline(graph, messages) : renderRunTimeline(run, participants)}
@@ -436,7 +436,7 @@ function partyMetricDatasetKey(metric: PartySortMetric): string {
 function partyMetricValue(
   actor: AnalysisParticipant,
   metric: PartySortMetric,
-  activeCombatMicros: number,
+  gameTimeMicros: number | null,
 ): number | null {
   const abilities = actor.abilities ?? [];
   switch (metric) {
@@ -444,7 +444,7 @@ function partyMetricValue(
     case "edps": return actor.dps;
     case "damage": return actor.damage;
     case "rdps": return "rdps_damage" in actor
-      ? (actor.rdps_damage == null ? null : damageRate(actor.rdps_damage, activeCombatMicros))
+      ? (actor.rdps_damage == null || gameTimeMicros == null ? null : damageRate(actor.rdps_damage, gameTimeMicros))
       : actor.rdps;
     case "rdmg": return "rdps_damage" in actor ? actor.rdps_damage : null;
     case "given": return "contribution_given" in actor ? actor.contribution_given : null;
@@ -482,35 +482,35 @@ export function sortPartyParticipants<T extends AnalysisParticipant>(
   participants: T[],
   metric: PartySortMetric = "adps",
   direction: "ascending" | "descending" = "descending",
-  activeCombatMicros = 0,
+  gameTimeMicros: number | null = 0,
 ): T[] {
   const multiplier = direction === "ascending" ? 1 : -1;
   return [...participants].sort((left, right) => {
-    const leftValue = partyMetricValue(left, metric, activeCombatMicros) ?? -1;
-    const rightValue = partyMetricValue(right, metric, activeCombatMicros) ?? -1;
+    const leftValue = partyMetricValue(left, metric, gameTimeMicros) ?? -1;
+    const rightValue = partyMetricValue(right, metric, gameTimeMicros) ?? -1;
     return (leftValue - rightValue) * multiplier;
   });
 }
 
 function renderPartyTable(
   participants: AnalysisParticipant[],
-  activeCombatMicros: number,
+  gameTimeMicros: number | null,
   reconciled: boolean,
   rdpsStatus: string,
   messages: MessageResolver,
 ): string {
-  const ordered = sortPartyParticipants(participants, "adps", "descending", activeCombatMicros);
-  const initialMaximum = Math.max(0, ...ordered.map((actor) => partyMetricValue(actor, "adps", activeCombatMicros) ?? 0));
+  const ordered = sortPartyParticipants(participants, "adps", "descending", gameTimeMicros);
+  const initialMaximum = Math.max(0, ...ordered.map((actor) => partyMetricValue(actor, "adps", gameTimeMicros) ?? 0));
   const headers = partySortMetrics.map((metric) => `<button type="button" data-party-sort="${metric}" aria-sort="${metric === "adps" ? "descending" : "none"}">${escapeHtml(localizedPartyMetricLabel(metric, messages))}</button>`).join("");
   const rows = ordered.map((actor, index) => {
     const color = chartColors[index % chartColors.length];
-    const data = partySortMetrics.map((metric) => `data-${partyMetricDatasetKey(metric).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}="${partyMetricValue(actor, metric, activeCombatMicros) ?? -1}"`).join(" ");
+    const data = partySortMetrics.map((metric) => `data-${partyMetricDatasetKey(metric).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}="${partyMetricValue(actor, metric, gameTimeMicros) ?? -1}"`).join(" ");
     const cells = partySortMetrics.map((metric) => {
-      const value = partyMetricValue(actor, metric, activeCombatMicros);
+      const value = partyMetricValue(actor, metric, gameTimeMicros);
       const incomplete = metric === "rdps" && "rdps_incomplete" in actor && actor.rdps_incomplete ? "*" : "";
       return `<span class="parse-party-metric"><strong>${value == null ? "—" : formatPartyMetric(metric, value, messages)}${incomplete}</strong></span>`;
     }).join("");
-    const initialValue = partyMetricValue(actor, "adps", activeCombatMicros);
+    const initialValue = partyMetricValue(actor, "adps", gameTimeMicros);
     const initialWidth = initialValue == null || initialMaximum <= 0 ? 0 : Math.max(0, initialValue / initialMaximum) * 100;
     return `<div class="parse-party-row" data-party-row ${data} style="--series-color:${color};--row-fill:${initialWidth.toFixed(2)}%"><span class="parse-party-player"><i></i><span><strong>${escapeHtml(participantName(actor))}</strong><small>${escapeHtml([actor.class_name, actor.specialization_name].filter(Boolean).join(" / "))}</small></span></span>${cells}</div>`;
   }).join("");
@@ -765,7 +765,10 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
     if (!actor || actor.actor_id !== track.actor_id) return [];
     return [{ actor, track, color: palette[trackIndex % palette.length] }];
   });
-  const rdpsTracks = plotted.filter(({ actor, track }) => hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)));
+  const hasGameTimeClock = timeline.rate_clock_complete === true && Boolean(timeline.rate_clock?.length);
+  const rdpsTracks = hasGameTimeClock
+    ? plotted.filter(({ actor, track }) => hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)))
+    : [];
   const exactCumulativeRdpsTracks = rdpsTracks.filter(({ actor }) => actor.rdps_incomplete === false);
   const partialRdps = graph.rdpsStatus.startsWith("partial_") || plotted.some(({ actor, track }) =>
     actor.rdps_incomplete === true || !hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)));
@@ -814,6 +817,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
     </div>
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, rdpsLabel, messages)}</div>
     <div class="timeline-inspection" data-timeline-inspection aria-live="polite"><strong>${escapeHtml(messages.message("parse.timeline.inspection.title"))}</strong><span>${escapeHtml(messages.message("parse.timeline.inspection.hint"))}</span></div>
+    <div class="timeline-snapshot-scroll" data-timeline-snapshot></div>
     <div class="timeline-legend" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">${plotted.map(({ actor, color }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i></i><span>${escapeHtml(actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id }))}</span></button>`).join("")}</div>
     ${notes ? `<p class="timeline-note">${escapeHtml(notes)}</p>` : ""}
   </section>`;
@@ -836,7 +840,11 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
       const points = (actor.series ?? []).slice(0, track.series_point_count);
       if (metric === "rdps_damage" && !hasCompleteRdpsBuckets(points)) return [];
       const buckets = points.flatMap((point) => point[metric] == null ? [] : [[point.second + 1, point[metric]!] as [number, number]]);
-      return [{ actor, track, color, participantIndex, buckets, points: rollingTimelineSamples(buckets, seconds, windowSeconds, timeline.duration_micros) }];
+      const samples = metric === "rdps_damage"
+        ? rollingTimelineRateClockSamples(buckets, seconds, windowSeconds, timeline.duration_micros,
+          timeline.rate_clock_complete === true ? timeline.rate_clock ?? null : null)
+        : rollingTimelineSamples(buckets, seconds, windowSeconds, timeline.duration_micros);
+      return [{ actor, track, color, participantIndex, buckets, points: samples }];
     });
     const max = Math.max(1, ...curves.flatMap(({ points }) => points.map(([, value]) => value)));
     const lines = curves.map(({ actor, color, participantIndex, buckets, points: samples }) => {
@@ -891,6 +899,27 @@ export function rollingBucketSeries(points: readonly ParticipantSeriesPoint[], m
 }
 
 export function rollingTimelineSamples(samples: readonly [number, number][], totalSeconds: number, windowSeconds: number, durationMicros = totalSeconds * 1_000_000): Array<[number, number]> {
+  return rollingTimelineSamplesWithDenominator(samples, totalSeconds, windowSeconds, (boundary, duration, window) =>
+    timelineWindowDenominatorMicros(durationMicros, boundary, duration, window));
+}
+
+export function rollingTimelineRateClockSamples(
+  samples: readonly [number, number][],
+  totalSeconds: number,
+  windowSeconds: number,
+  durationMicros: number,
+  rateClock: readonly PublicTimelineRateClockPoint[] | null,
+): Array<[number, number]> {
+  return rollingTimelineSamplesWithDenominator(samples, totalSeconds, windowSeconds, (boundary, duration, window) =>
+    timelineRateClockWindowDenominatorMicros(rateClock, boundary, duration, window, durationMicros));
+}
+
+function rollingTimelineSamplesWithDenominator(
+  samples: readonly [number, number][],
+  totalSeconds: number,
+  windowSeconds: number,
+  denominatorAt: (boundary: number, maximumBoundary: number, window: number) => number | null,
+): Array<[number, number]> {
   const duration = Math.max(1, Math.floor(totalSeconds));
   const window = Math.max(1, Math.floor(windowSeconds));
   const totals = new Map<number, number>();
@@ -901,12 +930,12 @@ export function rollingTimelineSamples(samples: readonly [number, number][], tot
     }
   }
   const values = [...totals].flatMap(([boundary, total]) => {
-    const denominatorMicros = timelineWindowDenominatorMicros(durationMicros, boundary, duration, window);
+    const denominatorMicros = denominatorAt(boundary, duration, window);
     return denominatorMicros == null ? [] : [[boundary, total * 1_000_000 / denominatorMicros] as [number, number]];
   });
   const nonzero = values.sort(([left], [right]) => left - right);
   const outputSamples: Array<[number, number]> = [[0, 0]];
-  const terminalAvailable = timelineWindowDenominatorMicros(durationMicros, duration, duration, window) !== null;
+  const terminalAvailable = denominatorAt(duration, duration, window) !== null;
   nonzero.forEach(([boundary, value], index) => {
     const prior = nonzero[index - 1];
     const next = nonzero[index + 1];
@@ -916,6 +945,30 @@ export function rollingTimelineSamples(samples: readonly [number, number][], tot
   });
   if (terminalAvailable && outputSamples.at(-1)?.[0] !== duration) outputSamples.push([duration, 0]);
   return outputSamples;
+}
+
+function timelineRateClockWindowDenominatorMicros(
+  rateClock: readonly PublicTimelineRateClockPoint[] | null,
+  boundary: number,
+  maximumBoundary: number,
+  window: number,
+  durationMicros: number,
+): number | null {
+  if (!rateClock?.length || boundary <= 0) return null;
+  const startBoundary = Math.max(0, boundary - window);
+  const ended = timelineRateClockElapsedMicros(rateClock, boundary);
+  const started = timelineRateClockElapsedMicros(rateClock, startBoundary);
+  if (ended == null || started == null || ended <= started) return null;
+  return ended - started;
+}
+
+function timelineRateClockElapsedMicros(
+  rateClock: readonly PublicTimelineRateClockPoint[] | null,
+  boundary: number,
+): number | null {
+  if (boundary === 0) return 0;
+  const point = rateClock?.[boundary - 1];
+  return point?.second === boundary - 1 ? point.edps_elapsed_micros : null;
 }
 
 function timelineWindowDenominatorMicros(durationMicros: number, boundary: number, maximumBoundary: number, window: number): number | null {
@@ -943,7 +996,7 @@ export function timelineRateVariantsAtSecond(
   samples: { one: readonly [number, number][]; five: readonly [number, number][]; ten: readonly [number, number][] },
   second: number,
   elapsedMicros = Math.max(0, Math.round(second)) * 1_000_000,
-): { one: number | null; five: number | null; ten: number | null; cumulative: number } {
+): { one: number | null; five: number | null; ten: number | null; cumulative: number | null } {
   // `one` carries authoritative bucket totals; the rolling inputs carry rates
   // derived from those totals. This keeps the cumulative numerator exact while
   // allowing a partial terminal bucket to be normalized by its real duration.
@@ -996,13 +1049,42 @@ export function timelineRdpsAtSecond(
   if (!rateClock?.length) return null;
   const bounded = Math.max(0, Math.round(second));
   if (bounded === 0) return null;
-  const clock = rateClock[Math.min(bounded - 1, rateClock.length - 1)];
-  if (!clock || clock.adps_elapsed_micros <= 0) return null;
+  const clock = rateClock[bounded - 1];
+  if (!clock || clock.second !== bounded - 1 || clock.edps_elapsed_micros <= 0) return null;
   const adjustedDamage = oneSecondAdjustedDamage.reduce(
     (total, [sampleSecond, value]) => sampleSecond <= bounded ? total + value : total,
     0,
   );
-  return adjustedDamage * 1_000_000 / clock.adps_elapsed_micros;
+  return adjustedDamage * 1_000_000 / clock.edps_elapsed_micros;
+}
+
+export function timelineRdpsRateVariantsAtSecond(
+  oneSecondAdjustedDamage: readonly [number, number][],
+  rateClock: readonly PublicTimelineRateClockPoint[] | null,
+  second: number,
+  durationMicros: number,
+): { one: number | null; five: number | null; ten: number | null; cumulative: number | null } {
+  const maximumBoundary = Math.max(1, Math.ceil(durationMicros / 1_000_000));
+  const boundary = Math.max(0, Math.min(maximumBoundary, Math.round(second)));
+  if (boundary === 0) return { one: 0, five: 0, ten: 0, cumulative: 0 };
+  const rate = (window: number): number | null => {
+    const denominator = timelineRateClockWindowDenominatorMicros(
+      rateClock, boundary, maximumBoundary, window, durationMicros,
+    );
+    if (denominator == null) return null;
+    const startBoundary = Math.max(0, boundary - window);
+    const adjustedDamage = oneSecondAdjustedDamage.reduce(
+      (total, [sampleBoundary, value]) => sampleBoundary > startBoundary && sampleBoundary <= boundary ? total + value : total,
+      0,
+    );
+    return adjustedDamage * 1_000_000 / denominator;
+  };
+  return {
+    one: rate(1),
+    five: rate(5),
+    ten: rate(10),
+    cumulative: timelineRdpsAtSecond(oneSecondAdjustedDamage, rateClock, boundary),
+  };
 }
 
 export function timelineCursorFrame(durationMicros: number, second: number): {
@@ -1024,7 +1106,7 @@ export function timelineCursorFrame(durationMicros: number, second: number): {
 }
 
 export interface TimelineCursorRateRow {
-  variants: { one: number | null; five: number | null; ten: number | null; cumulative: number };
+  variants: { one: number | null; five: number | null; ten: number | null; cumulative: number | null };
   damageRates: { edps: number; adps: number } | null;
   rdps: number | null;
 }
@@ -1048,7 +1130,7 @@ export function timelineVisibleTotalAtSecond(
       one: sumVariant((row) => row.variants.one),
       five: sumVariant((row) => row.variants.five),
       ten: sumVariant((row) => row.variants.ten),
-      cumulative: sum((row) => row.variants.cumulative),
+      cumulative: sumVariant((row) => row.variants.cumulative),
     },
     damageRates,
     rdps,
@@ -1175,6 +1257,7 @@ function wireTimelineControls(root: HTMLElement): void {
       stopPlayback();
       showTimelineInspection(timeline, Math.max(0, Math.min(duration, next)));
     });
+    showTimelineInspection(timeline, 0);
   });
 }
 
@@ -1202,27 +1285,29 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
   inspector.setAttribute("aria-valuenow", String(bounded));
   const scrubber = timeline.querySelector<HTMLInputElement>("[data-timeline-scrubber]");
   if (scrubber) scrubber.value = String(bounded);
-  const active = [...svg.querySelectorAll<SVGPolylineElement>(`[data-series="${timeline.dataset.timelineMetric}"][data-series-window="${timeline.dataset.timelineWindow}"]:not([hidden]) polyline:not([hidden])`)].map((line) => ({
-    participant: line.dataset.participant ?? "",
-    label: line.dataset.label ?? "Player",
-    color: line.getAttribute("stroke") ?? "currentColor",
-    variants: timelineRateVariantsAtSecond({
-      one: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "1", line.dataset.participant ?? ""),
-      five: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "5", line.dataset.participant ?? ""),
-      ten: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "10", line.dataset.participant ?? ""),
-    }, bounded, frame.elapsedMicros),
-    damageRates: timeline.dataset.timelineMetric === "damage" && svg.dataset.seriesComplete === "true" ? timelineDamageRatesAtSecond(
-      timelineSamplesFor(svg, "damage", "1", line.dataset.participant ?? ""),
-      timelineRateClockFor(svg),
-      bounded,
-    ) : null,
-    rdps: timeline.dataset.timelineMetric === "rdps_damage" && svg.dataset.seriesComplete === "true" && line.dataset.cumulativeComplete === "true"
-      ? timelineRdpsAtSecond(
-        timelineSamplesFor(svg, "rdps_damage", "1", line.dataset.participant ?? ""),
-        timelineRateClockFor(svg),
-        bounded,
-      ) : null,
-  }));
+  const rateClock = timelineRateClockFor(svg);
+  const active = [...svg.querySelectorAll<SVGPolylineElement>(`[data-series="${timeline.dataset.timelineMetric}"][data-series-window="${timeline.dataset.timelineWindow}"]:not([hidden]) polyline:not([hidden])`)].map((line) => {
+    const participant = line.dataset.participant ?? "";
+    const metricKey = timeline.dataset.timelineMetric ?? "damage";
+    const oneSecond = timelineSamplesFor(svg, metricKey, "1", participant);
+    const variants = metricKey === "rdps_damage"
+      ? timelineRdpsRateVariantsAtSecond(oneSecond, rateClock, bounded, Number(svg.dataset.durationMicros))
+      : timelineRateVariantsAtSecond({
+        one: oneSecond,
+        five: timelineSamplesFor(svg, metricKey, "5", participant),
+        ten: timelineSamplesFor(svg, metricKey, "10", participant),
+      }, bounded, frame.elapsedMicros);
+    return {
+      participant,
+      label: line.dataset.label ?? "Player",
+      color: line.getAttribute("stroke") ?? "currentColor",
+      variants,
+      damageRates: metricKey === "damage" && svg.dataset.seriesComplete === "true"
+        ? timelineDamageRatesAtSecond(oneSecond, rateClock, bounded) : null,
+      rdps: metricKey === "rdps_damage" && svg.dataset.seriesComplete === "true" && line.dataset.cumulativeComplete === "true"
+        ? timelineRdpsAtSecond(oneSecond, rateClock, bounded) : null,
+    };
+  });
   const metric = timeline.dataset.timelineMetric === "effective_healing" ? messages.message("parse.timeline.metric.healing")
     : timeline.dataset.timelineMetric === "damage_taken" ? messages.message("parse.timeline.metric.taken")
     : timeline.dataset.timelineMetric === "rdps_damage" ? timeline.dataset.timelineRdpsLabel ?? messages.message("parse.timeline.rdps.exact") : messages.message("parse.timeline.metric.damage");
@@ -1232,7 +1317,8 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
     : timeline.dataset.timelineMetric === "damage" ? messages.message("parse.timeline.inspection.rate_unavailable")
     : timeline.dataset.timelineMetric === "rdps_damage"
       ? row.rdps == null ? messages.message("parse.timeline.inspection.rdps_unavailable") : messages.message("parse.timeline.inspection.rdps", { rdps: messages.number(row.rdps, { maximumFractionDigits: 1 }) })
-      : messages.message("parse.timeline.inspection.run_rate", { metric, value: messages.number(row.variants.cumulative, { maximumFractionDigits: 1 }) });
+      : row.variants.cumulative == null ? messages.message("parse.timeline.inspection.rate_unavailable")
+        : messages.message("parse.timeline.inspection.run_rate", { metric, value: messages.number(row.variants.cumulative as number, { maximumFractionDigits: 1 }) });
   const variant = (value: number | null): string => value == null ? "—" : messages.number(value, { maximumFractionDigits: 1 });
   const rateLine = (row: TimelineCursorRateRow): string => messages.message("parse.timeline.inspection.rates", {
     one: variant(row.variants.one),
@@ -1245,10 +1331,62 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
   const total = visibleTotal && active.length > 1
     ? `<span class="timeline-inspection-total">${escapeHtml(messages.message("parse.timeline.inspection.visible_total"))} <strong>${escapeHtml(rateLine(visibleTotal))}</strong></span>`
     : "";
-  const details = active.length ? `${total}${active.map((row) => `<span><i style="--track:${row.color}"></i>${escapeHtml(row.label)} <strong>${escapeHtml(rateLine(row))}</strong></span>`).join("")}` : `<span>${escapeHtml(messages.message("parse.timeline.inspection.none"))}</span>`;
+  const details = active.length > 1
+    ? total
+    : active.length === 1
+      ? `<span><i style="--track:${active[0]!.color}"></i>${escapeHtml(metric)} <strong>${escapeHtml(rateLine(active[0]!))}</strong></span>`
+      : `<span>${escapeHtml(messages.message("parse.timeline.inspection.none"))}</span>`;
   output.innerHTML = `<strong>${time}</strong>${details}`;
+  const snapshot = timeline.querySelector<HTMLElement>("[data-timeline-snapshot]");
+  if (snapshot) snapshot.innerHTML = renderTimelineSnapshotTable(
+    timeline.dataset.timelineMetric as TimelineMetric,
+    metric,
+    time,
+    active,
+    visibleTotal,
+    messages,
+  );
   const totalAria = visibleTotal && active.length > 1 ? `${messages.message("parse.timeline.inspection.visible_total")}: ${rateLine(visibleTotal)}; ` : "";
   inspector.setAttribute("aria-valuetext", `${time}; ${totalAria}${active.map((row) => `${row.label}: ${rateLine(row)}`).join("; ") || messages.message("parse.timeline.inspection.none")}`);
+}
+
+interface TimelineSnapshotRow extends TimelineCursorRateRow {
+  label: string;
+  color: string;
+}
+
+export function renderTimelineSnapshotTable(
+  metric: TimelineMetric,
+  metricLabel: string,
+  time: string,
+  rows: readonly TimelineSnapshotRow[],
+  visibleTotal: TimelineCursorRateRow | null,
+  messages = createMessageResolver(),
+): string {
+  if (!rows.length || !visibleTotal) return `<p class="timeline-snapshot-empty">${escapeHtml(messages.message("parse.timeline.inspection.none"))}</p>`;
+  const contextualColumns = metric === "damage"
+    ? [
+      { label: messages.message("parse.timeline.snapshot.edps"), value: (row: TimelineCursorRateRow) => row.damageRates?.edps ?? null },
+      { label: messages.message("parse.timeline.snapshot.adps"), value: (row: TimelineCursorRateRow) => row.damageRates?.adps ?? null },
+    ]
+    : metric === "rdps_damage"
+      ? [{ label: messages.message("parse.timeline.snapshot.rdps"), value: (row: TimelineCursorRateRow) => row.rdps }]
+      : [];
+  const columns = [
+    { label: messages.message("parse.timeline.snapshot.one"), value: (row: TimelineCursorRateRow) => row.variants.one },
+    { label: messages.message("parse.timeline.snapshot.five"), value: (row: TimelineCursorRateRow) => row.variants.five },
+    { label: messages.message("parse.timeline.snapshot.ten"), value: (row: TimelineCursorRateRow) => row.variants.ten },
+    { label: messages.message("parse.timeline.snapshot.run"), value: (row: TimelineCursorRateRow) => row.variants.cumulative },
+    ...contextualColumns,
+  ];
+  const format = (value: number | null): string => value == null ? "—" : messages.number(value, { maximumFractionDigits: 1 });
+  const cells = (row: TimelineCursorRateRow) => columns.map((column) => `<td>${escapeHtml(format(column.value(row)))}</td>`).join("");
+  const playerRows = rows.map((row) => `<tr><th scope="row"><i aria-hidden="true" style="--track:${row.color}"></i>${escapeHtml(row.label)}</th>${cells(row)}</tr>`).join("");
+  return `<table class="timeline-snapshot-table">
+    <caption>${escapeHtml(messages.message("parse.timeline.snapshot.caption", { metric: metricLabel, time }))}</caption>
+    <thead><tr><th scope="col">${escapeHtml(messages.message("parse.timeline.snapshot.player"))}</th>${columns.map((column) => `<th scope="col">${escapeHtml(column.label)}</th>`).join("")}</tr></thead>
+    <tbody><tr class="timeline-snapshot-total"><th scope="row">${escapeHtml(messages.message("parse.timeline.inspection.visible_total"))}</th>${cells(visibleTotal)}</tr>${playerRows}</tbody>
+  </table>`;
 }
 
 export function timelineCumulativeRateLabel(metric: string): string {

@@ -308,8 +308,13 @@ function isRateClock(value: Record<string, any>, durationMicros: number): boolea
   if (!Array.isArray(value.rate_clock) || typeof value.rate_clock_complete !== "boolean" ||
       !isRecord(value.omitted) || !isNonNegativeInteger(value.omitted.rate_clock_points)) return false;
   if (!value.rate_clock_complete) return value.rate_clock.length === 0;
-  const expectedPoints = Math.ceil(durationMicros / 1_000_000);
-  if (value.omitted.rate_clock_points !== 0 || value.rate_clock.length !== expectedPoints) return false;
+  // The reducer clock and canonical event bounds are independent evidence. A
+  // fractional canonical tail may therefore have either a projected endpoint
+  // or only the last completed one-second clock point.
+  const completedSecondPoints = Math.floor(durationMicros / 1_000_000);
+  const partialFinalPoint = durationMicros % 1_000_000 === 0 ? 0 : 1;
+  if (value.omitted.rate_clock_points !== 0 ||
+      (value.rate_clock.length !== completedSecondPoints && value.rate_clock.length !== completedSecondPoints + partialFinalPoint)) return false;
   let priorEdps = 0, priorAdps = 0;
   return value.rate_clock.every((point: unknown, index: number) => {
     const boundaryMicros = Math.min((index + 1) * 1_000_000, durationMicros);

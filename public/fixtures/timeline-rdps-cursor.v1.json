@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Authoritative active-combat clock with a frozen recovery interval",
+  "description": "Authoritative reviewed Game-time clock with a frozen recovery interval",
   "rate_clock_complete": true,
   "rate_clock": [
     { "second": 0, "edps_elapsed_micros": 1000000, "adps_elapsed_micros": 1000000 },

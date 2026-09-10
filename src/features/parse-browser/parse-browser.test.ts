@@ -30,6 +30,7 @@ import {
   timelineDamageRatesAtSecond,
   timelineRateVariantsAtSecond,
   timelineRdpsAtSecond,
+  timelineRdpsRateVariantsAtSecond,
   timelineValueAtSecond,
   timelineVisibleTotalAtSecond,
 } from "./parse-browser";
@@ -730,7 +731,7 @@ describe("timeline rolling windows", () => {
 
   });
 
-  it("uses the active-combat clock for cumulative rDPS and never wall time", () => {
+  it("uses the reviewed Game-time clock for cumulative and windowed rDPS", () => {
     const fixture = load<{
       rate_clock: Array<{ second: number; edps_elapsed_micros: number; adps_elapsed_micros: number }>;
       participants: Array<{ actor_id: string; rdps_incomplete: boolean; rdps_damage: Array<[number, number]> }>;
@@ -738,9 +739,15 @@ describe("timeline rolling windows", () => {
     const exact = fixture.participants.find((participant) => participant.actor_id === "exact")!;
     expect(exact.rdps_incomplete).toBe(false);
     const boundaryRdps = exact.rdps_damage.map(([second, damage]) => [second + 1, damage] as [number, number]);
-    expect(timelineRdpsAtSecond(boundaryRdps.slice(0, 2), fixture.rate_clock, 2)).toBe(200);
-    expect(timelineRdpsAtSecond(boundaryRdps.slice(0, 2), fixture.rate_clock, 3)).toBe(200);
-    expect(timelineRdpsAtSecond(boundaryRdps, fixture.rate_clock, 4)).toBe(150);
+    expect(timelineRdpsAtSecond(boundaryRdps.slice(0, 2), fixture.rate_clock, 2)).toBe(100);
+    expect(timelineRdpsAtSecond(boundaryRdps.slice(0, 2), fixture.rate_clock, 3)).toBe(100);
+    expect(timelineRdpsAtSecond(boundaryRdps, fixture.rate_clock, 4)).toBe(100);
+    expect(timelineRdpsRateVariantsAtSecond(boundaryRdps, fixture.rate_clock, 2, 4_000_000)).toEqual({
+      one: 80, five: 100, ten: 100, cumulative: 100,
+    });
+    expect(timelineRdpsRateVariantsAtSecond(boundaryRdps, fixture.rate_clock, 3, 4_000_000)).toEqual({
+      one: null, five: 100, ten: 100, cumulative: 100,
+    });
     expect(timelineRdpsAtSecond([[0, 120]], null, 0)).toBeNull();
   });
 
@@ -801,15 +808,15 @@ describe("damage-rate labels", () => {
     expect(html).toContain('data-timeline-exact-rdps-track-count="0"');
     expect(html).toContain('data-cumulative-complete="false"');
     expect(html).toContain('data-rate-clock="0:1000000:1000000,1:2000000:2000000');
-    expect(html).toContain("Exact eDPS/aDPS clock");
-    expect(html).toContain("Cumulative rDPS uses the published active-combat clock, not wall time");
+    expect(html).toContain("Exact Game-time/active-combat clocks");
+    expect(html).toContain("1s, 5s, 10s, and cumulative rates all use the reducer-authored reviewed Game-time clock");
     expect(html).toContain('data-values="1:1200000,2:2490000');
     const renderedTracks = html.match(/<polyline /gu) ?? [];
     const inspectionPayloads = html.match(/ data-values="/gu) ?? [];
     expect(inspectionPayloads).toHaveLength(renderedTracks.length / 3);
     const rollingGroups = [...html.matchAll(/<g data-series="[^"]+" data-series-window="(?:5|10)"[^>]*>(.*?)<\/g>/gu)];
     expect(rollingGroups.every(([, contents]) => !contents.includes("data-values="))).toBe(true);
-    expect(html).toContain("missing buckets are never replaced with ordinary damage");
+    expect(html).toContain("missing buckets or clocks are never replaced with ordinary damage or wall time");
     expect(hasCompleteRdpsBuckets(report.runs[0].participants[0].series ?? [])).toBe(true);
     const rdps = rollingBucketSeries(report.runs[0].participants[0].series ?? [], "rdps_damage", 4, 1);
     expect(timelineRateVariantsAtSecond({ one: rdps, five: rdps, ten: rdps }, 2).one).toBe(2_490_000);

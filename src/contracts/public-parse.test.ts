@@ -120,6 +120,19 @@ describe("public parse contract", () => {
     timeline.rate_clock[24].adps_elapsed_micros = 99_000_000;
     expect(isPublicParseReport(report)).toBe(false);
   });
+  it("accepts a complete rate clock that ends at the last full second before a fractional timeline tail", () => {
+    const report = fixture("parse-report.v1.json") as any;
+    const timeline = report.runs[0].timeline;
+    expect(timeline.duration_micros % 1_000_000).toBeGreaterThan(0);
+    expect(timeline.rate_clock).toHaveLength(Math.ceil(timeline.duration_micros / 1_000_000));
+
+    timeline.rate_clock.pop();
+    expect(timeline.rate_clock).toHaveLength(Math.floor(timeline.duration_micros / 1_000_000));
+    expect(isPublicParseReport(report)).toBe(true);
+
+    timeline.rate_clock.pop();
+    expect(isPublicParseReport(report)).toBe(false);
+  });
   it("accepts an explicitly incomplete empty clock but rejects plausible fallback points", () => {
     const report = fixture("parse-report.v1.json") as any;
     const timeline = report.runs[0].timeline;
