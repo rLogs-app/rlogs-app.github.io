@@ -92,6 +92,7 @@ describe("developer profile publisher", () => {
     expect(published.body.level).toBe(60);
     expect(result.entry.source_package_id).toBe(profilePackage.package_id);
     expect(result.entry.source_observation_count).toBe(2);
+    expect(result.entry.source_protocol_pack_digest).toBe(profilePackage.source.protocol_pack_digest);
   });
 
   it("rejects a tampered native local package before publication", async () => {
@@ -202,7 +203,7 @@ async function localProfilePackage(
     source: {
       session_id: "session-1",
       client_build: "build-1",
-      protocol_pack_digest: "sha256:pack-1",
+      protocol_pack_digest: `sha256:${"b".repeat(64)}`,
       canonical_content_sha256: `sha256:${"a".repeat(64)}`,
       observation_count: 2,
       last_event_sequence: 9,
