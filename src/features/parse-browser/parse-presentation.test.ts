@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   localizedActionName,
   localizedEffectName,
+  localizedImagineName,
   presentationForReport,
   renderCoreWithOptionalPresentation,
   type ParsePresentationCatalog,
 } from "./parse-presentation";
 
 const catalog: ParsePresentationCatalog = {
-  schema_version: 2,
+  schema_version: 3,
   locale: "en-US",
   deployment_id: "global",
   game_build: "24687926",
@@ -17,6 +18,7 @@ const catalog: ParsePresentationCatalog = {
   source: "test",
   actions: { "2900840": "Arcane! Divine Reliance" },
   effects: { "3003052": "Harmony Grace" },
+  imagines: { "3948": "Battle Imagine - Rorola" },
 };
 
 describe("parse presentation", () => {
@@ -39,6 +41,11 @@ describe("parse presentation", () => {
     expect(localizedEffectName(catalog, "9999999", null)).toBe(
       "Unlocalized combat effect #9999999",
     );
+  });
+
+  it("resolves Battle Imagines by their equipped skill ID", () => {
+    expect(localizedImagineName(catalog, "3948")).toBe("Battle Imagine - Rorola");
+    expect(localizedImagineName(catalog, "9999")).toBe("Unlocalized combat imagine #9999");
   });
 
   it("rejects unresolved CJK and internal design identifiers from reports", () => {
@@ -87,6 +94,7 @@ describe("parse presentation", () => {
     expect(localizedEffectName(mismatched, "3003052", "Effect 3003052")).toBe(
       "Unlocalized combat effect #3003052",
     );
+    expect(localizedImagineName(mismatched, "3948")).toBe("Unlocalized combat imagine #3948");
   });
 
   it("renders core data before an optional presentation request settles", async () => {

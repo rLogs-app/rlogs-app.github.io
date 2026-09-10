@@ -51,7 +51,7 @@ const load = <T>(name: string): T => JSON.parse(
 const siteStyles = readFileSync(new URL("../../styles/site.css", import.meta.url), "utf8");
 const localizationDigest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 const catalogPresentation: ParsePresentationCatalog = {
-  schema_version: 2,
+  schema_version: 3,
   locale: "en-US",
   deployment_id: "global",
   game_build: "24687926",
@@ -59,6 +59,7 @@ const catalogPresentation: ParsePresentationCatalog = {
   source: "test",
   actions: {},
   effects: {},
+  imagines: { "3948": "Battle Imagine - Rorola" },
 };
 
 const parse: PublicParseCatalogEntry = {
@@ -589,7 +590,7 @@ describe("parse search", () => {
     };
 
     const presentation: ParsePresentationCatalog = {
-      schema_version: 2,
+      schema_version: 3,
       locale: "en-US",
       deployment_id: "global",
       game_build: "24687926",
@@ -600,6 +601,7 @@ describe("parse search", () => {
         "2220329107": "Canonical Falcon Strike",
       },
       effects: {},
+      imagines: { "3948": "Battle Imagine - Rorola" },
     };
     const html = renderReport(report, 0, reconciliation, null, presentation);
     expect(html).toContain("Combat timeline");
@@ -615,9 +617,7 @@ describe("parse search", () => {
     expect(html).toContain("rDPS calculations");
     expect(html).toContain("Harmony Grace");
 
-    expect(renderReport(report, 0, reconciliation, null, presentation)).toContain(
-      "Arcane! Divine Reliance",
-    );
+    expect(html.match(/class="party-loadouts"/gu)).toHaveLength(1);
     const viewedWrongDigest = structuredClone(report);
     viewedWrongDigest.protocol_pack_digest = "sha256:viewed-pov-does-not-own-reconciled-presentation";
     viewedWrongDigest.runs[0]!.scene_name = "Viewed derived scene";
@@ -634,13 +634,11 @@ describe("parse search", () => {
     expect(viewedWrongDigestHtml).not.toContain("Viewed Derived Specialization");
     expect(viewedWrongDigestHtml).toContain("Scene #30120");
     expect(viewedWrongDigestHtml).toContain("Tier 20");
-    expect(viewedWrongDigestHtml).toContain("Class #4 / Specialization #2");
     const wrongReconciliationDigest = structuredClone(reconciliation);
     wrongReconciliationDigest.reports[0]!.protocol_pack_digest = "sha256:wrong-canonical-authority";
     const wrongReconciliationHtml = renderReport(report, 0, wrongReconciliationDigest, null, presentation);
     expect(wrongReconciliationHtml).toContain("Unlocalized combat action #2220329107");
     expect(wrongReconciliationHtml).not.toContain("Canonical Falcon Strike");
-    expect(wrongReconciliationHtml).toContain("Arcane! Divine Reliance");
     const singlePovHtml = renderReport(report, 0, null, null, presentation);
     expect(singlePovHtml).toContain("Arcane! Divine Reliance");
     const wrongDigest = structuredClone(report);
@@ -677,10 +675,7 @@ describe("parse search", () => {
     expect(missingDigestHtml).toContain("Class #4 / Specialization #2");
     expect(html).toContain("Evidence coverage");
     expect(html).toContain("Cross-vantage reconciled");
-    expect(html).toContain("Time-gated profile evidence");
     expect(html).toContain("Marksman / Falconry");
-    expect(html).toContain("Stormblade / Moonstrike");
-    expect(html).toContain("Between encounters");
     expect(html).toContain(`Run ID</small><code>${runGroupId}`);
     expect(html).toContain(`Report ID</small><code>${reportId}`);
     expect(html).toContain('data-party-sort="adps" aria-sort="descending"');
@@ -1266,6 +1261,31 @@ describe("damage-rate labels", () => {
 });
 
 describe("party rune and loadout summaries", () => {
+  it("localizes exact-build skills and Battle Imagines once and fails closed across identities", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    report.client_build = catalogPresentation.game_build;
+    report.protocol_pack_digest = catalogPresentation.protocol_pack_digest;
+    report.runs[0]!.combat_loadout_phases![0]!.equipped_skill_ids = ["2203291"];
+    report.runs[0]!.combat_loadout_phases![0]!.equipped_imagines = [{
+      skill_id: "3948", tier: 5, equipped_slot: 1,
+    }];
+    const presentation: ParsePresentationCatalog = {
+      ...catalogPresentation,
+      actions: { "2203291": "Falcon Strike / Falcon Lightning Strike" },
+    };
+    const exact = renderReport(report, 0, null, null, presentation);
+    expect(exact).toContain("Falcon Strike / Falcon Lightning Strike");
+    expect(exact).toContain("Battle Imagine - Rorola");
+    expect(exact.match(/class="party-loadouts"/gu)).toHaveLength(1);
+    expect(exact).not.toContain("Time-gated profile evidence");
+
+    report.protocol_pack_digest = "sha256:wrong-build-identity";
+    const unavailable = renderReport(report, 0, null, null, presentation);
+    expect(unavailable).toContain("Unlocalized combat action #2203291");
+    expect(unavailable).toContain("Unlocalized combat imagine #3948");
+    expect(unavailable).not.toContain("Battle Imagine - Rorola");
+  });
+
   it("uses reconciled selections for matching POVs without merging conflicts", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const reconciliation = load<PublicRunReconciliation>("parse-reconciliation.v1.json");

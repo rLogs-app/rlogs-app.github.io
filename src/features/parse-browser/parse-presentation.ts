@@ -1,5 +1,5 @@
 export interface ParsePresentationCatalog {
-  schema_version: 2;
+  schema_version: 3;
   locale: "en-US";
   deployment_id: string;
   game_build: string;
@@ -14,12 +14,16 @@ export interface ParsePresentationCatalog {
     rdps_effect_count: number;
     localized_rdps_effect_count: number;
     uncovered_rdps_effect_ids: readonly string[];
+    battle_imagine_count: number;
+    localized_battle_imagine_count: number;
+    uncovered_battle_imagine_skill_ids: readonly string[];
   };
   actions: Readonly<Record<string, string>>;
   effects: Readonly<Record<string, string>>;
+  imagines: Readonly<Record<string, string>>;
 }
 
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/parse-presentation.en-US.v2.json?schema=2&labels=reviewed-observed-v1&authority=protocol-v1`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/parse-presentation.en-US.v3.json?schema=3&labels=reviewed-observed-v1&authority=protocol-v1`;
 let request: Promise<ParsePresentationCatalog> | undefined;
 
 export function loadParsePresentation(): Promise<ParsePresentationCatalog> {
@@ -48,6 +52,13 @@ export function localizedEffectName(
   publishedName: string | null,
 ): string {
   return humanName(catalog?.effects[effectId] ?? null) ?? humanName(publishedName) ?? unlocalizedLabel("effect", effectId);
+}
+
+export function localizedImagineName(
+  catalog: ParsePresentationCatalog | undefined,
+  skillId: string,
+): string {
+  return humanName(catalog?.imagines[skillId] ?? null) ?? unlocalizedLabel("imagine", skillId);
 }
 
 export async function renderCoreWithOptionalPresentation<T>(
@@ -129,7 +140,7 @@ function humanName(value: string | null): string | undefined {
   return trimmed;
 }
 
-function unlocalizedLabel(kind: "action" | "effect", id: string): string {
+function unlocalizedLabel(kind: "action" | "effect" | "imagine", id: string): string {
   const numericId = id.trim();
   return /^\d+$/u.test(numericId)
     ? `Unlocalized combat ${kind} #${numericId}`
@@ -139,7 +150,7 @@ function unlocalizedLabel(kind: "action" | "effect", id: string): string {
 function isCatalog(value: unknown): value is ParsePresentationCatalog {
   return (
     isRecord(value) &&
-    value.schema_version === 2 &&
+    value.schema_version === 3 &&
     value.locale === "en-US" &&
     typeof value.deployment_id === "string" &&
     value.deployment_id.length > 0 &&
@@ -149,7 +160,8 @@ function isCatalog(value: unknown): value is ParsePresentationCatalog {
     /^sha256:[a-f0-9]{64}$/u.test(value.protocol_pack_digest) &&
     typeof value.source === "string" &&
     isStringRecord(value.actions) &&
-    isStringRecord(value.effects)
+    isStringRecord(value.effects) &&
+    isStringRecord(value.imagines)
   );
 }
 

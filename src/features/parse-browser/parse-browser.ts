@@ -21,6 +21,7 @@ import {
   loadParsePresentation,
   localizedActionName,
   localizedEffectName,
+  localizedImagineName,
   presentationForCatalogEntry,
   presentationForReport,
   type ParsePresentationCatalog,
@@ -429,8 +430,7 @@ export function renderReport(
     ${renderReconciliationProof(associatedReconciliation, reconciliationError, reconciled)}
     ${renderSwiftVortexCandidateAudit(associatedReconciliation)}
     ${renderPartyTable(participants, reconciled ? graph.rdpsGameTimeMicros : run.game_time_micros, reconciled, graph.rdpsStatus ?? messages.message("parse.timeline.rdps.partial"), messages, Boolean(graphPresentation))}
-    ${renderPartyLoadouts(run, graph.participants, associatedReconciliation ?? undefined, messages, Boolean(associatedReconciliation ? associatedPresentation : viewedPresentation))}
-    ${renderCombatLoadoutPhases(run, participants, viewedPresentation)}
+    ${renderPartyLoadouts(run, graph.participants, associatedReconciliation ?? undefined, messages, associatedReconciliation ? associatedPresentation : viewedPresentation)}
     ${graph.timeline ? renderTimeline(graph, messages) : renderRunTimeline(run, participants)}
     ${renderSkillContributions(participants, skillInfluences, skillEffects, graphPresentation)}
     ${renderRdpsCalculations(run, selectedReconciliation, participants, reconciled, graphPresentation)}
@@ -650,41 +650,6 @@ function renderSwiftVortexCandidateAudit(reconciliation: PublicRunReconciliation
   return `<div class="reconciliation-proof pending"><strong>Swift Vortex candidate evidence</strong><span>${audit.candidate_status_event_count} status events / ${audit.exact_paired_receipt_count} exact paired receipts / ${audit.distinct_provider_entity_count} providers / ${audit.distinct_recipient_entity_count} recipients. ${escapeHtml(magnitude)} ${escapeHtml(gate)} Production attribution remains disabled.${escapeHtml(blockers)}</span></div>`;
 }
 
-function renderCombatLoadoutPhases(
-  run: PublicRun,
-  participants: AnalysisParticipant[],
-  presentation?: ParsePresentationCatalog,
-): string {
-  const phases = run.combat_loadout_phases ?? [];
-  if (!phases.length) {
-    return analysisPanel(
-      "Combat loadouts",
-      "No post-combat-start profile snapshot was observed, so rLogs will not substitute a lobby or newer profile into this parse.",
-    );
-  }
-  const namesByCharacter = new Map(participants.flatMap((actor) =>
-    actor.character_id ? [[actor.character_id, participantName(actor)] as const] : []));
-  const cards = phases.map((phase, index) => {
-    const identity = combatIdentityLabel(phase, Boolean(presentation), "Class/spec not present in this snapshot");
-    const location = phase.in_active_combat
-      ? `During combat${phase.encounter_index == null ? "" : ` · Encounter ${phase.encounter_index + 1}`}${phase.attempt_number == null ? "" : ` · Pull ${phase.attempt_number}`}`
-      : `Between encounters${phase.segment_index == null ? "" : ` · Segment ${phase.segment_index + 1}`}`;
-    const skills = phase.equipped_skill_ids
-      .map((skillId) => `<li>${escapeHtml(localizedActionName(presentation, skillId, null))}</li>`)
-      .join("");
-    const imagines = phase.equipped_imagines
-      .map((imagine) => `<li>${escapeHtml(localizedActionName(presentation, imagine.skill_id, null))} · Tier ${imagine.tier ?? 0}</li>`)
-      .join("");
-    const facts = [
-      phase.equipment_count == null ? "" : `${phase.equipment_count} equipment`,
-      phase.equipped_module_count == null ? "" : `${phase.equipped_module_count} modules`,
-      phase.talent_count == null ? "" : `${phase.talent_count} talents`,
-    ].filter(Boolean).join(" · ");
-    return `<article class="parse-loadout-phase"><header><span class="parse-loadout-index">${index + 1}</span><span><strong>${escapeHtml(phase.display_name ?? namesByCharacter.get(phase.character_id) ?? `UID ${phase.character_id}`)}</strong><small>${escapeHtml(identity)}</small></span><time>+${escapeHtml(formatDuration(phase.run_elapsed_micros))}</time></header><p>${escapeHtml(location)}${facts ? ` · ${escapeHtml(facts)}` : ""}</p>${skills ? `<div><strong>Equipped skills</strong><ul>${skills}</ul></div>` : ""}${imagines ? `<div><strong>Main Imagines</strong><ul>${imagines}</ul></div>` : ""}</article>`;
-  }).join("");
-  return `<section class="parse-analysis-panel"><div class="parse-analysis-heading"><div><p class="eyebrow">Time-gated profile evidence</p><h4>Combat loadouts</h4></div><small>Only snapshots after combat starts; later swaps create a new phase</small></div><div class="parse-loadout-phases">${cards}</div></section>`;
-}
-
 type AnalysisParticipant = PublicParticipant | PublicReconciledParticipant;
 
 const chartColors = [
@@ -746,7 +711,7 @@ export function renderPartyLoadouts(
   participants: readonly PublicParticipant[],
   reconciliation?: PublicRunReconciliation,
   messages = createMessageResolver(),
-  presentationAuthorized = true,
+  presentation?: ParsePresentationCatalog,
 ): string {
   const summaries = partyLoadoutSummaries(run, participants, reconciliation, messages);
   const exact = summaries.filter((summary) => summary.disposition === "exact").length;
@@ -755,14 +720,14 @@ export function renderPartyLoadouts(
   });
   return `<section class="party-loadouts" aria-label="${escapeHtml(messages.message("parse.loadout.aria"))}">
     <div class="parse-party-head"><strong>${escapeHtml(messages.message("parse.loadout.title"))}</strong><small>${escapeHtml(summary)}</small></div>
-    <div class="party-loadout-grid">${summaries.map((loadout) => renderPartyLoadout(loadout, messages, presentationAuthorized)).join("")}</div>
+    <div class="party-loadout-grid">${summaries.map((loadout) => renderPartyLoadout(loadout, messages, presentation)).join("")}</div>
     <p class="timeline-note">${escapeHtml(messages.message("parse.loadout.selection_note"))}</p>
   </section>`;
 }
 
-function renderPartyLoadout(summary: PartyLoadoutSummary, messages: MessageResolver, presentationAuthorized: boolean): string {
+function renderPartyLoadout(summary: PartyLoadoutSummary, messages: MessageResolver, presentation?: ParsePresentationCatalog): string {
   const name = summary.participant.display_name ?? messages.message("parse.timeline.player", { id: summary.participant.actor_id });
-  const className = combatIdentityLabel(summary.participant, presentationAuthorized, messages.message("parse.report.class_unresolved"));
+  const className = combatIdentityLabel(summary.participant, Boolean(presentation), messages.message("parse.report.class_unresolved"));
   const statusClass = summary.disposition === "exact" ? "success" : summary.disposition === "conflict" ? "warning" : "neutral";
   if (summary.disposition !== "exact") {
     return `<article class="party-loadout-card"><div class="party-loadout-title"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(className)}</small></span><span class="status-chip ${statusClass}">${escapeHtml(summary.evidenceLabel)}</span></div><p class="party-loadout-empty">${escapeHtml(messages.message("parse.loadout.none_selected"))}</p></article>`;
@@ -773,10 +738,10 @@ function renderPartyLoadout(summary: PartyLoadoutSummary, messages: MessageResol
     : messages.message(moduleCount === 1 ? "parse.loadout.modules.one" : "parse.loadout.modules.other", { count: messages.number(moduleCount, { maximumFractionDigits: 0 }) });
   const phaseCount = messages.message(phases.length === 1 ? "parse.loadout.phases.one" : "parse.loadout.phases.other", { count: messages.number(phases.length, { maximumFractionDigits: 0 }) });
   return `<details class="party-loadout-card"><summary class="party-loadout-title"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(`${className} · ${modules} · ${phaseCount}`)}</small></span><span class="status-chip ${statusClass}">${escapeHtml(summary.evidenceLabel)}</span></summary>
-    <div class="party-loadout-phases">${phases.map((phase, index) => renderLoadoutPhase(phase, index, phases.length, messages, presentationAuthorized)).join("")}</div></details>`;
+    <div class="party-loadout-phases">${phases.map((phase, index) => renderLoadoutPhase(phase, index, phases.length, messages, presentation)).join("")}</div></details>`;
 }
 
-function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, count: number, messages: MessageResolver, presentationAuthorized: boolean): string {
+function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, count: number, messages: MessageResolver, presentation?: ParsePresentationCatalog): string {
   const integer = (value: number) => messages.number(value, { maximumFractionDigits: 0 });
   const context = messages.message(phase.in_active_combat ? "parse.loadout.context.active" : index === 0 ? "parse.loadout.context.baseline" : "parse.loadout.context.between");
   const modules = phase.module_snapshot_disposition === "complete"
@@ -792,9 +757,11 @@ function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, coun
       }).join("")}</div>`
       : `<p class="party-loadout-empty">${escapeHtml(messages.message("parse.loadout.complete_empty"))}</p>`
     : `<p class="party-loadout-empty">${escapeHtml(messages.message(phase.module_snapshot_disposition === "invalid" ? "parse.loadout.invalid" : "parse.loadout.missing"))}</p>`;
-  const skills = phase.equipped_skill_ids.length ? phase.equipped_skill_ids.join(", ") : messages.message("parse.loadout.none_observed");
+  const skills = phase.equipped_skill_ids.length
+    ? phase.equipped_skill_ids.map((skillId) => localizedActionName(presentation, skillId, null)).join(", ")
+    : messages.message("parse.loadout.none_observed");
   const imagines = phase.equipped_imagines.length ? phase.equipped_imagines.map((imagine) => {
-    const item = messages.message("parse.loadout.imagine", { slot: integer(imagine.equipped_slot), id: imagine.skill_id });
+    const item = messages.message("parse.loadout.imagine", { slot: integer(imagine.equipped_slot), id: localizedImagineName(presentation, imagine.skill_id) });
     return imagine.tier == null ? item : `${item} (${messages.message("parse.loadout.tier", { tier: integer(imagine.tier) })})`;
   }).join(", ") : messages.message("parse.loadout.none_observed");
   const phaseLabel = count > 1 ? messages.message("parse.loadout.phase", { number: integer(index + 1) }) : messages.message("parse.loadout.selected_phase");
@@ -802,7 +769,7 @@ function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, coun
     : messages.message(phase.equipment_count === 1 ? "parse.loadout.equipment.one" : "parse.loadout.equipment.other", { count: integer(phase.equipment_count) });
   const talents = phase.talent_count == null ? messages.message("parse.loadout.talents.unknown")
     : messages.message(phase.talent_count === 1 ? "parse.loadout.talents.one" : "parse.loadout.talents.other", { count: integer(phase.talent_count) });
-  const className = combatIdentityLabel(phase, presentationAuthorized, messages.message("parse.report.class_unresolved"));
+  const className = combatIdentityLabel(phase, Boolean(presentation), messages.message("parse.report.class_unresolved"));
   return `<section class="loadout-phase" data-loadout-at-micros="${phase.run_elapsed_micros}"><div class="loadout-phase-heading"><strong>${escapeHtml(phaseLabel)}</strong><small>${escapeHtml(`${context} · ${formatDuration(phase.run_elapsed_micros)}`)}</small></div>
     <p><strong>${escapeHtml(className)}</strong> · ${escapeHtml(equipment)} · ${escapeHtml(talents)}</p>
     ${modules}<p><small>${escapeHtml(messages.message("parse.loadout.skills"))}</small> ${escapeHtml(skills)}</p><p><small>${escapeHtml(messages.message("parse.loadout.imagines"))}</small> ${escapeHtml(imagines)}</p></section>`;

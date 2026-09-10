@@ -10,8 +10,8 @@ import {
 
 const digest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 const presentation: ParsePresentationCatalog = {
-  schema_version: 2, locale: "en-US", deployment_id: "global", game_build: "24687926",
-  protocol_pack_digest: digest, source: "test", actions: {}, effects: {},
+  schema_version: 3, locale: "en-US", deployment_id: "global", game_build: "24687926",
+  protocol_pack_digest: digest, source: "test", actions: {}, effects: {}, imagines: {},
 };
 
 const entry: MyParseCatalogEntry = {

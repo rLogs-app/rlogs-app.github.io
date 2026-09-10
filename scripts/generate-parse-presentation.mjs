@@ -29,6 +29,8 @@ const localizationRoot = path.join(runtimeRoot, "localization/en-US");
 const reviewedActions = readJson(
   path.join(localizationRoot, "reviewed-combat-action-names.v1.json"),
 );
+const battleImagineNames = readJson(path.join(localizationRoot, "battle-imagine-names.v1.json"));
+const battleImaginePresentation = readJson(path.join(runtimeRoot, "battle-imagine-presentation.v1.json"));
 const rdpsEffects = readJson(
   path.join(runtimeRoot, "rdps-attribution-effect-presentation.v1.json"),
 );
@@ -110,8 +112,26 @@ if (uncoveredEffectIds.length > 0) {
   throw new Error(`Reviewed rDPS effect presentation is incomplete for ${uncoveredEffectIds.join(", ")}.`);
 }
 
+const imagineNamesByItemId = new Map((battleImagineNames.imagines ?? []).map(([itemId, name]) => [String(itemId), reviewedEnglishLabel(name)]));
+const imagines = {};
+const uncoveredImagineSkillIds = [];
+for (const imagine of battleImaginePresentation.imagines ?? []) {
+  const skillId = String(imagine.skill_id);
+  const label = imagineNamesByItemId.get(String(imagine.item_id));
+  if (label) imagines[skillId] = label;
+  else uncoveredImagineSkillIds.push(skillId);
+}
+if (
+  battleImagineNames.schema_version !== 1 ||
+  battleImagineNames.locale !== "en-US" ||
+  battleImaginePresentation.schema_version !== 1 ||
+  uncoveredImagineSkillIds.length > 0
+) {
+  throw new Error(`Reviewed Battle Imagine presentation is incomplete for ${uncoveredImagineSkillIds.join(", ") || "the declared catalog"}.`);
+}
+
 const output = {
-  schema_version: 2,
+  schema_version: 3,
   locale: "en-US",
   deployment_id: localizationRuntime.deployment_id,
   game_build: localizationRuntime.client_build,
@@ -126,11 +146,15 @@ const output = {
     rdps_effect_count: rdpsEffects.effects.length,
     localized_rdps_effect_count: Object.keys(effects).length,
     uncovered_rdps_effect_ids: uncoveredEffectIds,
+    battle_imagine_count: battleImaginePresentation.imagines.length,
+    localized_battle_imagine_count: Object.keys(imagines).length,
+    uncovered_battle_imagine_skill_ids: uncoveredImagineSkillIds,
   },
   actions,
   effects,
+  imagines,
 };
-const outputPath = path.join(websiteRoot, "public/data/bpsr/parse-presentation.en-US.v2.json");
+const outputPath = path.join(websiteRoot, "public/data/bpsr/parse-presentation.en-US.v3.json");
 mkdirSync(path.dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, `${JSON.stringify(output)}\n`);
-console.log(`Wrote ${Object.keys(actions).length} actions and ${Object.keys(effects).length} effects to ${outputPath}`);
+console.log(`Wrote ${Object.keys(actions).length} actions, ${Object.keys(effects).length} effects, and ${Object.keys(imagines).length} Battle Imagines to ${outputPath}`);
