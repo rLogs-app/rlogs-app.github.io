@@ -19,7 +19,17 @@ export async function optimizerInputFromFileValue(
         `Local profile package failed validation: ${validation.errors.join(" ")}`,
       );
     }
-    return extractOptimizerInput(validation.package.request.payload);
+    const input = extractOptimizerInput(validation.package.request.payload);
+    const source = validation.package.source;
+    const deployment = validation.package.request.payload.routing.deployment;
+    return {
+      ...input,
+      presentationIdentity: {
+        deployment,
+        source_client_build: source.client_build,
+        source_protocol_pack_digest: source.protocol_pack_digest,
+      },
+    };
   }
   return extractOptimizerInput(value);
 }

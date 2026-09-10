@@ -4,6 +4,8 @@ import type { ProfilePresentationCatalog } from "../profiles/profile-presentatio
 import {
   loadoutLinkSummary,
   moduleCardModel,
+  optimizerPresentationIdentityForPublishedSelection,
+  optimizerPresentationForIdentity,
   sortModuleInventory,
 } from "./optimizer-presentation";
 
@@ -73,5 +75,95 @@ describe("module optimizer presentation", () => {
       { id: 2_104, name: "DMG Stack", icon: "/dmg-stack.png", link: 10 },
       { id: 1_111, name: "Agility Boost", icon: "/agility.png", link: 8 },
     ]);
+  });
+
+  it("carries only reviewed stable IDs into a newer build in the same deployment", () => {
+    const source = {
+      ...catalog,
+      locale: "en-US",
+      deployment_id: "global",
+      game_build: "24687926",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+      modules: { ...catalog.modules, "9999999": { name: "Unreviewed module" } },
+      module_effects: { ...catalog.module_effects, "9999": { name: "Unreviewed effect" } },
+    } as ProfilePresentationCatalog;
+    const resolved = optimizerPresentationForIdentity(source, {
+      deployment: "global",
+      source_client_build: "24699999",
+      source_protocol_pack_digest: `sha256:${"b".repeat(64)}`,
+    });
+
+    expect(resolved.optimizer_provenance).toBe("carried-forward");
+    expect(resolved.modules["5500103"]?.name).toBe("Excellent Attack Module");
+    expect(resolved.module_effects["2104"]?.name).toBe("DMG Stack");
+    expect(resolved.modules["9999999"]).toBeUndefined();
+    expect(resolved.module_effects["9999"]).toBeUndefined();
+  });
+
+  it("does not carry labels across deployments and preserves unknown numeric IDs", () => {
+    const source = {
+      ...catalog,
+      deployment_id: "global",
+      game_build: "24687926",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+    } as ProfilePresentationCatalog;
+    const resolved = optimizerPresentationForIdentity(source, {
+      deployment: "cn",
+      source_client_build: "24699999",
+      source_protocol_pack_digest: `sha256:${"b".repeat(64)}`,
+    });
+    const model = moduleCardModel({
+      instance_id: "unknown",
+      config_id: 9_999_999,
+      parts: [{ part_id: 9_999, initial_link_points: 7 }],
+    }, resolved);
+
+    expect(resolved.optimizer_provenance).toBe("unavailable");
+    expect(model.name).toBe("Module 9999999 (unresolved)");
+    expect(model.effects[0]?.name).toBe("Effect 9999 (unresolved)");
+  });
+
+  it("does not carry labels for the same build with a conflicting digest", () => {
+    const source = {
+      ...catalog,
+      deployment_id: "global",
+      game_build: "24687926",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+    } as ProfilePresentationCatalog;
+
+    const resolved = optimizerPresentationForIdentity(source, {
+      deployment: "global",
+      source_client_build: "24687926",
+      source_protocol_pack_digest: `sha256:${"b".repeat(64)}`,
+    });
+
+    expect(resolved.optimizer_provenance).toBe("unavailable");
+    expect(resolved.module_effects).toEqual({});
+  });
+
+  it("keeps a selected loadout identity whole instead of filling from the entry", () => {
+    const entry = {
+      source_client_build: "24687926",
+      source_protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+    };
+
+    expect(optimizerPresentationIdentityForPublishedSelection(
+      "global",
+      entry,
+      { source_client_build: "24699999" },
+    )).toEqual({
+      deployment: "global",
+      source_client_build: "24699999",
+      source_protocol_pack_digest: undefined,
+    });
+    expect(optimizerPresentationIdentityForPublishedSelection(
+      "global",
+      entry,
+      {},
+    )).toEqual({
+      deployment: "global",
+      source_client_build: undefined,
+      source_protocol_pack_digest: undefined,
+    });
   });
 });

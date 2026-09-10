@@ -1,6 +1,90 @@
 import type { ProfilePresentationCatalog, PresentationRecord } from "../profiles/profile-presentation";
 import type { ModuleCandidate } from "./optimizer-types";
 
+// These IDs have identical reviewed en-US labels in the authoritative global
+// build 24252055 catalog and the exact-build 24687926 public catalog.
+const stableModuleIds = new Set([
+  "5500101", "5500102", "5500103", "5500104",
+  "5500201", "5500202", "5500203", "5500204",
+  "5500301", "5500302", "5500303", "5500304",
+]);
+const stableEffectIds = new Set([
+  "1110", "1111", "1112", "1113", "1114", "1205", "1206",
+  "1307", "1308", "1407", "1408", "1409", "1410", "2104",
+  "2105", "2204", "2205", "2304", "2404", "2405", "2406",
+]);
+
+export type OptimizerPresentationProvenance = "exact" | "carried-forward" | "unavailable";
+
+export interface OptimizerPresentationCatalog extends ProfilePresentationCatalog {
+  optimizer_provenance: OptimizerPresentationProvenance;
+  optimizer_provenance_label: string;
+}
+
+export interface OptimizerPresentationIdentity {
+  deployment: string;
+  source_client_build?: string;
+  source_protocol_pack_digest?: string;
+}
+
+interface PublishedPresentationSource {
+  source_client_build?: string;
+  source_protocol_pack_digest?: string;
+}
+
+export function optimizerPresentationIdentityForPublishedSelection(
+  deployment: string,
+  entry: PublishedPresentationSource,
+  selectedLoadout: PublishedPresentationSource | null,
+): OptimizerPresentationIdentity {
+  const source = selectedLoadout ?? entry;
+  return {
+    deployment,
+    source_client_build: source.source_client_build,
+    source_protocol_pack_digest: source.source_protocol_pack_digest,
+  };
+}
+
+/**
+ * Presentation labels are allowed to survive a newer build or protocol pack,
+ * but only for reviewed stable IDs in the same deployment. Parser and scoring
+ * inputs never pass through this presentation-only compatibility boundary.
+ */
+export function optimizerPresentationForIdentity(
+  catalog: ProfilePresentationCatalog,
+  identity: OptimizerPresentationIdentity,
+): OptimizerPresentationCatalog {
+  const catalogDigestIsValid = /^sha256:[a-f0-9]{64}$/u.test(catalog.protocol_pack_digest ?? "");
+  const exact = catalogDigestIsValid
+    && typeof catalog.game_build === "string"
+    && catalog.deployment_id === identity.deployment
+    && catalog.game_build === identity.source_client_build
+    && catalog.protocol_pack_digest === identity.source_protocol_pack_digest;
+  if (exact) {
+    return withProvenance(catalog, "exact", `Exact ${catalog.locale ?? "en-US"} labels for build ${catalog.game_build}.`);
+  }
+
+  const catalogBuild = numericBuild(catalog.game_build);
+  const sourceBuild = numericBuild(identity.source_client_build);
+  const digestIsValid = /^sha256:[a-f0-9]{64}$/u.test(identity.source_protocol_pack_digest ?? "");
+  if (
+    catalog.deployment_id === identity.deployment
+    && catalogDigestIsValid
+    && catalogBuild != null
+    && sourceBuild != null
+    && sourceBuild > catalogBuild
+    && digestIsValid
+  ) {
+    return withProvenance({
+      ...catalog,
+      modules: stableRecords(catalog.modules, stableModuleIds),
+      module_effects: stableRecords(catalog.module_effects, stableEffectIds),
+    }, "carried-forward", `Reviewed stable ${catalog.locale ?? "en-US"} labels carried forward from build ${catalog.game_build} to ${identity.source_client_build}.`);
+  }
+
+  return withProvenance({ ...catalog, modules: {}, module_effects: {} }, "unavailable", "Module labels are unresolved because same-deployment provenance could not be established.");
+}
+
 export interface ModuleCardModel {
   name: string;
   icon?: string | null;
@@ -52,12 +136,12 @@ export function moduleCardModel(
     const effect = catalog.module_effects[String(part.part_id)];
     return {
       id: part.part_id,
-      name: effect?.name ?? "Unknown effect",
+      name: effect?.name ?? `Effect ${part.part_id} (unresolved)`,
       icon: effect?.icon,
       link: Math.max(0, part.initial_link_points),
     };
   });
-  const name = localized?.name ?? "Unknown module";
+  const name = localized?.name ?? `Module ${module.config_id} (unresolved)`;
   const quality = moduleQualityName(module, localized, catalog);
   const totalLink = effects.reduce((sum, effect) => sum + effect.link, 0);
   const copyLabel = `Copy ${shortInstanceId(module.instance_id)}`;
@@ -106,4 +190,23 @@ function moduleQualityName(
 
 function shortInstanceId(value: string): string {
   return value.length <= 8 ? `#${value}` : `…${value.slice(-6)}`;
+}
+
+function numericBuild(value: string | undefined): bigint | undefined {
+  return value && /^\d+$/u.test(value) ? BigInt(value) : undefined;
+}
+
+function stableRecords(
+  records: Record<string, PresentationRecord>,
+  stableIds: ReadonlySet<string>,
+): Record<string, PresentationRecord> {
+  return Object.fromEntries(Object.entries(records).filter(([id]) => stableIds.has(id)));
+}
+
+function withProvenance(
+  catalog: ProfilePresentationCatalog,
+  provenance: OptimizerPresentationProvenance,
+  label: string,
+): OptimizerPresentationCatalog {
+  return { ...catalog, optimizer_provenance: provenance, optimizer_provenance_label: label };
 }

@@ -27,7 +27,11 @@ import {
 import {
   loadoutLinkSummary,
   moduleCardModel,
+  optimizerPresentationIdentityForPublishedSelection,
+  optimizerPresentationForIdentity,
   sortModuleInventory,
+  type OptimizerPresentationCatalog,
+  type OptimizerPresentationIdentity,
 } from "./optimizer-presentation";
 import {
   requestedOptimizerLoadout,
@@ -50,7 +54,8 @@ interface LinkedProfile {
 let inventory: ModuleCandidate[] = [];
 let currentInstanceIds: string[] = [];
 let catalog: OptimizerCatalog | undefined;
-let presentation: ProfilePresentationCatalog | undefined;
+let presentationSource: ProfilePresentationCatalog | undefined;
+let presentation: OptimizerPresentationCatalog | undefined;
 let inventoryVisibleLimit = 80;
 let inventoryLoadVersion = 0;
 let nextWorkerRequestId = 1;
@@ -96,7 +101,12 @@ export async function mountModuleOptimizer(): Promise<void> {
       loadProfilePresentation(),
     ]);
     catalog = workerCatalog;
-    presentation = presentationCatalog;
+    presentationSource = presentationCatalog;
+    presentation = optimizerPresentationForIdentity(presentationCatalog, {
+      deployment: presentationCatalog.deployment_id ?? "",
+      source_client_build: presentationCatalog.game_build,
+      source_protocol_pack_digest: presentationCatalog.protocol_pack_digest,
+    });
     renderCatalog(catalog);
     setEngineState("valid", "Optimizer ready");
     await loadSyncedInventory();
@@ -228,7 +238,14 @@ async function loadPublishedInventory(
       : await loadPublishedProfileLoadout(published, projectId);
     if (loadVersion !== inventoryLoadVersion) return;
     const input = extractOptimizerInput(envelope);
-    applyOptimizerInput(input);
+    const loadout = projectId == null
+      ? undefined
+      : published.loadouts.find((candidate) => candidate.project_id === projectId);
+    applyOptimizerInput(input, optimizerPresentationIdentityForPublishedSelection(
+      published.entry.deployment,
+      published.entry,
+      projectId == null ? null : (loadout ?? {}),
+    ));
     setInventoryStatus(
       `${published.entry.label}${projectId == null ? "" : ` · Loadout ${projectId}`} loaded: ${formatNumber(inventory.length)} modules and ` +
         `${currentInstanceIds.length} equipped modules.`,
@@ -249,7 +266,11 @@ function loadDemoInventory(): void {
   applyOptimizerInput({
     modules,
     currentInstanceIds: modules.slice(0, 4).map((module) => module.instance_id),
-  });
+  }, presentationSource ? {
+    deployment: presentationSource.deployment_id ?? "",
+    source_client_build: presentationSource.game_build,
+    source_protocol_pack_digest: presentationSource.protocol_pack_digest,
+  } : undefined);
   const priority = document.querySelector<HTMLSelectElement>(
     '.optimizer-attribute-row[data-attribute-id="1110"] select',
   );
@@ -274,7 +295,7 @@ async function loadInventoryFile(event: Event): Promise<void> {
     const value: unknown = JSON.parse(await file.text());
     const optimizerInput = await optimizerInputFromFileValue(value);
     if (loadVersion !== inventoryLoadVersion) return;
-    applyOptimizerInput(optimizerInput);
+    applyOptimizerInput(optimizerInput, optimizerInput.presentationIdentity);
     setInventoryStatus(
       `${file.name}: ${formatNumber(inventory.length)} modules and ` +
         `${currentInstanceIds.length} equipped modules loaded locally. Nothing was uploaded.`,
@@ -293,9 +314,16 @@ async function loadInventoryFile(event: Event): Promise<void> {
 function applyOptimizerInput(input: {
   modules: ModuleCandidate[];
   currentInstanceIds: string[];
-}): void {
+}, identity?: OptimizerPresentationIdentity): void {
   inventory = input.modules;
   currentInstanceIds = input.currentInstanceIds;
+  if (presentationSource) {
+    presentation = optimizerPresentationForIdentity(
+      presentationSource,
+      identity ?? { deployment: "" },
+    );
+    if (catalog) renderCatalog(catalog);
+  }
   renderInventoryPreview();
   setCombinationSizeForCurrentSetup();
   updateExactSearchAvailability();
@@ -435,9 +463,19 @@ function buildRequest(): OptimizeRequest {
 }
 
 function renderCatalog(value: OptimizerCatalog): void {
+  const labelStatus = presentation?.optimizer_provenance === "carried-forward"
+    ? ` · labels carried from build ${presentation.game_build}`
+    : presentation?.optimizer_provenance === "unavailable"
+      ? " · labels unresolved"
+      : presentation?.game_build
+        ? ` · labels build ${presentation.game_build}`
+        : "";
   requiredElement("optimizer-catalog-revision").textContent =
-    `Game build ${value.client_builds.map((build) => Number(build).toLocaleString("en-US")).join(", ")}`;
+    `Game build ${value.client_builds.map((build) => Number(build).toLocaleString("en-US")).join(", ")}${labelStatus}`;
   requiredElement("optimizer-catalog-revision").title = value.catalog_revision;
+  if (presentation) {
+    requiredElement("optimizer-catalog-revision").title += ` · ${presentation.optimizer_provenance_label}`;
+  }
   const root = requiredElement("optimizer-attributes");
   root.replaceChildren(
     ...value.attributes.map((attribute) => attributeRow(attribute)),
@@ -449,15 +487,16 @@ function attributeRow(attribute: AttributeCatalogEntry): HTMLElement {
   const row = element("div", "optimizer-attribute-row");
   row.dataset.attributeId = String(attribute.id);
   const localized = presentation?.module_effects[String(attribute.id)];
+  const displayName = localized?.name ?? `Effect ${attribute.id} (unresolved)`;
 
   const identity = element("div", "optimizer-attribute-name");
-  appendOptimizerIcon(identity, localized?.icon ?? attribute.icon, localized?.name ?? attribute.name, "optimizer-attribute-icon");
+  appendOptimizerIcon(identity, localized?.icon ?? attribute.icon, displayName, "optimizer-attribute-icon");
   const copy = element("span", "optimizer-attribute-copy");
   const thresholdCopy = attribute.thresholds.length
     ? `Power steps at ${attribute.thresholds.join(", ")} Link`
     : "No activation thresholds";
   copy.append(
-    element("strong", "", localized?.name ?? attribute.name),
+    element("strong", "", displayName),
     element("small", "", thresholdCopy),
   );
   identity.append(
@@ -465,7 +504,7 @@ function attributeRow(attribute: AttributeCatalogEntry): HTMLElement {
   );
 
   const mode = element("select");
-  mode.setAttribute("aria-label", `Scoring policy for ${attribute.name}`);
+  mode.setAttribute("aria-label", `Scoring policy for ${displayName}`);
   for (const [value, label] of [
     ["normal", "Balanced"],
     ["target", "Prioritize"],
@@ -480,7 +519,7 @@ function attributeRow(attribute: AttributeCatalogEntry): HTMLElement {
   minimum.type = "number";
   minimum.min = "0";
   minimum.placeholder = "Any";
-  minimum.setAttribute("aria-label", `Minimum ${attribute.name}`);
+  minimum.setAttribute("aria-label", `Minimum ${displayName}`);
   row.append(identity, mode, minimum);
   return row;
 }

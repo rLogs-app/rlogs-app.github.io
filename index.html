@@ -24,6 +24,7 @@
           "/account": "account",
           "/my-account": "my-account",
           "/optimizer": "optimizer",
+          "/module-optimizer": "optimizer",
         };
         document.documentElement.dataset.rlogsPage =
           (route === "/profiles" && new URLSearchParams(location.search).has("user") ? "users" : pages[route]) ||

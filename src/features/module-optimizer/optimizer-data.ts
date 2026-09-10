@@ -6,6 +6,11 @@ export const DEFAULT_EXACT_COMBINATION_LIMIT = 500_000n;
 export interface OptimizerProfileInput {
   modules: ModuleCandidate[];
   currentInstanceIds: string[];
+  presentationIdentity?: {
+    deployment: string;
+    source_client_build?: string;
+    source_protocol_pack_digest?: string;
+  };
 }
 
 export interface OptimizerDeviceCapabilities {

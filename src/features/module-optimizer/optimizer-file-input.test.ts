@@ -19,6 +19,11 @@ describe("optimizer local file input", () => {
 
     expect(input.modules).toHaveLength(1);
     expect(input.currentInstanceIds).toEqual(["9007199254740993"]);
+    expect(input.presentationIdentity).toEqual({
+      deployment: "global",
+      source_client_build: "synthetic-build",
+      source_protocol_pack_digest: "sha256:synthetic-demo-pack",
+    });
   });
 
   it("loads a plain inventory without weakening module validation", async () => {

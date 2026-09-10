@@ -27,7 +27,7 @@ export function pageFromPath(pathname: string, search = ""): SitePage {
   if (route === "/users" || route.startsWith("/users/")) return "users";
   if (route === "/account") return "account";
   if (route === "/my-account") return "my-account";
-  if (route === "/optimizer") return "optimizer";
+  if (route === "/optimizer" || route === "/module-optimizer") return "optimizer";
   return "home";
 }
 

@@ -14,6 +14,7 @@ describe("site navigation", () => {
     ["/account", "account"],
     ["/my-account", "my-account"],
     ["/optimizer/", "optimizer"],
+    ["/module-optimizer/", "optimizer"],
     ["/unknown/", "home"],
   ] as const)("maps %s to %s", (path, expected) => {
     expect(pageFromPath(path)).toBe(expected);
