@@ -4,11 +4,21 @@ export interface ParsePresentationCatalog {
   deployment_id: string;
   game_build: string;
   source: string;
+  coverage?: {
+    scope: string;
+    observed_action_count: number;
+    localized_observed_action_count: number;
+    uncovered_action_ids: readonly string[];
+    reviewed_action_count: number;
+    rdps_effect_count: number;
+    localized_rdps_effect_count: number;
+    uncovered_rdps_effect_ids: readonly string[];
+  };
   actions: Readonly<Record<string, string>>;
   effects: Readonly<Record<string, string>>;
 }
 
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/parse-presentation.en-US.v1.json?schema=1`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/parse-presentation.en-US.v1.json?schema=1&labels=reviewed-observed-v1`;
 let request: Promise<ParsePresentationCatalog> | undefined;
 
 export function loadParsePresentation(): Promise<ParsePresentationCatalog> {
@@ -28,7 +38,7 @@ export function localizedActionName(
   abilityId: string,
   publishedName: string | null,
 ): string {
-  return humanName(publishedName) ?? catalog?.actions[abilityId] ?? "Unlocalized combat action";
+  return humanName(catalog?.actions[abilityId] ?? null) ?? humanName(publishedName) ?? unlocalizedLabel("action", abilityId);
 }
 
 export function localizedEffectName(
@@ -36,7 +46,7 @@ export function localizedEffectName(
   effectId: string,
   publishedName: string | null,
 ): string {
-  return humanName(publishedName) ?? catalog?.effects[effectId] ?? "Unlocalized combat effect";
+  return humanName(catalog?.effects[effectId] ?? null) ?? humanName(publishedName) ?? unlocalizedLabel("effect", effectId);
 }
 
 export function presentationForReport(
@@ -60,11 +70,22 @@ function humanName(value: string | null): string | undefined {
   if (
     trimmed === "" ||
     /^(?:skill|effect|action|status)(?:\s+|\s*#?)\d+$/iu.test(trimmed) ||
-    /^\d+$/u.test(trimmed)
+    /^\d+$/u.test(trimmed) ||
+    /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(trimmed) ||
+    /(?:^|[^A-Za-z])(?:ATK|AIRATK|EXATK|DODGE|FRACTURE_ATK|SKILL(?:_?\d+)?|UTR_SKILL)(?:$|[^A-Za-z])/u.test(trimmed) ||
+    trimmed.includes("_") ||
+    /^[a-z]+(?:[A-Z][A-Za-z0-9]*){2,}$/u.test(trimmed)
   ) {
     return undefined;
   }
   return trimmed;
+}
+
+function unlocalizedLabel(kind: "action" | "effect", id: string): string {
+  const numericId = id.trim();
+  return /^\d+$/u.test(numericId)
+    ? `Unlocalized combat ${kind} #${numericId}`
+    : `Unlocalized combat ${kind}`;
 }
 
 function isCatalog(value: unknown): value is ParsePresentationCatalog {

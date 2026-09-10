@@ -30,12 +30,42 @@ describe("parse presentation", () => {
     );
   });
 
-  it("never exposes an unknown numeric ID as the display label", () => {
+  it("preserves an unknown numeric ID as evidence without presenting it as a name", () => {
     expect(localizedActionName(catalog, "9999999", null)).toBe(
-      "Unlocalized combat action",
+      "Unlocalized combat action #9999999",
     );
     expect(localizedEffectName(catalog, "9999999", null)).toBe(
-      "Unlocalized combat effect",
+      "Unlocalized combat effect #9999999",
+    );
+  });
+
+  it("rejects unresolved CJK and internal design identifiers from reports", () => {
+    expect(localizedActionName(catalog, "1202", "博伊斯ATK_02")).toBe(
+      "Unlocalized combat action #1202",
+    );
+    expect(localizedActionName(catalog, "1202", "Player_SKILL_02_BD")).toBe(
+      "Unlocalized combat action #1202",
+    );
+    expect(localizedEffectName(catalog, "4502", "internalStatusEffect")).toBe(
+      "Unlocalized combat effect #4502",
+    );
+  });
+
+  it("applies the same gate to catalog strings and falls through to a safe report label", () => {
+    const unsafeCatalog: ParsePresentationCatalog = {
+      ...catalog,
+      actions: { "1202": "博伊斯ATK_02" },
+      effects: { "4502": "Player_SKILL_02_BD" },
+    };
+    expect(localizedActionName(unsafeCatalog, "1202", "Raincall Surge")).toBe("Raincall Surge");
+    expect(localizedEffectName(unsafeCatalog, "4502", null)).toBe(
+      "Unlocalized combat effect #4502",
+    );
+  });
+
+  it("prefers the reviewed exact-build catalog over a report source label", () => {
+    expect(localizedActionName(catalog, "2900840", "Player_SKILL_02_BD")).toBe(
+      "Arcane! Divine Reliance",
     );
   });
 
@@ -48,10 +78,10 @@ describe("parse presentation", () => {
   it("fails closed instead of borrowing labels across builds", () => {
     const mismatched = presentationForReport(catalog, "global", "24687927");
     expect(localizedActionName(mismatched, "2900840", "Skill 2900840")).toBe(
-      "Unlocalized combat action",
+      "Unlocalized combat action #2900840",
     );
     expect(localizedEffectName(mismatched, "3003052", "Effect 3003052")).toBe(
-      "Unlocalized combat effect",
+      "Unlocalized combat effect #3003052",
     );
   });
 });
