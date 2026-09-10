@@ -2644,6 +2644,12 @@ summary.party-loadout-title {
   font-size: 12px;
 }
 
+.optimizer-local-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
 .optimizer-layout {
   display: grid;
   grid-template-columns: minmax(360px, 0.8fr) minmax(460px, 1.2fr);

@@ -3,6 +3,7 @@ import {
   DEFAULT_EXACT_COMBINATION_LIMIT,
   extractOptimizerInput,
   optimizerComputeBudget,
+  safeDemoModules,
 } from "./optimizer-data";
 import type {
   AttributeCatalogEntry,
@@ -33,6 +34,7 @@ import {
   requestedOptimizerProfile,
 } from "./optimizer-profile-route";
 import { fetchPublicRead } from "../../public-api";
+import { optimizerInputFromFileValue } from "./optimizer-file-input";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 const sessionKey = "rlogs.web-session.v1";
@@ -50,6 +52,7 @@ let currentInstanceIds: string[] = [];
 let catalog: OptimizerCatalog | undefined;
 let presentation: ProfilePresentationCatalog | undefined;
 let inventoryVisibleLimit = 80;
+let inventoryLoadVersion = 0;
 let nextWorkerRequestId = 1;
 const pendingWorkerCalls = new Map<
   number,
@@ -109,6 +112,14 @@ function bindControls(): void {
     "change",
     (event) => void loadPublishedInventory((event.currentTarget as HTMLSelectElement).value),
   );
+  requiredElement<HTMLButtonElement>("optimizer-load-demo").addEventListener(
+    "click",
+    loadDemoInventory,
+  );
+  requiredElement<HTMLInputElement>("optimizer-file").addEventListener(
+    "change",
+    (event) => void loadInventoryFile(event),
+  );
   requiredElement<HTMLButtonElement>("run-optimizer").addEventListener(
     "click",
     () => void runOptimizer(),
@@ -147,6 +158,7 @@ function bindControls(): void {
 }
 
 async function loadSyncedInventory(): Promise<void> {
+  const loadVersion = ++inventoryLoadVersion;
   const signIn = requiredElement<HTMLAnchorElement>("optimizer-sign-in");
   const picker = requiredElement<HTMLSelectElement>("optimizer-profile-select");
   const pickerLabel = picker.closest<HTMLLabelElement>(".optimizer-profile-picker");
@@ -156,7 +168,7 @@ async function loadSyncedInventory(): Promise<void> {
   if (requestedProfile) {
     signIn.hidden = true;
     if (pickerLabel) pickerLabel.hidden = true;
-    await loadPublishedInventory(requestedProfile, requestedLoadout);
+    await loadPublishedInventory(requestedProfile, requestedLoadout, loadVersion);
     return;
   }
   if (!apiBase || !session) {
@@ -170,6 +182,7 @@ async function loadSyncedInventory(): Promise<void> {
   const response = await fetchPublicRead(`${apiBase}/v1/auth/profiles`, {
     headers: { Authorization: `Bearer ${session.access_token}`, Accept: "application/json" },
   });
+  if (loadVersion !== inventoryLoadVersion) return;
   if (response.status === 401) {
     localStorage.removeItem(sessionKey);
     window.dispatchEvent(new Event("rlogs:session-changed"));
@@ -198,22 +211,24 @@ async function loadSyncedInventory(): Promise<void> {
   if (requestedProfile && profiles.some((profile) => profile.profile_id === requestedProfile)) picker.value = requestedProfile;
   if (pickerLabel) pickerLabel.hidden = profiles.length < 2;
   signIn.hidden = true;
-  await loadPublishedInventory(picker.value);
+  await loadPublishedInventory(picker.value, undefined, loadVersion);
 }
 
-async function loadPublishedInventory(profileId: string, projectId?: number): Promise<void> {
+async function loadPublishedInventory(
+  profileId: string,
+  projectId?: number,
+  requestedLoadVersion?: number,
+): Promise<void> {
+  const loadVersion = requestedLoadVersion ?? ++inventoryLoadVersion;
   setInventoryStatus("Loading this profile's published module inventory...");
   try {
     const published = await loadPublishedProfile(profileId);
     const envelope = projectId == null
       ? published.envelope
       : await loadPublishedProfileLoadout(published, projectId);
+    if (loadVersion !== inventoryLoadVersion) return;
     const input = extractOptimizerInput(envelope);
-    inventory = input.modules;
-    currentInstanceIds = input.currentInstanceIds;
-    renderInventoryPreview();
-    setCombinationSizeForCurrentSetup();
-    updateExactSearchAvailability();
+    applyOptimizerInput(input);
     setInventoryStatus(
       `${published.entry.label}${projectId == null ? "" : ` · Loadout ${projectId}`} loaded: ${formatNumber(inventory.length)} modules and ` +
         `${currentInstanceIds.length} equipped modules.`,
@@ -221,10 +236,69 @@ async function loadPublishedInventory(profileId: string, projectId?: number): Pr
     setRunStatus("Choose attribute priorities, then optimize.");
     enableRun();
   } catch (error) {
+    if (loadVersion !== inventoryLoadVersion) return;
     requiredElement("optimizer-inventory-preview").hidden = true;
     setInventoryStatus(errorMessage(error), true);
     setRunStatus("Could not load this profile's published inventory.", true);
   }
+}
+
+function loadDemoInventory(): void {
+  ++inventoryLoadVersion;
+  const modules = safeDemoModules();
+  applyOptimizerInput({
+    modules,
+    currentInstanceIds: modules.slice(0, 4).map((module) => module.instance_id),
+  });
+  const priority = document.querySelector<HTMLSelectElement>(
+    '.optimizer-attribute-row[data-attribute-id="1110"] select',
+  );
+  if (priority) priority.value = "target";
+  requiredElement<HTMLInputElement>("optimizer-require-target").checked = false;
+  updateExactSearchAvailability();
+  setInventoryStatus("Safe demo loaded: 12 generated modules. Nothing was uploaded.");
+  setRunStatus("Choose attribute priorities, then optimize.");
+  enableRun();
+}
+
+async function loadInventoryFile(event: Event): Promise<void> {
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  const loadVersion = ++inventoryLoadVersion;
+  setInventoryStatus(`Reading ${file.name} locally...`);
+  try {
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error("The selected JSON file exceeds the 10 MiB browser limit.");
+    }
+    const value: unknown = JSON.parse(await file.text());
+    const optimizerInput = await optimizerInputFromFileValue(value);
+    if (loadVersion !== inventoryLoadVersion) return;
+    applyOptimizerInput(optimizerInput);
+    setInventoryStatus(
+      `${file.name}: ${formatNumber(inventory.length)} modules and ` +
+        `${currentInstanceIds.length} equipped modules loaded locally. Nothing was uploaded.`,
+    );
+    setRunStatus("Choose attribute priorities, then optimize.");
+    enableRun();
+  } catch (error) {
+    if (loadVersion !== inventoryLoadVersion) return;
+    setInventoryStatus(errorMessage(error), true);
+    setRunStatus("The selected file was not loaded.", true);
+  } finally {
+    input.value = "";
+  }
+}
+
+function applyOptimizerInput(input: {
+  modules: ModuleCandidate[];
+  currentInstanceIds: string[];
+}): void {
+  inventory = input.modules;
+  currentInstanceIds = input.currentInstanceIds;
+  renderInventoryPreview();
+  setCombinationSizeForCurrentSetup();
+  updateExactSearchAvailability();
 }
 
 function activeSession(): { access_token: string } | undefined {

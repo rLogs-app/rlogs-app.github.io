@@ -328,7 +328,7 @@
         <article class="panel optimizer-workbench">
           <div class="optimizer-notice">
             <strong>Your modules, optimized privately.</strong>
-            The inventory comes from your latest signed-in Profile Sync. Every search runs locally in this browser.
+            Profile Sync is the default inventory source. Imported files and every search stay local to this browser.
           </div>
 
           <div class="optimizer-source-bar">
@@ -337,6 +337,15 @@
               <select id="optimizer-profile-select"></select>
             </label>
             <a id="optimizer-sign-in" class="button primary" href="/account/" hidden>Sign in to load synced modules</a>
+            <div class="optimizer-local-actions" aria-label="Local inventory sources">
+              <button id="optimizer-load-demo" class="button secondary" type="button">
+                Try safe demo
+              </button>
+              <label class="button secondary file-button">
+                Open local JSON
+                <input id="optimizer-file" type="file" accept=".json,application/json" />
+              </label>
+            </div>
             <p id="optimizer-inventory-status" class="muted" role="status">
               Checking your synced module inventory…
             </p>
