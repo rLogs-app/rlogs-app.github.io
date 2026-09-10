@@ -50,8 +50,44 @@ describe("public community milestone contract", () => {
       ...catalog,
       entries: [{ ...entry, deployment_id: null, client_build: null, protocol_pack_digest: null }],
     })).toBe(true);
+    expect(isPublicCommunityMilestoneCatalog({
+      ...catalog,
+      entries: [{
+        ...entry,
+        kind: "unknown",
+        difficulty_family: null,
+        deployment_id: null,
+        client_build: null,
+        protocol_pack_digest: null,
+      }],
+    })).toBe(true);
     expect(isPublicCommunityMilestoneCatalog({ ...catalog, entries: [{ ...entry, client_build: null }] })).toBe(false);
     const { protocol_pack_digest: _, ...missingDigest } = entry;
     expect(isPublicCommunityMilestoneCatalog({ ...catalog, entries: [missingDigest] })).toBe(false);
+  });
+
+  it("keeps schema 1 milestone semantics strict", () => {
+    const legacy = {
+      schema_version: 1,
+      total_entries: 1,
+      entries: [{
+        kind: "unknown",
+        character_id: "3296036",
+        display_name: "MarieRose",
+        report_id: `rpt_${"a".repeat(32)}`,
+        run_index: 0,
+        completed_unix_millis: 1_788_000_000_000,
+        scene_id: 6500,
+        scene_name: null,
+        difficulty_family: null,
+        difficulty_tier: 20,
+        total_run_time_micros: 90_000_000,
+      }],
+    };
+    expect(isPublicCommunityMilestoneCatalog(legacy)).toBe(false);
+    expect(isPublicCommunityMilestoneCatalog({
+      ...legacy,
+      entries: legacy.entries.map((entry) => ({ ...entry, kind: "nightmare_raid", difficulty_family: null })),
+    })).toBe(false);
   });
 });

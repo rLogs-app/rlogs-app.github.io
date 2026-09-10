@@ -1,4 +1,4 @@
-export type CommunityMilestoneKind = "master_twenty_dungeon" | "nightmare_raid";
+export type CommunityMilestoneKind = "master_twenty_dungeon" | "nightmare_raid" | "unknown";
 
 export interface PublicCommunityMilestoneCatalog {
   schema_version: 1 | 2;
@@ -15,7 +15,7 @@ export interface PublicCommunityMilestone {
   completed_unix_millis: number;
   scene_id: number | null;
   scene_name: string | null;
-  difficulty_family: string;
+  difficulty_family: string | null;
   difficulty_tier: number | null;
   total_run_time_micros: number | null;
   deployment_id?: string | null;
@@ -40,7 +40,8 @@ export function isPublicCommunityMilestoneCatalog(
 function isPublicCommunityMilestone(value: unknown, schemaVersion: 1 | 2): value is PublicCommunityMilestone {
   return (
     isRecord(value) &&
-    (value.kind === "master_twenty_dungeon" || value.kind === "nightmare_raid") &&
+    (value.kind === "master_twenty_dungeon" || value.kind === "nightmare_raid" ||
+      (schemaVersion === 2 && value.kind === "unknown")) &&
     typeof value.character_id === "string" &&
     value.character_id.length > 0 &&
     (value.display_name === null || typeof value.display_name === "string") &&
@@ -50,7 +51,7 @@ function isPublicCommunityMilestone(value: unknown, schemaVersion: 1 | 2): value
     positiveInteger(value.completed_unix_millis) &&
     nullableInteger(value.scene_id) &&
     (value.scene_name === null || typeof value.scene_name === "string") &&
-    typeof value.difficulty_family === "string" &&
+    (typeof value.difficulty_family === "string" || (schemaVersion === 2 && value.difficulty_family === null)) &&
     nullableNonnegativeInteger(value.difficulty_tier) &&
     nullableNonnegativeInteger(value.total_run_time_micros) &&
     (schemaVersion === 1 || isNullableIdentityTriple(value))

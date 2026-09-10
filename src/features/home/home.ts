@@ -316,11 +316,11 @@ export function milestonePresentationCopy(
   const activity = authorized
     ? entry.scene_name ?? rawMilestoneSceneLabel(entry.scene_id)
     : rawMilestoneSceneLabel(entry.scene_id);
-  const achievement = authorized
-    ? entry.kind === "master_twenty_dungeon"
-      ? `first M${entry.difficulty_tier ?? 20} clear`
-      : "first Nightmare clear"
-    : [entry.difficulty_tier == null ? undefined : `Tier ${entry.difficulty_tier}`, "verified clear"]
+  const achievement = authorized && entry.kind === "master_twenty_dungeon"
+    ? `first M${entry.difficulty_tier ?? 20} clear`
+    : authorized && entry.kind === "nightmare_raid"
+      ? "first Nightmare clear"
+      : [entry.difficulty_tier == null ? undefined : `Tier ${entry.difficulty_tier}`, "verified clear"]
       .filter(Boolean)
       .join(" · ");
   return { activity, achievement };

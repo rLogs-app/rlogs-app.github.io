@@ -136,4 +136,27 @@ describe("home milestones", () => {
       expect(`${copy.activity} ${copy.achievement}`).not.toContain("Nightmare");
     }
   });
+
+  it("renders schema 2 unknown/null producer fallbacks as neutral raw evidence", () => {
+    const unavailable: PublicCommunityMilestone = {
+      ...milestone,
+      kind: "unknown",
+      difficulty_family: null,
+      difficulty_tier: null,
+      deployment_id: null,
+      client_build: null,
+      protocol_pack_digest: null,
+    };
+    const copy = milestonePresentationCopy(unavailable, presentation, 2);
+    expect(copy).toEqual({ activity: "Scene #6500", achievement: "verified clear" });
+    expect(JSON.stringify(copy)).not.toContain("Chaotic Realm");
+    expect(JSON.stringify(copy)).not.toContain("Nightmare");
+
+    expect(milestonePresentationCopy({
+      ...unavailable,
+      deployment_id: "global",
+      client_build: "24687926",
+      protocol_pack_digest: digest,
+    }, presentation, 2)).toEqual({ activity: "Chaotic Realm", achievement: "verified clear" });
+  });
 });
