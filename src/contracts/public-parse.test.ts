@@ -12,6 +12,42 @@ import {
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../../public/fixtures/${name}`, import.meta.url), "utf8"));
 
+function completedSchema18Reconciliation(): any {
+  const reconciliation = fixture("parse-reconciliation.v1.json") as any;
+  const report = fixture("parse-report.v1.json") as any;
+  reconciliation.schema_version = 18;
+  reconciliation.status = "reconciled";
+  reconciliation.attribution_replay_completed = true;
+  reconciliation.rdps_status = "partial_packet_proven_rules";
+  reconciliation.reconciled_participants = report.runs[0].participants.map((participant: any) => ({
+    ...participant,
+    rdps_damage: participant.damage,
+    contribution_given: 0,
+    contribution_received: 0,
+    rdps_incomplete: false,
+    series: [{
+      second: 0,
+      damage: participant.damage,
+      effective_healing: 0,
+      damage_taken: 0,
+      rdps_damage: participant.damage,
+      rdps_contribution_given: 0,
+      rdps_contribution_received: 0,
+    }],
+  }));
+  reconciliation.timeline.source = "reconciled_canonical_spine";
+  reconciliation.timeline.participant_tracks = reconciliation.reconciled_participants.map((participant: any, index: number) => ({
+    actor_id: participant.actor_id,
+    canonical_participant_index: index,
+    series_point_count: 1,
+  }));
+  reconciliation.timeline.omitted.participant_tracks = 0;
+  reconciliation.timeline.omitted.series_points = 0;
+  const damage = reconciliation.reconciled_participants.reduce((sum: number, participant: any) => sum + participant.damage, 0);
+  reconciliation.conservation = { raw_damage: damage, rdps_damage: damage, contribution_given: 0, contribution_received: 0, conserved: true };
+  return reconciliation;
+}
+
 describe("public parse contract", () => {
   it("accepts deterministic report identifiers", () => {
     expect(validateReportId(`rpt_${"ab".repeat(16)}`)).toBe(true);
@@ -265,21 +301,13 @@ describe("public parse contract", () => {
     current.rdps_status = null;
     expect(isPublicRunReconciliation(current)).toBe(true);
 
-    current.status = "reconciled";
-    current.attribution_replay_completed = true;
-    const report = fixture("parse-report.v1.json") as any;
-    current.reconciled_participants = report.runs[0].participants.map((participant: any) => ({
-      ...participant, rdps_damage: participant.damage, contribution_given: 0,
-      contribution_received: 0, rdps_incomplete: false,
-    }));
-    current.timeline.source = "reconciled_canonical_spine";
-    const damage = current.reconciled_participants.reduce((sum: number, participant: any) => sum + participant.damage, 0);
-    current.conservation = { raw_damage: damage, rdps_damage: damage, contribution_given: 0, contribution_received: 0, conserved: true };
-    expect(isPublicRunReconciliation(current)).toBe(false);
-    current.rdps_status = "partial_packet_proven_rules";
-    expect(isPublicRunReconciliation(current)).toBe(true);
+    const completed = completedSchema18Reconciliation();
+    delete completed.rdps_status;
+    expect(isPublicRunReconciliation(completed)).toBe(false);
+    completed.rdps_status = "partial_packet_proven_rules";
+    expect(isPublicRunReconciliation(completed)).toBe(true);
 
-    const missingStatus = structuredClone(current);
+    const missingStatus = structuredClone(completed);
     delete missingStatus.rdps_status;
     expect(isPublicRunReconciliation(missingStatus)).toBe(false);
 
@@ -294,6 +322,109 @@ describe("public parse contract", () => {
       }
       expect(isPublicRunReconciliation(legacy)).toBe(true);
     }
+  });
+  it("rejects contradictory completed schema 18 aggregate rDPS evidence", () => {
+    const validTransfer = completedSchema18Reconciliation();
+    validTransfer.reconciled_participants[0].rdps_damage += 1;
+    validTransfer.reconciled_participants[0].contribution_given = 1;
+    validTransfer.reconciled_participants[0].series[0].rdps_damage += 1;
+    validTransfer.reconciled_participants[0].series[0].rdps_contribution_given = 1;
+    validTransfer.reconciled_participants[1].rdps_damage -= 1;
+    validTransfer.reconciled_participants[1].contribution_received = 1;
+    validTransfer.reconciled_participants[1].series[0].rdps_damage -= 1;
+    validTransfer.reconciled_participants[1].series[0].rdps_contribution_received = 1;
+    validTransfer.conservation.contribution_given = 1;
+    validTransfer.conservation.contribution_received = 1;
+    expect(isPublicRunReconciliation(validTransfer)).toBe(true);
+
+    for (const [field, value] of [["rdps_damage", null], ["contribution_given", -1], ["contribution_received", 1.5]] as const) {
+      const malformed = completedSchema18Reconciliation();
+      malformed.reconciled_participants[0][field] = value;
+      expect(isPublicRunReconciliation(malformed), `${field}=${value}`).toBe(false);
+    }
+
+    const brokenFormula = completedSchema18Reconciliation();
+    brokenFormula.reconciled_participants[0].rdps_damage += 1;
+    expect(isPublicRunReconciliation(brokenFormula)).toBe(false);
+
+    const falseTotals = completedSchema18Reconciliation();
+    falseTotals.conservation.raw_damage += 1;
+    falseTotals.conservation.rdps_damage += 1;
+    expect(isPublicRunReconciliation(falseTotals)).toBe(false);
+
+    const falseTransfers = completedSchema18Reconciliation();
+    falseTransfers.conservation.contribution_given = 1;
+    falseTransfers.conservation.contribution_received = 1;
+    expect(isPublicRunReconciliation(falseTransfers)).toBe(false);
+
+    const duplicateActor = completedSchema18Reconciliation();
+    duplicateActor.reconciled_participants[1].actor_id = duplicateActor.reconciled_participants[0].actor_id;
+    duplicateActor.timeline.participant_tracks[1].actor_id = duplicateActor.timeline.participant_tracks[0].actor_id;
+    expect(isPublicRunReconciliation(duplicateActor)).toBe(false);
+  });
+  it("validates complete schema 18 rDPS series without rejecting unavailable or truncated buckets", () => {
+    const brokenBucketFormula = completedSchema18Reconciliation();
+    brokenBucketFormula.reconciled_participants[0].series[0].rdps_damage += 1;
+    expect(isPublicRunReconciliation(brokenBucketFormula)).toBe(false);
+
+    const wrongSeriesTotal = completedSchema18Reconciliation();
+    wrongSeriesTotal.reconciled_participants[0].series[0].damage -= 1;
+    wrongSeriesTotal.reconciled_participants[0].series[0].rdps_damage -= 1;
+    expect(isPublicRunReconciliation(wrongSeriesTotal)).toBe(false);
+
+    const bucketLeak = completedSchema18Reconciliation();
+    const participant = bucketLeak.reconciled_participants[0];
+    participant.contribution_given = 1;
+    participant.contribution_received = 1;
+    participant.series = [
+      { ...participant.series[0], rdps_damage: participant.damage - 1, rdps_contribution_given: 0, rdps_contribution_received: 1 },
+      { second: 1, damage: 0, effective_healing: 0, damage_taken: 0, rdps_damage: 1, rdps_contribution_given: 1, rdps_contribution_received: 0 },
+    ];
+    bucketLeak.timeline.participant_tracks[0].series_point_count = 2;
+    bucketLeak.conservation.contribution_given = 1;
+    bucketLeak.conservation.contribution_received = 1;
+    expect(isPublicRunReconciliation(bucketLeak)).toBe(false);
+
+    const unavailable = completedSchema18Reconciliation();
+    unavailable.reconciled_participants.forEach((row: any) => row.series.forEach((point: any) => {
+      delete point.rdps_damage;
+      delete point.rdps_contribution_given;
+      delete point.rdps_contribution_received;
+    }));
+    expect(isPublicRunReconciliation(unavailable)).toBe(true);
+
+    const unavailableWrongRawTotal = structuredClone(unavailable);
+    unavailableWrongRawTotal.reconciled_participants[0].series[0].damage -= 1;
+    expect(isPublicRunReconciliation(unavailableWrongRawTotal)).toBe(false);
+
+    const mixed = completedSchema18Reconciliation();
+    delete mixed.reconciled_participants[0].series[0].rdps_damage;
+    delete mixed.reconciled_participants[0].series[0].rdps_contribution_given;
+    delete mixed.reconciled_participants[0].series[0].rdps_contribution_received;
+    expect(isPublicRunReconciliation(mixed)).toBe(false);
+
+    const truncated = completedSchema18Reconciliation();
+    truncated.timeline.participant_tracks[0].series_point_count = 0;
+    truncated.timeline.omitted.series_points = 1;
+    expect(isPublicRunReconciliation(truncated)).toBe(true);
+
+    const inventedOmission = completedSchema18Reconciliation();
+    inventedOmission.timeline.omitted.series_points = 1;
+    expect(isPublicRunReconciliation(inventedOmission)).toBe(false);
+
+    const hiddenOmission = completedSchema18Reconciliation();
+    hiddenOmission.timeline.participant_tracks[0].series_point_count = 0;
+    expect(isPublicRunReconciliation(hiddenOmission)).toBe(false);
+
+    const malformedUnretainedSuffix = structuredClone(truncated);
+    malformedUnretainedSuffix.reconciled_participants[0].series[0].rdps_damage += 1;
+    expect(isPublicRunReconciliation(malformedUnretainedSuffix)).toBe(false);
+  });
+  it("does not retroactively impose schema 18 arithmetic on completed schema 17 payloads", () => {
+    const legacy = completedSchema18Reconciliation();
+    legacy.schema_version = 17;
+    legacy.reconciled_participants[0].rdps_damage += 1;
+    expect(isPublicRunReconciliation(legacy)).toBe(true);
   });
   it("preserves audit-only Swift Vortex evidence without promoting it", () => {
     const reconciliation = fixture("parse-reconciliation.v1.json") as any;

@@ -241,7 +241,7 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
     typeof value.complete_local_vantage_coverage === "boolean" && replayReadiness.has(value.state_replay_readiness) &&
     Array.isArray(value.state_replay_blockers) && value.state_replay_blockers.every((blocker) => typeof blocker === "string") &&
     typeof value.attribution_replay_completed === "boolean" && replayRdpsStatusValid &&
-    isConservation(value.conservation) && isReplayStateConsistent(value) &&
+    isConservation(value.conservation) && isReplayStateConsistent(value) && isCompletedSchema18RdpsConsistent(value) &&
     (value.swift_vortex_candidate_audit == null || isSwiftVortexCandidateAudit(value.swift_vortex_candidate_audit)) &&
     Array.isArray(value.characters) && value.characters.length <= 256 && value.characters.every((character) => isReconciliationCharacter(character, value.reports)) &&
     unique(value.characters.map((character: unknown) => isRecord(character) ? character.character_id : character)) &&
@@ -457,6 +457,109 @@ function isReplayStateConsistent(value: Record<string, any>): boolean {
     Array.isArray(value.reconciled_participants) && value.reconciled_participants.length > 0 &&
     value.timeline?.source === "reconciled_canonical_spine" &&
     (value.schema_version !== 18 || (typeof value.rdps_status === "string" && value.rdps_status.length > 0));
+}
+function isCompletedSchema18RdpsConsistent(value: Record<string, any>): boolean {
+  if (value.schema_version !== 18 || value.attribution_replay_completed !== true) return true;
+  if (!Array.isArray(value.reconciled_participants) || !isRecord(value.conservation)) return false;
+  const conservationFields = ["raw_damage", "rdps_damage", "contribution_given", "contribution_received"] as const;
+  if (!conservationFields.every((field) => isNonNegativeInteger(value.conservation[field]))) return false;
+
+  if (!unique(value.reconciled_participants.map((participant: unknown) =>
+    isRecord(participant) ? participant.actor_id : participant))) return false;
+  const totals = { raw: 0n, rdps: 0n, given: 0n, received: 0n };
+  for (const participant of value.reconciled_participants) {
+    if (!isRecord(participant) || ![participant.damage, participant.rdps_damage, participant.contribution_given,
+      participant.contribution_received].every(isNonNegativeInteger)) return false;
+    const raw = BigInt(participant.damage);
+    const rdps = BigInt(participant.rdps_damage);
+    const given = BigInt(participant.contribution_given);
+    const received = BigInt(participant.contribution_received);
+    if (rdps !== raw + given - received) return false;
+    totals.raw += raw;
+    totals.rdps += rdps;
+    totals.given += given;
+    totals.received += received;
+  }
+  if (totals.raw !== BigInt(value.conservation.raw_damage) || totals.rdps !== BigInt(value.conservation.rdps_damage) ||
+      totals.given !== BigInt(value.conservation.contribution_given) ||
+      totals.received !== BigInt(value.conservation.contribution_received)) return false;
+
+  if (!isRecord(value.timeline) || !Array.isArray(value.timeline.participant_tracks) || !isRecord(value.timeline.omitted)) return false;
+  const participantSeries = new Map<number, Array<Record<string, any>>>();
+  let hasRdpsBuckets = false;
+  let hasRawOnlyBuckets = false;
+  for (let index = 0; index < value.reconciled_participants.length; index += 1) {
+    const participant = value.reconciled_participants[index];
+    if (!isRecord(participant) || !Array.isArray(participant.series)) return false;
+    const points = participant.series as Array<Record<string, any>>;
+    for (const point of points) {
+      if (!isRecord(point) || !isNonNegativeInteger(point.damage)) return false;
+      const attribution = [point.rdps_damage, point.rdps_contribution_given, point.rdps_contribution_received];
+      const present = attribution.filter((field) => field !== undefined).length;
+      if (present === 0) {
+        hasRawOnlyBuckets = true;
+        continue;
+      }
+      if (present !== attribution.length || !attribution.every(isNonNegativeInteger)) return false;
+      hasRdpsBuckets = true;
+      if (BigInt(point.rdps_damage) !== BigInt(point.damage) + BigInt(point.rdps_contribution_given) -
+          BigInt(point.rdps_contribution_received)) return false;
+    }
+    participantSeries.set(index, points);
+  }
+  // The schema-18 producer either authors every attribution bucket or clears
+  // them all. Mixed availability would make range and party conservation
+  // claims depend on which row happened to retain attribution evidence.
+  if (hasRdpsBuckets && hasRawOnlyBuckets) return false;
+
+  if (!isNonNegativeInteger(value.timeline.omitted.participant_tracks) ||
+      !isNonNegativeInteger(value.timeline.omitted.series_points)) return false;
+  const trackedIndexes = new Set<number>();
+  let retainedPointCount = 0;
+  for (const track of value.timeline.participant_tracks) {
+    if (!isRecord(track) || !isNonNegativeInteger(track.canonical_participant_index) ||
+        !isNonNegativeInteger(track.series_point_count) || trackedIndexes.has(track.canonical_participant_index)) return false;
+    const participant = value.reconciled_participants[track.canonical_participant_index];
+    if (!isRecord(participant) || participant.actor_id !== track.actor_id || !Array.isArray(participant.series) ||
+        track.series_point_count > participant.series.length) return false;
+    trackedIndexes.add(track.canonical_participant_index);
+    retainedPointCount += track.series_point_count;
+  }
+  const totalPointCount = [...participantSeries.values()].reduce((sum, points) => sum + points.length, 0);
+  const expectedOmittedTracks = value.reconciled_participants.length - trackedIndexes.size;
+  const expectedOmittedPoints = totalPointCount - retainedPointCount;
+  if (value.timeline.omitted.participant_tracks !== expectedOmittedTracks ||
+      value.timeline.omitted.series_points !== expectedOmittedPoints) return false;
+  const globallyComplete = expectedOmittedTracks === 0 && expectedOmittedPoints === 0;
+  if (!globallyComplete) return true;
+  for (const [index, points] of participantSeries) {
+    const participant = value.reconciled_participants[index];
+    const rawTotal = points.reduce((sum, point) => sum + BigInt(point.damage), 0n);
+    if (rawTotal !== BigInt(participant.damage)) return false;
+    if (hasRdpsBuckets) {
+      const seriesTotals = points.reduce((sum, point) => ({
+        rdps: sum.rdps + BigInt(point.rdps_damage),
+        given: sum.given + BigInt(point.rdps_contribution_given),
+        received: sum.received + BigInt(point.rdps_contribution_received),
+      }), { rdps: 0n, given: 0n, received: 0n });
+      if (seriesTotals.rdps !== BigInt(participant.rdps_damage) ||
+          seriesTotals.given !== BigInt(participant.contribution_given) ||
+          seriesTotals.received !== BigInt(participant.contribution_received)) return false;
+    }
+  }
+  if (!hasRdpsBuckets) return true;
+  const buckets = new Map<number, { raw: bigint; rdps: bigint; given: bigint; received: bigint }>();
+  for (const points of participantSeries.values()) {
+    for (const point of points) {
+      const bucket = buckets.get(point.second) ?? { raw: 0n, rdps: 0n, given: 0n, received: 0n };
+      bucket.raw += BigInt(point.damage);
+      bucket.rdps += BigInt(point.rdps_damage);
+      bucket.given += BigInt(point.rdps_contribution_given);
+      bucket.received += BigInt(point.rdps_contribution_received);
+      buckets.set(point.second, bucket);
+    }
+  }
+  return [...buckets.values()].every((bucket) => bucket.raw === bucket.rdps && bucket.given === bucket.received);
 }
 function isLegacyRunReconciliation(value: Record<string, any>): boolean {
   if (typeof value.reconciliation_id !== "string" || !reconciliationIdPattern.test(value.reconciliation_id) ||
