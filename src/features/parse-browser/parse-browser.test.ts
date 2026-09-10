@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type {
   PublicParseCatalogEntry,
   PublicParseReport,
+  PublicReconciledParticipant,
   PublicRunReconciliation,
 } from "../../contracts/public-parse";
 import { bundledMessageCatalogs, createMessageResolver } from "../../localization/messages";
@@ -922,6 +923,104 @@ describe("canonical timeline selection", () => {
     expect(timeline.duration_micros % timeline.series_bucket_micros).toBe(0);
     expect(selection.rdpsGameTimeMicros).toBe(timeline.rate_clock!.at(-1)!.edps_elapsed_micros);
     expect(selection.rdpsRateClock).toBe(timeline.rate_clock);
+  });
+
+  it("keeps five-party terminal, full-visible, and hidden-subset rDPS on one shared clock", () => {
+    const reconciled = conservedReconciliation();
+    const bucketRows = [
+      { actorId: "a", damage: [100, 50], rdps: [85, 45], given: [0, 0], received: [15, 5] },
+      { actorId: "b", damage: [80, 50], rdps: [76, 30], given: [0, 0], received: [4, 20] },
+      { actorId: "c", damage: [20, 50], rdps: [24, 50], given: [4, 0], received: [0, 0] },
+      { actorId: "d", damage: [0, 50], rdps: [10, 55], given: [10, 5], received: [0, 0] },
+      { actorId: "e", damage: [0, 0], rdps: [5, 20], given: [5, 20], received: [0, 0] },
+    ];
+    reconciled.reconciled_participants = bucketRows.map((row): PublicReconciledParticipant => {
+      const participant = structuredClone(report.runs[0].participants[0]!);
+      participant.actor_id = row.actorId;
+      participant.character_id = `character-${row.actorId}`;
+      participant.display_name = `Player ${row.actorId.toUpperCase()}`;
+      participant.damage = row.damage.reduce((sum, value) => sum + value, 0);
+      participant.rdps_incomplete = false;
+      participant.series = row.damage.map((damage, second) => ({
+        second,
+        damage,
+        effective_healing: 0,
+        damage_taken: 0,
+        rdps_damage: row.rdps[second]!,
+        rdps_contribution_given: row.given[second]!,
+        rdps_contribution_received: row.received[second]!,
+      }));
+      return {
+        ...participant,
+        rdps_incomplete: false,
+        rdps_damage: row.rdps.reduce((sum, value) => sum + value, 0),
+        contribution_given: row.given.reduce((sum, value) => sum + value, 0),
+        contribution_received: row.received.reduce((sum, value) => sum + value, 0),
+      };
+    });
+    reconciled.conservation = {
+      raw_damage: 400,
+      rdps_damage: 400,
+      contribution_given: 44,
+      contribution_received: 44,
+      conserved: true,
+    };
+    reconciled.timeline = {
+      ...reconciled.timeline!,
+      duration_micros: 2_000_000,
+      rate_clock: [
+        { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+        { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 2_000_000 },
+      ],
+      rate_clock_complete: true,
+      participant_tracks: reconciled.reconciled_participants.map((participant, canonical_participant_index) => ({
+        actor_id: participant.actor_id,
+        character_id: participant.character_id,
+        observed_character_key: participant.observed_character_key ?? null,
+        display_name: participant.display_name,
+        canonical_participant_index,
+        series_point_count: participant.series?.length ?? 0,
+      })),
+      death_markers: [],
+      loadout_markers: [],
+      rdps_influence_spans: [],
+      omitted: { participant_tracks: 0, series_points: 0, death_markers: 0, loadout_markers: 0, rdps_influence_spans: 0, rate_clock_points: 0 },
+    };
+
+    const selection = selectCanonicalGraph(report.runs[0], reconciled);
+    const clock = selection.rdpsRateClock;
+    const cursorRows = reconciled.reconciled_participants.map((participant) => {
+      const samples = (participant.series ?? []).map((point) => [point.second + 1, point.rdps_damage!] as [number, number]);
+      return {
+        variants: timelineRdpsRateVariantsAtSecond(samples, clock, 2, 2_000_000),
+        damageRates: null,
+        rdps: timelineRdpsAtSecond(samples, clock, 2),
+      };
+    });
+    const fullVisible = timelineVisibleTotalAtSecond(cursorRows, true);
+    const hiddenSubset = timelineVisibleTotalAtSecond(
+      cursorRows.filter((_, index) => index === 0 || index >= 3),
+      true,
+    );
+    const html = renderReport(report, 0, reconciled);
+
+    expect(selection.rdpsGameTimeMicros).toBe(2_000_000);
+    expect(selection.participants).toHaveLength(5);
+    expect(fullVisible).toEqual({
+      variants: { one: 200, five: 200, ten: 200, cumulative: 200 },
+      damageRates: null,
+      rdps: 200,
+    });
+    expect(hiddenSubset).toEqual({
+      variants: { one: 120, five: 110, ten: 110, cumulative: 110 },
+      damageRates: null,
+      rdps: 110,
+    });
+    expect(html).toContain("<small>Team rDPS</small><strong>200</strong>");
+    expect(html.match(/data-party-row /gu)).toHaveLength(5);
+    expect(html).toContain('data-sort-rdps="65"');
+    expect(html).toContain('data-timeline-participant-count="5"');
+    expect(html).toContain('data-timeline-exact-rdps-track-count="5"');
   });
 });
 
