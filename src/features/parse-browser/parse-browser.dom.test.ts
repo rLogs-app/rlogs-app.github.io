@@ -330,11 +330,54 @@ describe("combat timeline DOM interactions", () => {
     expect(root.querySelector(".timeline-range-scroll")?.textContent).toContain("unavailable");
   });
 
+  it("switches partial transfer metrics without resetting viewport, cursor, or participant visibility", () => {
+    const root = mountedTimeline();
+    const timeline = root.querySelector<HTMLElement>("[data-timeline-metric]")!;
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    const end = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-end]")!;
+    const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    const participant = root.querySelector<HTMLButtonElement>('[data-participant-toggle="0"]')!;
+    start.value = "1";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    end.value = "3";
+    end.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    scrubber.value = "2";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    participant.click();
+    root.querySelector<HTMLButtonElement>('[data-window="10"]')!.click();
+
+    root.querySelector<HTMLButtonElement>('[data-metric="rdps_contribution_given"]')!.click();
+    expect(timeline.dataset.timelineMetric).toBe("rdps_contribution_given");
+    expect(timeline.dataset.timelineWindow).toBe("10");
+    expect(timeline.dataset.timelineViewportStart).toBe("1");
+    expect(timeline.dataset.timelineViewportEnd).toBe("3");
+    expect(scrubber.value).toBe("2");
+    expect(participant.getAttribute("aria-pressed")).toBe("false");
+    expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("Partial given at 0:02");
+    expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("—");
+    expect(root.querySelector('[data-series="rdps_contribution_given"][data-series-window="5"] polyline')).not.toBeNull();
+    expect(root.querySelector("[data-timeline-inspection]")?.textContent).toContain("cumulative transfer rate unavailable");
+    expect(root.querySelector(".timeline-range-table")?.textContent).toContain("Contribution given");
+    expect(root.querySelector(".timeline-range-table")?.textContent).toContain("Given/s");
+    expect(root.querySelector(".timeline-range-scroll")?.textContent).toContain("unavailable");
+
+    root.querySelector<HTMLButtonElement>('[data-metric="rdps_contribution_received"]')!.click();
+    expect(timeline.dataset.timelineMetric).toBe("rdps_contribution_received");
+    expect(timeline.dataset.timelineWindow).toBe("10");
+    expect(timeline.dataset.timelineViewportStart).toBe("1");
+    expect(timeline.dataset.timelineViewportEnd).toBe("3");
+    expect(scrubber.value).toBe("2");
+    expect(participant.getAttribute("aria-pressed")).toBe("false");
+    expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("Partial received at 0:02");
+    expect(root.querySelector(".timeline-range-table")?.textContent).toContain("Contribution received");
+    expect(root.querySelector(".timeline-range-table")?.textContent).toContain("Received/s");
+  });
+
   it("focuses a legend participant across every metric and window without changing visibility", () => {
     const root = mountedTimeline();
     const participant = root.querySelector<HTMLButtonElement>('[data-participant-toggle="1"]')!;
     participant.dispatchEvent(new window.Event("pointerenter") as unknown as Event);
-    expect(root.querySelectorAll('.timeline-trace[data-participant="1"].is-focused')).toHaveLength(4 * 3);
+    expect(root.querySelectorAll('.timeline-trace[data-participant="1"].is-focused')).toHaveLength(6 * 3);
     expect(root.querySelectorAll('.timeline-trace[data-participant]:not([data-participant="1"]).is-dimmed').length).toBeGreaterThan(0);
     expect(participant.getAttribute("aria-pressed")).toBe("true");
 
@@ -377,6 +420,20 @@ describe("combat timeline DOM interactions", () => {
     scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
     expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("rDPS at 0:02");
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("rDPS");
+
+    const totalCells = (selector: string) => [...root.querySelectorAll<HTMLElement>(selector)]
+      .map((cell) => cell.textContent);
+    root.querySelector<HTMLButtonElement>('[data-metric="rdps_contribution_given"]')!.click();
+    const givenSnapshot = totalCells(".timeline-snapshot-table .timeline-snapshot-total td");
+    const givenRange = totalCells(".timeline-range-table .timeline-snapshot-total td");
+    expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("Given at 0:02");
+    expect(root.querySelector("[data-timeline-inspection]")?.textContent).toContain("run Given");
+    expect(root.querySelector("[data-timeline-inspection]")?.textContent).not.toContain("unavailable");
+    root.querySelector<HTMLButtonElement>('[data-metric="rdps_contribution_received"]')!.click();
+    expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("Received at 0:02");
+    expect(root.querySelector("[data-timeline-inspection]")?.textContent).toContain("run Received");
+    expect(totalCells(".timeline-snapshot-table .timeline-snapshot-total td")).toEqual(givenSnapshot);
+    expect(totalCells(".timeline-range-table .timeline-snapshot-total td")).toEqual(givenRange);
 
     const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
     play.click();

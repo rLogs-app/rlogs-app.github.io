@@ -16,6 +16,16 @@
         [0, 120],
         [1, 80],
         [3, 100]
+      ],
+      "rdps_contribution_given": [
+        [0, 20],
+        [1, 5],
+        [3, 10]
+      ],
+      "rdps_contribution_received": [
+        [0, 1],
+        [1, 2],
+        [3, 3]
       ]
     },
     {
@@ -23,6 +33,16 @@
       "rdps_incomplete": true,
       "rdps_damage": [
         [0, 120]
+      ],
+      "rdps_contribution_given": [
+        [0, 1],
+        [1, 2],
+        [3, 3]
+      ],
+      "rdps_contribution_received": [
+        [0, 20],
+        [1, 5],
+        [3, 10]
       ]
     }
   ]

@@ -1172,7 +1172,8 @@ describe("timeline rolling windows", () => {
   it("uses the reviewed Game-time clock for cumulative and windowed rDPS", () => {
     const fixture = load<{
       rate_clock: Array<{ second: number; edps_elapsed_micros: number; adps_elapsed_micros: number }>;
-      participants: Array<{ actor_id: string; rdps_incomplete: boolean; rdps_damage: Array<[number, number]> }>;
+      participants: Array<{ actor_id: string; rdps_incomplete: boolean; rdps_damage: Array<[number, number]>;
+        rdps_contribution_given: Array<[number, number]>; rdps_contribution_received: Array<[number, number]> }>;
     }>("timeline-rdps-cursor.v1.json");
     const exact = fixture.participants.find((participant) => participant.actor_id === "exact")!;
     expect(exact.rdps_incomplete).toBe(false);
@@ -1187,6 +1188,23 @@ describe("timeline rolling windows", () => {
       one: null, five: 100, ten: 100, cumulative: 100,
     });
     expect(timelineRdpsAtSecond([[0, 120]], null, 0)).toBeNull();
+    const given = exact.rdps_contribution_given.map(([second, amount]) => [second + 1, amount] as [number, number]);
+    expect(timelineRdpsRateVariantsAtSecond(given, fixture.rate_clock, 2, 4_000_000)).toEqual({
+      one: 5, five: 12.5, ten: 12.5, cumulative: 12.5,
+    });
+    expect(timelineRdpsRateVariantsAtSecond(given, fixture.rate_clock, 3, 4_000_000)).toEqual({
+      one: null, five: 12.5, ten: 12.5, cumulative: 12.5,
+    });
+    for (let boundary = 1; boundary <= fixture.rate_clock.length; boundary += 1) {
+      const total = (field: "rdps_contribution_given" | "rdps_contribution_received") => fixture.participants
+        .reduce((sum, participant) => sum + (timelineRdpsAtSecond(
+          participant[field].map(([second, amount]) => [second + 1, amount] as [number, number]),
+          fixture.rate_clock,
+          boundary,
+        ) ?? 0), 0);
+      expect(total("rdps_contribution_given"), `given/received conservation at boundary ${boundary}`)
+        .toBe(total("rdps_contribution_received"));
+    }
   });
 
   it("aggregates visible party cursor rates and fails closed for partial rDPS", () => {
@@ -1222,6 +1240,13 @@ describe("timeline rolling windows", () => {
       rate: 25,
       damageRates: null,
     });
+    for (const metric of ["rdps_contribution_given", "rdps_contribution_received"] as const) {
+      expect(timelineRangeRates(metric, [[1, 10], [2, 20], [4, 30]], clock, 1, 4, 4_000_000)).toEqual({
+        amount: 50,
+        rate: 25,
+        damageRates: null,
+      });
+    }
   });
 
   it("uses the exact fractional endpoint and fails closed for missing range evidence", () => {
@@ -1238,6 +1263,11 @@ describe("timeline rolling windows", () => {
     expect(timelineRangeRates("damage", [[2, 20]], clock.slice(0, 2), 1, 3, 2_200_000).damageRates)
       .toEqual({ edps: null, adps: null });
     expect(timelineRangeRates("rdps_damage", [[2, 20]], clock, 1, 3, 2_200_000, false)).toEqual({
+      amount: null,
+      rate: null,
+      damageRates: null,
+    });
+    expect(timelineRangeRates("rdps_contribution_given", [[2, 20]], clock, 1, 3, 2_200_000, false)).toEqual({
       amount: null,
       rate: null,
       damageRates: null,
@@ -1298,7 +1328,11 @@ describe("damage-rate labels", () => {
     const graph = selectCanonicalGraph(report.runs[0]);
     const html = renderTimeline(graph);
     expect(html).toContain('data-metric="rdps_damage"');
+    expect(html).toContain('data-metric="rdps_contribution_given"');
+    expect(html).toContain('data-metric="rdps_contribution_received"');
     expect(html).toContain('data-series="rdps_damage"');
+    expect(html).toContain('data-series="rdps_contribution_given"');
+    expect(html).toContain('data-series="rdps_contribution_received"');
     expect(html).toContain('data-rate-clock-complete="true"');
     expect(html).toContain('data-series-complete="true"');
     expect(html).toContain('data-timeline-participant-count="5"');
@@ -1306,7 +1340,7 @@ describe("damage-rate labels", () => {
     expect(html).toContain('data-cumulative-complete="false"');
     expect(html).toContain('data-rate-clock="0:1000000:1000000,1:2000000:2000000');
     expect(html).toContain("Exact Game-time/active-combat clocks");
-    expect(html).toContain("1s, 5s, 10s, and cumulative rates all use the reducer-authored reviewed Game-time clock");
+    expect(html).toContain("Their 1s, 5s, 10s, and cumulative rates all use the reducer-authored reviewed Game-time clock");
     expect(html).toContain('data-values="1:1200000,2:2490000');
     const renderedTracks = html.match(/<polyline /gu) ?? [];
     const inspectionPayloads = html.match(/ data-values="/gu) ?? [];
@@ -1327,6 +1361,8 @@ describe("damage-rate labels", () => {
     const legacyHtml = renderTimeline(selectCanonicalGraph(unavailable));
     expect(legacyHtml).not.toContain('data-metric="rdps_damage"');
     expect(legacyHtml).not.toContain('data-series="rdps_damage"');
+    expect(legacyHtml).not.toContain('data-metric="rdps_contribution_given"');
+    expect(legacyHtml).not.toContain('data-metric="rdps_contribution_received"');
   });
 
   it("lands playback on the exact terminal frame without adding an empty second", () => {
@@ -1394,8 +1430,8 @@ describe("damage-rate labels", () => {
       })),
     };
     const html = renderTimeline({ ...graph, participants, timeline });
-    expect(html.match(/<polyline /gu)).toHaveLength(20 * 4 * 3);
-    expect(html.match(/ data-values="/gu)).toHaveLength(20 * 4);
+    expect(html.match(/<polyline /gu)).toHaveLength(20 * 6 * 3);
+    expect(html.match(/ data-values="/gu)).toHaveLength(20 * 6);
     const colors = [...html.matchAll(/data-participant-toggle="\d+"[^>]+style="--track:([^"]+)"/gu)].map((match) => match[1]);
     expect(new Set(colors)).toHaveLength(20);
     expect(html).toContain("line-pattern-solid");
@@ -1403,7 +1439,7 @@ describe("damage-rate labels", () => {
     expect(html).toContain("line-pattern-dot");
     expect(html).toContain("line-pattern-dash-dot");
     expect(html.match(/class="timeline-time-grid"/gu)).toHaveLength(5);
-    expect(html.match(/class="timeline-grid"/gu)).toHaveLength(5 * 4 * 3);
+    expect(html.match(/class="timeline-grid"/gu)).toHaveLength(5 * 6 * 3);
     expect(html).toContain('class="timeline-scale-tick"');
   });
 
