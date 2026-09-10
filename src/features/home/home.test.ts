@@ -66,13 +66,22 @@ describe("home rankings", () => {
     expect(rankings.find((value) => value.regionLabel === "China")?.seasonLabel).toBe("Season 4");
   });
 
-  it("keeps different difficulty tiers in separate scene rankings", () => {
+  it("shows only the highest submitted difficulty tier for a scene ranking", () => {
     const master17 = { ...entry(1633, "Tina's Mindrealm", 10), difficulty_family: "master", difficulty_tier: 17 };
     const master20 = { ...entry(1633, "Tina's Mindrealm", 8), difficulty_family: "master", difficulty_tier: 20 };
     const rankings = buildSceneRankings([master17, master20], presentation, 7);
-    expect(rankings).toHaveLength(2);
-    expect(rankings.map((group) => group.difficultyLabel).sort()).toEqual(["Master 17", "Master 20"]);
-    expect(rankings.every((group) => group.entries.length === 1)).toBe(true);
+    expect(rankings).toHaveLength(1);
+    expect(rankings[0]?.difficultyLabel).toBe("Master 20");
+    expect(rankings[0]?.entries).toEqual([master20]);
+  });
+
+  it("keeps tierless rankings only when no numbered tier was submitted", () => {
+    const hard = { ...entry(1633, "Tina's Mindrealm", 10), difficulty_family: "hard", difficulty_tier: undefined };
+    expect(buildSceneRankings([hard], presentation, 7)[0]?.difficultyLabel).toBe("Hard");
+    expect(buildSceneRankings([
+      hard,
+      { ...hard, difficulty_family: "master", difficulty_tier: 20 },
+    ], presentation, 7).map((group) => group.difficultyLabel)).toEqual(["Master 20"]);
   });
 
   it("does not fold legacy or wrong-identity scene ranges into Stimen families", () => {

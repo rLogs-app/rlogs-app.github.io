@@ -128,13 +128,36 @@ export function buildSceneRankings(
     );
   }
 
-  for (const entry of ranked) {
+  const candidates = ranked.filter((entry) => {
+    const season = regionalSeason(entry.deployment_id, entry.region_id, entry.created_unix_millis);
+    const seasonKey = `${season.cohort}:${season.seasonId ?? "unknown"}`;
+    const hasPresentation = authorized(entry);
+    return !isStimenRun(entry, hasPresentation) ||
+      stimenFloor(entry, hasPresentation) === (highestStimenFloorBySeason.get(seasonKey) ?? 0);
+  });
+  const rankingScope = (entry: PublicParseCatalogEntry): string => {
+    const season = regionalSeason(entry.deployment_id, entry.region_id, entry.created_unix_millis);
+    const seasonKey = `${season.cohort}:${season.seasonId ?? "unknown"}`;
+    const hasPresentation = authorized(entry);
+    return isStimenRun(entry, hasPresentation)
+      ? `${seasonKey}:stimen:${highestStimenFloorBySeason.get(seasonKey) ?? 0}`
+      : `${seasonKey}:${hasPresentation ? "presented" : "raw"}:scene:${entry.scene_id ?? (hasPresentation ? entry.activity_id ?? entry.scene_name : undefined) ?? "unknown"}`;
+  };
+  const highestTierByScope = new Map<string, number>();
+  for (const entry of candidates) {
+    if (entry.difficulty_tier == null) continue;
+    const scope = rankingScope(entry);
+    highestTierByScope.set(scope, Math.max(highestTierByScope.get(scope) ?? 0, entry.difficulty_tier));
+  }
+
+  for (const entry of candidates) {
     const season = regionalSeason(entry.deployment_id, entry.region_id, entry.created_unix_millis);
     const seasonKey = `${season.cohort}:${season.seasonId ?? "unknown"}`;
     const highestStimenFloor = highestStimenFloorBySeason.get(seasonKey) ?? 0;
     const hasPresentation = authorized(entry);
     const floor = stimenFloor(entry, hasPresentation);
-    if (isStimenRun(entry, hasPresentation) && floor !== highestStimenFloor) continue;
+    const highestTier = highestTierByScope.get(rankingScope(entry));
+    if (highestTier !== undefined && entry.difficulty_tier !== highestTier) continue;
     const difficultyLabel = catalogEntryDifficultyLabel(entry, presentation, schemaVersion);
     const difficultyKey = hasPresentation
       ? `${entry.difficulty_family ?? "unknown"}:${entry.difficulty_tier ?? "unknown"}`
