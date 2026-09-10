@@ -25,6 +25,7 @@ import {
   rollingTimelineSamples,
   selectCanonicalGraph,
   timelineCumulativeRateLabel,
+  timelineCursorFrame,
   timelineDamageRatesAtSecond,
   timelineRateVariantsAtSecond,
   timelineRdpsAtSecond,
@@ -610,13 +611,13 @@ describe("timeline rolling windows", () => {
       { second: 3, damage: 60, effective_healing: 0, damage_taken: 0 },
     ];
     expect(rollingBucketSeries(points, "damage", 10, 3)).toEqual([
-      [0, 0], [1, 15], [2, 10], [3, 30], [4, 20], [5, 20], [6, 0], [10, 0],
+      [0, 0], [1, 0], [2, 15], [3, 10], [4, 30], [5, 20], [6, 20], [7, 0], [10, 0],
     ]);
   });
 
   it("keeps missing raw one-second buckets at zero", () => {
     const points = [{ second: 2, damage: 50, effective_healing: 0, damage_taken: 0 }];
-    expect(rollingBucketSeries(points, "damage", 5, 1)).toEqual([[0, 0], [1, 0], [2, 50], [3, 0], [5, 0]]);
+    expect(rollingBucketSeries(points, "damage", 5, 1)).toEqual([[0, 0], [2, 0], [3, 50], [4, 0], [5, 0]]);
   });
 
   it("derives rolling inspection samples from the authoritative one-second series", () => {
@@ -636,13 +637,65 @@ describe("timeline rolling windows", () => {
   });
 
   it("reports instant, rolling, and cumulative rates at the same bounded cursor second", () => {
-    const one: Array<[number, number]> = [[0, 10], [1, 30], [2, 0], [3, 20]];
+    const one: Array<[number, number]> = [[0, 0], [1, 10], [2, 30], [3, 0], [4, 20]];
     expect(timelineRateVariantsAtSecond({
       one,
-      five: [[0, 10], [1, 20], [2, 40 / 3], [3, 15]],
-      ten: [[0, 10], [1, 20], [2, 40 / 3], [3, 15]],
-    }, 1.4)).toEqual({ one: 30, five: 20, ten: 20, cumulative: 20 });
+      five: [[0, 0], [1, 10], [2, 20], [3, 40 / 3], [4, 15]],
+      ten: [[0, 0], [1, 10], [2, 20], [3, 40 / 3], [4, 15]],
+    }, 2)).toEqual({ one: 30, five: 20, ten: 20, cumulative: 20 });
     expect(timelineCumulativeRateLabel("DPS")).toBe("run DPS");
+  });
+
+  it("keeps every rate variant on the final integer-duration frame", () => {
+    const frame = timelineCursorFrame(2_000_000, 2);
+    const one = rollingTimelineSamples([[1, 100], [2, 100]], 2, 1);
+    const rolling = rollingTimelineSamples(one, 2, 5);
+    const clock = [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 2_000_000 },
+    ];
+
+    expect(frame).toEqual({ boundary: 2, elapsedMicros: 2_000_000, clockIndex: 1 });
+    expect(one).toEqual([[0, 0], [1, 100], [2, 100]]);
+    expect(timelineRateVariantsAtSecond({ one, five: rolling, ten: rolling }, frame.boundary, frame.elapsedMicros))
+      .toEqual({ one: 100, five: 100, ten: 100, cumulative: 100 });
+    expect(timelineDamageRatesAtSecond(one, clock, frame.boundary)).toEqual({ edps: 100, adps: 100 });
+    expect(timelineRdpsAtSecond(one, clock, frame.boundary)).toBe(100);
+  });
+
+  it("uses the exact fractional duration at the terminal cursor boundary", () => {
+    const frame = timelineCursorFrame(2_100_000, 3);
+    const buckets: Array<[number, number]> = [[1, 100], [2, 100], [3, 10]];
+    const one = rollingTimelineSamples(buckets, 3, 1, 2_100_000);
+    const five = rollingTimelineSamples(buckets, 3, 5, 2_100_000);
+    const ten = rollingTimelineSamples(buckets, 3, 10, 2_100_000);
+    const clock = [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 2_000_000 },
+      { second: 2, edps_elapsed_micros: 2_100_000, adps_elapsed_micros: 2_100_000 },
+    ];
+
+    expect(frame).toEqual({ boundary: 3, elapsedMicros: 2_100_000, clockIndex: 2 });
+    expect(one.at(-1)).toEqual([3, 100]);
+    expect(five.at(-1)).toEqual([3, 100]);
+    expect(ten.at(-1)).toEqual([3, 100]);
+    expect(timelineRateVariantsAtSecond({ one: buckets, five, ten }, frame.boundary, frame.elapsedMicros))
+      .toEqual({ one: 100, five: 100, ten: 100, cumulative: 100 });
+    expect(timelineDamageRatesAtSecond(buckets, clock, frame.boundary)).toEqual({ edps: 100, adps: 100 });
+    expect(timelineRdpsAtSecond(buckets, clock, frame.boundary)).toBe(100);
+  });
+
+  it("withholds fractional trailing windows that would require invented sub-second damage", () => {
+    const durationMicros = 10_100_000;
+    const buckets = Array.from({ length: 11 }, (_, index) => [index + 1, index === 10 ? 10 : 100] as [number, number]);
+    const frame = timelineCursorFrame(durationMicros, 11);
+    const five = rollingTimelineSamples(buckets, 11, 5, durationMicros);
+    const ten = rollingTimelineSamples(buckets, 11, 10, durationMicros);
+
+    expect(five.some(([boundary]) => boundary === frame.boundary)).toBe(false);
+    expect(ten.some(([boundary]) => boundary === frame.boundary)).toBe(false);
+    expect(timelineRateVariantsAtSecond({ one: buckets, five, ten }, frame.boundary, frame.elapsedMicros))
+      .toEqual({ one: 100, five: null, ten: null, cumulative: 100 });
   });
 
   it("uses shared reducer clocks for time-local eDPS/aDPS and preserves pauses", () => {
@@ -652,9 +705,9 @@ describe("timeline rolling windows", () => {
       { second: 2, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_000_000 },
       { second: 3, edps_elapsed_micros: 3_000_000, adps_elapsed_micros: 2_000_000 },
     ];
-    expect(timelineDamageRatesAtSecond([[0, 100], [1, 100]], clock, 1)).toEqual({ edps: 100, adps: 200 });
-    expect(timelineDamageRatesAtSecond([[0, 100], [1, 100]], clock, 2)).toEqual({ edps: 100, adps: 200 });
-    expect(timelineDamageRatesAtSecond([[0, 100], [1, 100], [3, 100]], clock, 3)).toEqual({ edps: 100, adps: 150 });
+    expect(timelineDamageRatesAtSecond([[1, 100], [2, 100]], clock, 2)).toEqual({ edps: 100, adps: 200 });
+    expect(timelineDamageRatesAtSecond([[1, 100], [2, 100]], clock, 3)).toEqual({ edps: 100, adps: 200 });
+    expect(timelineDamageRatesAtSecond([[1, 100], [2, 100], [4, 100]], clock, 4)).toEqual({ edps: 100, adps: 150 });
     expect(timelineDamageRatesAtSecond([[0, 100]], null, 0)).toBeNull();
 
   });
@@ -666,9 +719,10 @@ describe("timeline rolling windows", () => {
     }>("timeline-rdps-cursor.v1.json");
     const exact = fixture.participants.find((participant) => participant.actor_id === "exact")!;
     expect(exact.rdps_incomplete).toBe(false);
-    expect(timelineRdpsAtSecond(exact.rdps_damage.slice(0, 2), fixture.rate_clock, 1)).toBe(200);
-    expect(timelineRdpsAtSecond(exact.rdps_damage.slice(0, 2), fixture.rate_clock, 2)).toBe(200);
-    expect(timelineRdpsAtSecond(exact.rdps_damage, fixture.rate_clock, 3)).toBe(150);
+    const boundaryRdps = exact.rdps_damage.map(([second, damage]) => [second + 1, damage] as [number, number]);
+    expect(timelineRdpsAtSecond(boundaryRdps.slice(0, 2), fixture.rate_clock, 2)).toBe(200);
+    expect(timelineRdpsAtSecond(boundaryRdps.slice(0, 2), fixture.rate_clock, 3)).toBe(200);
+    expect(timelineRdpsAtSecond(boundaryRdps, fixture.rate_clock, 4)).toBe(150);
     expect(timelineRdpsAtSecond([[0, 120]], null, 0)).toBeNull();
   });
 
@@ -731,7 +785,7 @@ describe("damage-rate labels", () => {
     expect(html).toContain('data-rate-clock="0:1000000:1000000,1:2000000:2000000');
     expect(html).toContain("Exact eDPS/aDPS clock");
     expect(html).toContain("Cumulative rDPS uses the published active-combat clock, not wall time");
-    expect(html).toContain('data-values="0:1200000,1:2490000');
+    expect(html).toContain('data-values="1:1200000,2:2490000');
     const renderedTracks = html.match(/<polyline /gu) ?? [];
     const inspectionPayloads = html.match(/ data-values="/gu) ?? [];
     expect(inspectionPayloads).toHaveLength(renderedTracks.length / 3);
@@ -740,7 +794,7 @@ describe("damage-rate labels", () => {
     expect(html).toContain("missing buckets are never replaced with ordinary damage");
     expect(hasCompleteRdpsBuckets(report.runs[0].participants[0].series ?? [])).toBe(true);
     const rdps = rollingBucketSeries(report.runs[0].participants[0].series ?? [], "rdps_damage", 4, 1);
-    expect(timelineRateVariantsAtSecond({ one: rdps, five: rdps, ten: rdps }, 1).one).toBe(2_490_000);
+    expect(timelineRateVariantsAtSecond({ one: rdps, five: rdps, ten: rdps }, 2).one).toBe(2_490_000);
 
     const unavailable = structuredClone(report.runs[0]);
     unavailable.participants.forEach((participant) => (participant.series ?? []).forEach((point) => {
@@ -751,6 +805,27 @@ describe("damage-rate labels", () => {
     const legacyHtml = renderTimeline(selectCanonicalGraph(unavailable));
     expect(legacyHtml).not.toContain('data-metric="rdps_damage"');
     expect(legacyHtml).not.toContain('data-series="rdps_damage"');
+  });
+
+  it("lands playback on the exact terminal frame without adding an empty second", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const timeline = report.runs[0].timeline!;
+    const maximumBoundary = Math.ceil(timeline.duration_micros / 1_000_000);
+    const frame = timelineCursorFrame(timeline.duration_micros, maximumBoundary);
+    const html = renderTimeline(selectCanonicalGraph(report.runs[0]));
+    const points = report.runs[0].participants[0].series ?? [];
+    const one = points.map((point) => [point.second + 1, point.damage] as [number, number]);
+    const damage = points.reduce((total, point) => total + point.damage, 0);
+
+    expect(html).toContain(`data-timeline-scrubber min="0" max="${maximumBoundary}"`);
+    expect(html).toContain(`data-duration-micros="${timeline.duration_micros}"`);
+    expect(frame).toEqual({
+      boundary: maximumBoundary,
+      elapsedMicros: timeline.duration_micros,
+      clockIndex: maximumBoundary - 1,
+    });
+    expect(timelineRateVariantsAtSecond({ one, five: one, ten: one }, frame.boundary, frame.elapsedMicros).cumulative)
+      .toBeCloseTo(damage * 1_000_000 / timeline.duration_micros);
   });
 
   it("fails closed in the UI when the reducer rate clock is incomplete", () => {

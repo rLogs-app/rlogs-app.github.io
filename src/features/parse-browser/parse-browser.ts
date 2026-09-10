@@ -829,10 +829,11 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
     const curves = plotted.flatMap(({ actor, track, color }, participantIndex) => {
       const points = (actor.series ?? []).slice(0, track.series_point_count);
       if (metric === "rdps_damage" && !hasCompleteRdpsBuckets(points)) return [];
-      return [{ actor, track, color, participantIndex, points: rollingBucketSeries(points, metric, seconds, windowSeconds) }];
+      const buckets = points.flatMap((point) => point[metric] == null ? [] : [[point.second + 1, point[metric]!] as [number, number]]);
+      return [{ actor, track, color, participantIndex, buckets, points: rollingTimelineSamples(buckets, seconds, windowSeconds, timeline.duration_micros) }];
     });
     const max = Math.max(1, ...curves.flatMap(({ points }) => points.map(([, value]) => value)));
-    const lines = curves.map(({ actor, color, participantIndex, points: samples }) => {
+    const lines = curves.map(({ actor, color, participantIndex, buckets, points: samples }) => {
       const actorLabel = actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id });
       const coords = samples.map(([second, value]) => {
         const x = left + (second / seconds) * plotWidth;
@@ -843,7 +844,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
       // keep only their SVG coordinates; their samples are derived and cached in the
       // browser instead of duplicating a potentially raid-sized payload three times.
       const values = windowSeconds === 1
-        ? ` data-values="${samples.map(([second, value]) => `${second}:${value}`).join(",")}"`
+        ? ` data-values="${buckets.map(([second, value]) => `${second}:${value}`).join(",")}"`
         : "";
       const cumulativeComplete = metric !== "rdps_damage" || actor.rdps_incomplete === false;
       return `<polyline data-participant="${participantIndex}" data-label="${escapeHtml(actorLabel)}" data-cumulative-complete="${cumulativeComplete}"${values} points="${coords.join(" ")}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${escapeHtml(actorLabel)} ${escapeHtml(metricLabel)}</title></polyline>`;
@@ -864,7 +865,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
   }).join("");
   const rateClock = timeline.rate_clock_complete === true && timeline.rate_clock?.length
     ? timeline.rate_clock.map((point) => `${point.second}:${point.edps_elapsed_micros}:${point.adps_elapsed_micros}`).join(",") : "";
-  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.graph_aria", { duration: formatDuration(timeline.duration_micros) }))}" data-duration-seconds="${seconds}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-series-complete="${timeline.omitted.series_points === 0}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
+  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.graph_aria", { duration: formatDuration(timeline.duration_micros) }))}" data-duration-seconds="${seconds}" data-duration-micros="${timeline.duration_micros}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-series-complete="${timeline.omitted.series_points === 0}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
     <line x1="${left}" y1="${top + plotHeight}" x2="${left + plotWidth}" y2="${top + plotHeight}" class="timeline-axis" />
     <text x="${left}" y="${height - 8}" class="timeline-tick">0:00</text><text x="${left + plotWidth}" y="${height - 8}" text-anchor="end" class="timeline-tick">${formatDuration(timeline.duration_micros)}</text>
     ${groups}${rdpsEvidence}${loadouts}${deaths}
@@ -873,35 +874,53 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
   </svg>`;
 }
 
-export function rollingBucketSeries(points: readonly ParticipantSeriesPoint[], metric: TimelineMetric, totalSeconds: number, windowSeconds: number): Array<[number, number]> {
+export function rollingBucketSeries(points: readonly ParticipantSeriesPoint[], metric: TimelineMetric, totalSeconds: number, windowSeconds: number, durationMicros = totalSeconds * 1_000_000): Array<[number, number]> {
+  // Public series seconds identify one-second buckets. The interactive cursor
+  // identifies elapsed bucket boundaries: boundary 0 is the untouched start,
+  // and bucket `second` becomes visible at boundary `second + 1`.
   return rollingTimelineSamples(points.flatMap((point) => {
     const amount = point[metric];
-    return amount == null ? [] : [[point.second, amount] as [number, number]];
-  }), totalSeconds, windowSeconds);
+    return amount == null ? [] : [[point.second + 1, amount] as [number, number]];
+  }), totalSeconds, windowSeconds, durationMicros);
 }
 
-export function rollingTimelineSamples(samples: readonly [number, number][], totalSeconds: number, windowSeconds: number): Array<[number, number]> {
+export function rollingTimelineSamples(samples: readonly [number, number][], totalSeconds: number, windowSeconds: number, durationMicros = totalSeconds * 1_000_000): Array<[number, number]> {
   const duration = Math.max(1, Math.floor(totalSeconds));
   const window = Math.max(1, Math.floor(windowSeconds));
   const totals = new Map<number, number>();
-  for (const [sampleSecond, amount] of samples) {
-    if (sampleSecond > duration || amount === 0) continue;
-    for (let second = sampleSecond; second <= Math.min(duration, sampleSecond + window - 1); second += 1) {
-      totals.set(second, (totals.get(second) ?? 0) + amount);
+  for (const [sampleBoundary, amount] of samples) {
+    if (sampleBoundary <= 0 || sampleBoundary > duration || amount === 0) continue;
+    for (let boundary = sampleBoundary; boundary <= Math.min(duration, sampleBoundary + window - 1); boundary += 1) {
+      totals.set(boundary, (totals.get(boundary) ?? 0) + amount);
     }
   }
-  const values = [...totals].map(([second, total]) => [second, total / Math.min(window, second + 1)] as [number, number]);
+  const values = [...totals].flatMap(([boundary, total]) => {
+    const denominatorMicros = timelineWindowDenominatorMicros(durationMicros, boundary, duration, window);
+    return denominatorMicros == null ? [] : [[boundary, total * 1_000_000 / denominatorMicros] as [number, number]];
+  });
   const nonzero = values.sort(([left], [right]) => left - right);
-  const outputSamples: Array<[number, number]> = [[0, totals.get(0) ?? 0]];
-  nonzero.forEach(([second, value], index) => {
+  const outputSamples: Array<[number, number]> = [[0, 0]];
+  const terminalAvailable = timelineWindowDenominatorMicros(durationMicros, duration, duration, window) !== null;
+  nonzero.forEach(([boundary, value], index) => {
     const prior = nonzero[index - 1];
     const next = nonzero[index + 1];
-    if (second > 0 && (!prior || prior[0] + 1 < second) && outputSamples.at(-1)?.[0] !== second - 1) outputSamples.push([second - 1, 0]);
-    if (second !== 0) outputSamples.push([second, value]);
-    if (second < duration && (!next || next[0] > second + 1)) outputSamples.push([second + 1, 0]);
+    if (boundary > 1 && (!prior || prior[0] + 1 < boundary) && outputSamples.at(-1)?.[0] !== boundary - 1) outputSamples.push([boundary - 1, 0]);
+    outputSamples.push([boundary, value]);
+    if (boundary < duration && (!next || next[0] > boundary + 1) && (boundary + 1 < duration || terminalAvailable)) outputSamples.push([boundary + 1, 0]);
   });
-  if (outputSamples.at(-1)?.[0] !== duration) outputSamples.push([duration, 0]);
+  if (terminalAvailable && outputSamples.at(-1)?.[0] !== duration) outputSamples.push([duration, 0]);
   return outputSamples;
+}
+
+function timelineWindowDenominatorMicros(durationMicros: number, boundary: number, maximumBoundary: number, window: number): number | null {
+  const elapsedMicros = boundary === maximumBoundary ? durationMicros : boundary * 1_000_000;
+  const fractionalTerminal = boundary === maximumBoundary && durationMicros % 1_000_000 !== 0;
+  if (!fractionalTerminal) return Math.min(window, boundary) * 1_000_000;
+  if (window === 1) return durationMicros - (maximumBoundary - 1) * 1_000_000;
+  if (elapsedMicros <= window * 1_000_000) return elapsedMicros;
+  // A fractional trailing-window start cuts an earlier aggregate bucket. The
+  // public schema has no sub-second numerator, so do not invent that rate.
+  return null;
 }
 
 export function hasCompleteRdpsBuckets(points: readonly ParticipantSeriesPoint[]): boolean {
@@ -917,18 +936,30 @@ export function timelineValueAtSecond(samples: readonly [number, number][], seco
 export function timelineRateVariantsAtSecond(
   samples: { one: readonly [number, number][]; five: readonly [number, number][]; ten: readonly [number, number][] },
   second: number,
-): { one: number; five: number; ten: number; cumulative: number } {
+  elapsedMicros = Math.max(0, Math.round(second)) * 1_000_000,
+): { one: number | null; five: number | null; ten: number | null; cumulative: number } {
+  // `one` carries authoritative bucket totals; the rolling inputs carry rates
+  // derived from those totals. This keeps the cumulative numerator exact while
+  // allowing a partial terminal bucket to be normalized by its real duration.
   const bounded = Math.max(0, Math.round(second));
   const cumulativeTotal = samples.one.reduce(
     (total, [sampleSecond, value]) => sampleSecond <= bounded ? total + value : total,
     0,
   );
   return {
-    one: timelineValueAtSecond(samples.one, bounded),
-    five: timelineValueAtSecond(samples.five, bounded),
-    ten: timelineValueAtSecond(samples.ten, bounded),
-    cumulative: cumulativeTotal / (bounded + 1),
+    one: bounded === 0 ? 0 : timelineValueAtSecond(samples.one, bounded) * 1_000_000 /
+      Math.max(1, elapsedMicros - (bounded - 1) * 1_000_000),
+    five: timelineExactWindowValue(samples.five, bounded, elapsedMicros, 5),
+    ten: timelineExactWindowValue(samples.ten, bounded, elapsedMicros, 10),
+    cumulative: elapsedMicros > 0 ? cumulativeTotal * 1_000_000 / elapsedMicros : 0,
   };
+}
+
+function timelineExactWindowValue(samples: readonly [number, number][], boundary: number, elapsedMicros: number, window: number): number | null {
+  if (boundary === 0) return 0;
+  const fractionalTerminal = elapsedMicros !== boundary * 1_000_000;
+  if (fractionalTerminal && elapsedMicros > window * 1_000_000) return null;
+  return timelineValueAtSecond(samples, boundary);
 }
 
 export function timelineDamageRatesAtSecond(
@@ -938,7 +969,8 @@ export function timelineDamageRatesAtSecond(
 ): { edps: number; adps: number } | null {
   if (!rateClock?.length) return null;
   const bounded = Math.max(0, Math.round(second));
-  const clock = rateClock[Math.min(bounded, rateClock.length - 1)];
+  if (bounded === 0) return null;
+  const clock = rateClock[Math.min(bounded - 1, rateClock.length - 1)];
   if (!clock || clock.edps_elapsed_micros <= 0 || clock.adps_elapsed_micros <= 0) return null;
   const damage = oneSecondDamage.reduce(
     (total, [sampleSecond, value]) => sampleSecond <= bounded ? total + value : total,
@@ -957,7 +989,8 @@ export function timelineRdpsAtSecond(
 ): number | null {
   if (!rateClock?.length) return null;
   const bounded = Math.max(0, Math.round(second));
-  const clock = rateClock[Math.min(bounded, rateClock.length - 1)];
+  if (bounded === 0) return null;
+  const clock = rateClock[Math.min(bounded - 1, rateClock.length - 1)];
   if (!clock || clock.adps_elapsed_micros <= 0) return null;
   const adjustedDamage = oneSecondAdjustedDamage.reduce(
     (total, [sampleSecond, value]) => sampleSecond <= bounded ? total + value : total,
@@ -966,8 +999,26 @@ export function timelineRdpsAtSecond(
   return adjustedDamage * 1_000_000 / clock.adps_elapsed_micros;
 }
 
+export function timelineCursorFrame(durationMicros: number, second: number): {
+  boundary: number;
+  elapsedMicros: number;
+  clockIndex: number | null;
+} {
+  // The last integer boundary represents the exact published endpoint, which
+  // can be a fractional second. Its reducer clock entry is still N - 1.
+  const maximumBoundary = Math.max(1, Math.ceil(durationMicros / 1_000_000));
+  const boundary = Math.max(0, Math.min(maximumBoundary, Math.round(second)));
+  return {
+    boundary,
+    elapsedMicros: boundary === maximumBoundary
+      ? Math.max(0, durationMicros)
+      : Math.min(Math.max(0, durationMicros), boundary * 1_000_000),
+    clockIndex: boundary === 0 ? null : boundary - 1,
+  };
+}
+
 export interface TimelineCursorRateRow {
-  variants: { one: number; five: number; ten: number; cumulative: number };
+  variants: { one: number | null; five: number | null; ten: number | null; cumulative: number };
   damageRates: { edps: number; adps: number } | null;
   rdps: number | null;
 }
@@ -978,6 +1029,8 @@ export function timelineVisibleTotalAtSecond(
 ): TimelineCursorRateRow | null {
   if (!rows.length) return null;
   const sum = (select: (row: TimelineCursorRateRow) => number) => rows.reduce((total, row) => total + select(row), 0);
+  const sumVariant = (select: (row: TimelineCursorRateRow) => number | null) => rows.every((row) => select(row) !== null)
+    ? rows.reduce((total, row) => total + select(row)!, 0) : null;
   const damageRates = rows.every((row) => row.damageRates !== null)
     ? { edps: sum((row) => row.damageRates!.edps), adps: sum((row) => row.damageRates!.adps) }
     : null;
@@ -986,9 +1039,9 @@ export function timelineVisibleTotalAtSecond(
     : sum((row) => row.rdps!);
   return {
     variants: {
-      one: sum((row) => row.variants.one),
-      five: sum((row) => row.variants.five),
-      ten: sum((row) => row.variants.ten),
+      one: sumVariant((row) => row.variants.one),
+      five: sumVariant((row) => row.variants.five),
+      ten: sumVariant((row) => row.variants.ten),
       cumulative: sum((row) => row.variants.cumulative),
     },
     damageRates,
@@ -1134,7 +1187,8 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
   const output = timeline.querySelector<HTMLElement>("[data-timeline-inspection]");
   if (!svg || !inspector || !crosshair || !output) return;
   const duration = Number(svg.dataset.durationSeconds), left = Number(svg.dataset.plotLeft), width = Number(svg.dataset.plotWidth);
-  const bounded = Math.max(0, Math.min(duration, Math.round(second)));
+  const frame = timelineCursorFrame(Number(svg.dataset.durationMicros), second);
+  const bounded = frame.boundary;
   const x = left + (bounded / Math.max(1, duration)) * width;
   crosshair.removeAttribute("hidden");
   crosshair.querySelector("line")?.setAttribute("x1", x.toFixed(1));
@@ -1150,7 +1204,7 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
       one: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "1", line.dataset.participant ?? ""),
       five: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "5", line.dataset.participant ?? ""),
       ten: timelineSamplesFor(svg, timeline.dataset.timelineMetric ?? "damage", "10", line.dataset.participant ?? ""),
-    }, bounded),
+    }, bounded, frame.elapsedMicros),
     damageRates: timeline.dataset.timelineMetric === "damage" && svg.dataset.seriesComplete === "true" ? timelineDamageRatesAtSecond(
       timelineSamplesFor(svg, "damage", "1", line.dataset.participant ?? ""),
       timelineRateClockFor(svg),
@@ -1166,17 +1220,18 @@ function showTimelineInspection(timeline: HTMLElement, second: number): void {
   const metric = timeline.dataset.timelineMetric === "effective_healing" ? messages.message("parse.timeline.metric.healing")
     : timeline.dataset.timelineMetric === "damage_taken" ? messages.message("parse.timeline.metric.taken")
     : timeline.dataset.timelineMetric === "rdps_damage" ? timeline.dataset.timelineRdpsLabel ?? messages.message("parse.timeline.rdps.exact") : messages.message("parse.timeline.metric.damage");
-  const time = formatDuration(bounded * 1_000_000);
+  const time = formatDuration(frame.elapsedMicros);
   const cumulative = (row: TimelineCursorRateRow): string => row.damageRates
     ? messages.message("parse.timeline.inspection.edps_adps", { edps: messages.number(row.damageRates.edps, { maximumFractionDigits: 1 }), adps: messages.number(row.damageRates.adps, { maximumFractionDigits: 1 }) })
     : timeline.dataset.timelineMetric === "damage" ? messages.message("parse.timeline.inspection.rate_unavailable")
     : timeline.dataset.timelineMetric === "rdps_damage"
       ? row.rdps == null ? messages.message("parse.timeline.inspection.rdps_unavailable") : messages.message("parse.timeline.inspection.rdps", { rdps: messages.number(row.rdps, { maximumFractionDigits: 1 }) })
       : messages.message("parse.timeline.inspection.run_rate", { metric, value: messages.number(row.variants.cumulative, { maximumFractionDigits: 1 }) });
+  const variant = (value: number | null): string => value == null ? "—" : messages.number(value, { maximumFractionDigits: 1 });
   const rateLine = (row: TimelineCursorRateRow): string => messages.message("parse.timeline.inspection.rates", {
-    one: messages.number(row.variants.one, { maximumFractionDigits: 1 }),
-    five: messages.number(row.variants.five, { maximumFractionDigits: 1 }),
-    ten: messages.number(row.variants.ten, { maximumFractionDigits: 1 }),
+    one: variant(row.variants.one),
+    five: variant(row.variants.five),
+    ten: variant(row.variants.ten),
     cumulative: cumulative(row),
   });
   const allRdpsTracksExact = Number(timeline.dataset.timelineExactRdpsTrackCount) === Number(timeline.dataset.timelineParticipantCount);
@@ -1229,6 +1284,7 @@ function timelineSamplesFor(svg: SVGSVGElement, metric: string, window: string, 
     oneSecond,
     Number(svg.dataset.durationSeconds),
     Number(window),
+    Number(svg.dataset.durationMicros),
   );
   cache.set(key, samples);
   return samples;
