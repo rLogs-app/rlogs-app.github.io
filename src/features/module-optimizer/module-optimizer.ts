@@ -463,18 +463,16 @@ function buildRequest(): OptimizeRequest {
 }
 
 function renderCatalog(value: OptimizerCatalog): void {
-  const labelStatus = presentation?.optimizer_provenance === "carried-forward"
-    ? ` · labels carried from build ${presentation.game_build}`
-    : presentation?.optimizer_provenance === "unavailable"
-      ? " · labels unresolved"
-      : presentation?.game_build
-        ? ` · labels build ${presentation.game_build}`
-        : "";
+  const labelStatus = presentation?.game_build
+    ? ` · labels catalog build ${presentation.game_build}`
+    : presentation
+      ? " · trusted labels catalog"
+      : "";
   requiredElement("optimizer-catalog-revision").textContent =
     `Game build ${value.client_builds.map((build) => Number(build).toLocaleString("en-US")).join(", ")}${labelStatus}`;
   requiredElement("optimizer-catalog-revision").title = value.catalog_revision;
   if (presentation) {
-    requiredElement("optimizer-catalog-revision").title += ` · ${presentation.optimizer_provenance_label}`;
+    requiredElement("optimizer-catalog-revision").title += ` · ${presentation.optimizer_label_catalog_provenance}`;
   }
   const root = requiredElement("optimizer-attributes");
   root.replaceChildren(

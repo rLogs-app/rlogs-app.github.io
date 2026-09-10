@@ -77,30 +77,34 @@ describe("module optimizer presentation", () => {
     ]);
   });
 
-  it("carries only reviewed stable IDs into a newer build in the same deployment", () => {
+  it.each([
+    ["older source build", { deployment: "global", source_client_build: "24252055", source_protocol_pack_digest: `sha256:${"b".repeat(64)}` }],
+    ["equal build with another digest", { deployment: "global", source_client_build: "24687926", source_protocol_pack_digest: `sha256:${"b".repeat(64)}` }],
+    ["newer source build", { deployment: "global", source_client_build: "24699999", source_protocol_pack_digest: `sha256:${"b".repeat(64)}` }],
+    ["missing source identity", { deployment: "" }],
+    ["another deployment", { deployment: "cn", source_client_build: "24699999", source_protocol_pack_digest: `sha256:${"b".repeat(64)}` }],
+  ])("resolves every known trusted catalog ID for %s", (_case, identity) => {
     const source = {
       ...catalog,
       locale: "en-US",
       deployment_id: "global",
       game_build: "24687926",
       protocol_pack_digest: `sha256:${"a".repeat(64)}`,
-      modules: { ...catalog.modules, "9999999": { name: "Unreviewed module" } },
-      module_effects: { ...catalog.module_effects, "9999": { name: "Unreviewed effect" } },
+      modules: { ...catalog.modules, "9999998": { name: "Catalog Module", icon: "/catalog-module.png" } },
+      module_effects: { ...catalog.module_effects, "9998": { name: "Catalog Effect", icon: "/catalog-effect.png" } },
     } as ProfilePresentationCatalog;
-    const resolved = optimizerPresentationForIdentity(source, {
-      deployment: "global",
-      source_client_build: "24699999",
-      source_protocol_pack_digest: `sha256:${"b".repeat(64)}`,
-    });
+    const resolved = optimizerPresentationForIdentity(source, identity);
 
-    expect(resolved.optimizer_provenance).toBe("carried-forward");
     expect(resolved.modules["5500103"]?.name).toBe("Excellent Attack Module");
     expect(resolved.module_effects["2104"]?.name).toBe("DMG Stack");
-    expect(resolved.modules["9999999"]).toBeUndefined();
-    expect(resolved.module_effects["9999"]).toBeUndefined();
+    expect(resolved.modules["9999998"]?.name).toBe("Catalog Module");
+    expect(resolved.module_effects["9998"]?.name).toBe("Catalog Effect");
+    expect(resolved.optimizer_label_catalog_provenance).toBe(
+      "Labels from the trusted en-US catalog build 24687926.",
+    );
   });
 
-  it("does not carry labels across deployments and preserves unknown numeric IDs", () => {
+  it("preserves unknown numeric IDs as unresolved", () => {
     const source = {
       ...catalog,
       deployment_id: "global",
@@ -118,27 +122,8 @@ describe("module optimizer presentation", () => {
       parts: [{ part_id: 9_999, initial_link_points: 7 }],
     }, resolved);
 
-    expect(resolved.optimizer_provenance).toBe("unavailable");
     expect(model.name).toBe("Module 9999999 (unresolved)");
     expect(model.effects[0]?.name).toBe("Effect 9999 (unresolved)");
-  });
-
-  it("does not carry labels for the same build with a conflicting digest", () => {
-    const source = {
-      ...catalog,
-      deployment_id: "global",
-      game_build: "24687926",
-      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
-    } as ProfilePresentationCatalog;
-
-    const resolved = optimizerPresentationForIdentity(source, {
-      deployment: "global",
-      source_client_build: "24687926",
-      source_protocol_pack_digest: `sha256:${"b".repeat(64)}`,
-    });
-
-    expect(resolved.optimizer_provenance).toBe("unavailable");
-    expect(resolved.module_effects).toEqual({});
   });
 
   it("keeps a selected loadout identity whole instead of filling from the entry", () => {
