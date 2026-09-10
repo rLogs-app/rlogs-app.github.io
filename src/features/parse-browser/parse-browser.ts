@@ -1028,8 +1028,10 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
     return `<g data-series="${metric}" data-series-window="${windowSeconds}" data-series-scale-maximum="${max}"${visible ? "" : " hidden"}>${grid}<g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)"><g data-timeline-scale-geometry>${lines}</g></g><text x="${left}" y="14" class="timeline-axis-label">${escapeHtml(metricLabel)}</text></g>`;
   })).join("");
   const deaths = timeline.death_markers.map((marker) => {
-    const actor = plotted.find(({ actor }) => actor.actor_id === marker.actor_id)?.actor;
-    const player = actor?.display_name ?? messages.message("parse.timeline.player", { id: marker.actor_id });
+    const matchingActors = plotted.flatMap(({ actor }, participantIndex) =>
+      actor.actor_id === marker.actor_id ? [{ actor, participantIndex }] : []);
+    const match = matchingActors.length === 1 ? matchingActors[0] : undefined;
+    const player = match?.actor.display_name ?? messages.message("parse.timeline.player", { id: marker.actor_id });
     const boundary = timelineMarkerBoundary(marker.at_micros, timeline.duration_micros, marker.precision);
     const label = marker.precision === "one_second_bucket"
       ? messages.message("parse.timeline.event.death_bucket", {
@@ -1038,12 +1040,14 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
         end: formatDuration(Math.min(timeline.duration_micros, marker.at_micros + timeline.series_bucket_micros)),
       })
       : messages.message("parse.timeline.event.death_exact", { player, time: formatDuration(marker.at_micros) });
-    return markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", boundary, label);
+    return markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "death", boundary, label, match?.participantIndex);
   }).join("");
   const loadouts = timeline.loadout_markers.map((marker) => {
-    const matchingActors = plotted.filter(({ actor }) => actor.character_id === marker.character_id);
-    const player = matchingActors.length === 1
-      ? matchingActors[0]!.actor.display_name ?? messages.message("parse.timeline.character", { id: marker.character_id })
+    const matchingActors = plotted.flatMap(({ actor }, participantIndex) =>
+      actor.character_id === marker.character_id ? [{ actor, participantIndex }] : []);
+    const match = matchingActors.length === 1 ? matchingActors[0] : undefined;
+    const player = match
+      ? match.actor.display_name ?? messages.message("parse.timeline.character", { id: marker.character_id })
       : messages.message("parse.timeline.character", { id: marker.character_id });
     const sources = loadoutPhaseSources.filter(({ sourceReportId, phaseIndex, phase }) =>
       sourceReportId === marker.source_report_id && phaseIndex === marker.phase_index &&
@@ -1053,7 +1057,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
         player, phase: messages.number(marker.phase_index + 1, { maximumFractionDigits: 0 }), time: formatDuration(marker.at_micros),
       })
       : messages.message("parse.timeline.event.loadout_generic", { player, time: formatDuration(marker.at_micros) });
-    return markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", timelineMarkerBoundary(marker.at_micros, timeline.duration_micros, "exact_microsecond"), label);
+    return markerLine(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight, "loadout", timelineMarkerBoundary(marker.at_micros, timeline.duration_micros, "exact_microsecond"), label, match?.participantIndex);
   }).join("");
   const rdpsEvidence = renderRdpsEvidenceLane(timeline, left, plotWidth, top + plotHeight, messages);
   const rateClock = rdpsRateClock?.length
@@ -1535,9 +1539,10 @@ export function timelineMarkerBoundary(atMicros: number, durationMicros: number,
   return Math.min(timelineMaximumBoundary(durationMicros), boundary);
 }
 
-function markerLine(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, kind: string, boundary: number, title: string): string {
+function markerLine(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, kind: string, boundary: number, title: string, participant?: number): string {
   const x = left + Math.min(1, atMicros / Math.max(1, durationMicros)) * width;
-  return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-label="${escapeHtml(title)}"><title>${escapeHtml(title)}</title></line>`;
+  const scope = participant === undefined ? "" : ` data-timeline-marker-participant="${participant}"`;
+  return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-label="${escapeHtml(title)}"${scope}><title>${escapeHtml(title)}</title></line>`;
 }
 
 function timelineViewportFor(timeline: HTMLElement, durationMicros: number): TimelineViewport {
@@ -1651,6 +1656,13 @@ function setTimelineParticipantVisibility(timeline: HTMLElement, participant: st
   timeline.querySelectorAll<SVGPolylineElement>(`[data-participant="${participant}"]`).forEach((track) => {
     if (visible) track.removeAttribute("hidden");
     else track.setAttribute("hidden", "");
+  });
+  timeline.querySelectorAll<SVGLineElement>(`[data-timeline-marker-participant="${participant}"]`).forEach((marker) => {
+    if (visible) marker.removeAttribute("hidden");
+    else {
+      marker.setAttribute("hidden", "");
+      marker.classList.remove("is-current");
+    }
   });
 }
 
@@ -1974,8 +1986,9 @@ function showTimelineInspection(timeline: HTMLElement, second: number, announce 
   const metric = timelineMetricLabel(selectedMetric, timeline.dataset.timelineRdpsLabel ?? messages.message("parse.timeline.rdps.exact"), partialRdps, messages);
   const time = formatDuration(frame.elapsedMicros);
   const eventLabels = [...svg.querySelectorAll<SVGLineElement>("[data-timeline-marker-boundary]")].flatMap((marker) => {
-    marker.classList.toggle("is-current", Number(marker.dataset.timelineMarkerBoundary) === bounded);
-    return Number(marker.dataset.timelineMarkerBoundary) === bounded && marker.dataset.timelineMarkerLabel
+    const current = !marker.hasAttribute("hidden") && Number(marker.dataset.timelineMarkerBoundary) === bounded;
+    marker.classList.toggle("is-current", current);
+    return current && marker.dataset.timelineMarkerLabel
       ? [marker.dataset.timelineMarkerLabel] : [];
   });
   const cumulative = (row: TimelineCursorRateRow): string => row.damageRates

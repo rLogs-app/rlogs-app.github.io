@@ -106,6 +106,99 @@ describe("combat timeline DOM interactions", () => {
     expect(root.querySelector(".timeline-marker.death")?.classList.contains("is-current")).toBe(false);
   });
 
+  it("hides and restores participant-scoped markers and cursor evidence without resetting timeline state", () => {
+    const root = mountedTimeline();
+    const timeline = root.querySelector<HTMLElement>("[data-timeline-metric]")!;
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    const end = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-end]")!;
+    const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+    const marker = root.querySelector<SVGLineElement>('[data-timeline-marker-participant="3"][data-timeline-marker-boundary="2"]')!;
+
+    start.value = "1";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    end.value = "3";
+    end.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    root.querySelector<HTMLButtonElement>('[data-metric="effective_healing"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-window="10"]')!.click();
+    scrubber.value = "2";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("Heavy Guardian loadout phase 1");
+    expect(marker.classList.contains("is-current")).toBe(true);
+
+    root.querySelector<HTMLButtonElement>('[data-participant-toggle="3"]')!.click();
+    expect(marker.hasAttribute("hidden")).toBe(true);
+    expect(marker.classList.contains("is-current")).toBe(false);
+    expect(root.querySelector("[data-timeline-events]")?.textContent).not.toContain("Heavy Guardian");
+    expect(inspector.getAttribute("aria-valuetext")).not.toContain("Heavy Guardian");
+    expect(timeline.dataset.timelineMetric).toBe("effective_healing");
+    expect(timeline.dataset.timelineWindow).toBe("10");
+    expect(timeline.dataset.timelineViewportStart).toBe("1");
+    expect(timeline.dataset.timelineViewportEnd).toBe("3");
+    expect(scrubber.value).toBe("2");
+
+    root.querySelector<HTMLButtonElement>("[data-participant-show-all]")!.click();
+    expect(marker.hasAttribute("hidden")).toBe(false);
+    expect(marker.classList.contains("is-current")).toBe(true);
+    expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("Heavy Guardian loadout phase 1");
+    expect(inspector.getAttribute("aria-valuetext")).toContain("Heavy Guardian loadout phase 1");
+
+    root.querySelector<HTMLButtonElement>("[data-participant-clear]")!.click();
+    expect([...root.querySelectorAll<SVGLineElement>("[data-timeline-marker-participant]")]
+      .every((candidate) => candidate.hasAttribute("hidden"))).toBe(true);
+    expect(root.querySelector("[data-timeline-events]")?.textContent).toBe("");
+    expect(timeline.dataset.timelineMetric).toBe("effective_healing");
+    expect(timeline.dataset.timelineWindow).toBe("10");
+    expect(timeline.dataset.timelineViewportStart).toBe("1");
+    expect(timeline.dataset.timelineViewportEnd).toBe("3");
+    expect(scrubber.value).toBe("2");
+  });
+
+  it("keeps ambiguous and unmatched markers visible through participant filtering", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const duplicate = {
+      ...structuredClone(graph.participants[1]!),
+      actor_id: graph.participants[2]!.actor_id,
+      character_id: graph.participants[3]!.character_id,
+      display_name: "Ambiguous witness",
+    };
+    const participants = [...graph.participants, duplicate];
+    const timeline = {
+      ...graph.timeline!,
+      participant_tracks: [...graph.timeline!.participant_tracks, {
+        actor_id: duplicate.actor_id,
+        character_id: duplicate.character_id,
+        observed_character_key: duplicate.observed_character_key ?? null,
+        display_name: duplicate.display_name,
+        canonical_participant_index: participants.length - 1,
+        series_point_count: duplicate.series?.length ?? 0,
+      }],
+      loadout_markers: [...graph.timeline!.loadout_markers, {
+        ...graph.timeline!.loadout_markers[1]!,
+        character_id: "unmatched-character",
+        at_micros: 1_500_000,
+      }],
+    };
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline({ ...graph, participants, timeline });
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    scrubber.value = "2";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+
+    const ambiguous = root.querySelector<SVGLineElement>('.timeline-marker.loadout[data-timeline-marker-label^="Character c13"]')!;
+    const unmatched = root.querySelector<SVGLineElement>('.timeline-marker.loadout[data-timeline-marker-label^="Character unmatched-character"]')!;
+    expect(ambiguous.hasAttribute("data-timeline-marker-participant")).toBe(false);
+    expect(unmatched.hasAttribute("data-timeline-marker-participant")).toBe(false);
+    root.querySelector<HTMLButtonElement>("[data-participant-clear]")!.click();
+    expect(ambiguous.hasAttribute("hidden")).toBe(false);
+    expect(unmatched.hasAttribute("hidden")).toBe(false);
+    expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("Character c13 loadout phase 1");
+    expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("Character unmatched-character loadout changed");
+  });
+
   it("does not advance a bucket early and completes a fractional run at its exact endpoint", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     report.runs[0]!.timeline!.duration_micros = 2_200_000;

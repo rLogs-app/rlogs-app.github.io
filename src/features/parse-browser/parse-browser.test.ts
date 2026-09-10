@@ -1064,6 +1064,8 @@ describe("timeline rolling windows", () => {
     expect(html).toContain("Marksman death observed in the 0:03.000–0:04.000 one-second bucket");
     expect(html).toContain("MarieRose loadout phase 1 at 0:01");
     expect(html).toContain('data-timeline-marker-boundary="4"');
+    expect(html.match(/<line[^>]+class="timeline-marker death"[^>]*>/u)?.[0]).toContain('data-timeline-marker-participant="2"');
+    expect(html.match(/<line[^>]+class="timeline-marker loadout"[^>]*>/u)?.[0]).toContain('data-timeline-marker-participant="0"');
 
     const exact = renderTimeline({ ...graph, timeline: { ...graph.timeline!, death_markers: [{
       ...graph.timeline!.death_markers[0]!, at_micros: 1_400_000, precision: "exact_microsecond",
@@ -1073,6 +1075,44 @@ describe("timeline rolling windows", () => {
     const unresolved = renderTimeline({ ...graph, loadoutPhaseSources: [] });
     expect(unresolved).toContain("MarieRose loadout changed at 0:01");
     expect(unresolved).not.toContain("MarieRose loadout phase 1 at 0:01");
+  });
+
+  it("leaves ambiguous and unmatched marker identities visible but unscoped", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const duplicate = {
+      ...structuredClone(graph.participants[1]!),
+      actor_id: graph.participants[2]!.actor_id,
+      character_id: graph.participants[0]!.character_id,
+      display_name: "Ambiguous witness",
+    };
+    const participants = [...graph.participants, duplicate];
+    const timeline = {
+      ...graph.timeline!,
+      participant_tracks: [...graph.timeline!.participant_tracks, {
+        actor_id: duplicate.actor_id,
+        character_id: duplicate.character_id,
+        observed_character_key: duplicate.observed_character_key ?? null,
+        display_name: duplicate.display_name,
+        canonical_participant_index: participants.length - 1,
+        series_point_count: duplicate.series?.length ?? 0,
+      }],
+      loadout_markers: [{
+        ...graph.timeline!.loadout_markers[0]!,
+        character_id: duplicate.character_id!,
+      }, {
+        ...graph.timeline!.loadout_markers[1]!,
+        character_id: "unmatched-character",
+      }],
+    };
+    const html = renderTimeline({ ...graph, participants, timeline });
+    const death = html.match(/<line[^>]+class="timeline-marker death"[^>]*>/u)?.[0] ?? "";
+    const loadouts = [...html.matchAll(/<line[^>]+class="timeline-marker loadout"[^>]*>/gu)].map((match) => match[0]);
+    expect(death).not.toContain("data-timeline-marker-participant");
+    expect(loadouts).toHaveLength(2);
+    expect(loadouts.every((marker) => !marker.includes("data-timeline-marker-participant"))).toBe(true);
+    expect(html).toContain("Player 11 death observed");
+    expect(html).toContain("Character unmatched-character loadout changed");
   });
 
   it("averages sparse bucket totals across a trailing window without filling the whole encounter", () => {
