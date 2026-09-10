@@ -434,7 +434,7 @@ export function renderReport(
     ${renderSwiftVortexCandidateAudit(associatedReconciliation)}
     ${renderPartyTable(participants, reconciled ? graph.rdpsGameTimeMicros : run.game_time_micros, reconciled, graph.rdpsStatus ?? messages.message("parse.timeline.rdps.partial"), messages, Boolean(graphPresentation))}
     ${renderPartyLoadouts(run, graph.participants, associatedReconciliation ?? undefined, messages, associatedReconciliation ? associatedPresentation : viewedPresentation)}
-    ${graph.timeline ? renderTimeline(graph, messages) : renderRunTimeline(run, participants)}
+    ${graph.timeline ? renderTimeline(graph, messages) : renderRunTimeline(run, participants, report.report_id, messages)}
     ${renderSkillContributions(participants, skillInfluences, skillEffects, graphPresentation)}
     ${renderRdpsCalculations(run, selectedReconciliation, participants, reconciled, graphPresentation)}
     ${renderEvidenceCoverage(report, run, associatedReconciliation, participants, reconciled)}
@@ -2432,7 +2432,12 @@ function parseTimelineValues(value: string): Array<[number, number]> {
 }
 
 
-function renderRunTimeline(run: PublicRun, participants: AnalysisParticipant[]): string {
+function renderRunTimeline(
+  run: PublicRun,
+  participants: PublicParticipant[],
+  reportId: string,
+  messages: MessageResolver,
+): string {
   const actors = participants.filter((actor) => (actor.series?.length ?? 0) > 0);
   if (!actors.length) {
     return analysisPanel(
@@ -2441,71 +2446,69 @@ function renderRunTimeline(run: PublicRun, participants: AnalysisParticipant[]):
     );
   }
 
-  const durationSeconds = Math.max(
-    1,
-    Math.ceil((run.total_run_time_micros ?? run.active_combat_micros) / 1_000_000),
-    ...actors.flatMap((actor) => actor.series?.map((point) => point.second) ?? []),
+  const actorIndexes = new Set(actors.map((actor) => participants.indexOf(actor)));
+  const observedSeconds = actors.flatMap((actor) => [
+    ...(actor.series?.map((point) => point.second) ?? []),
+    ...(actor.death_seconds ?? []),
+  ]).filter((second) => Number.isInteger(second) && second >= 0);
+  const durationMicros = Math.max(
+    1_000_000,
+    run.total_run_time_micros ?? run.active_combat_micros,
+    ...observedSeconds.map((second) => (second + 1) * 1_000_000),
   );
-  const maximumDamage = Math.max(
-    1,
-    ...actors.flatMap((actor) => actor.series?.map((point) => point.damage) ?? []),
-  );
-  const width = 1_000;
-  const height = 280;
-  const left = 58;
-  const right = 18;
-  const top = 18;
-  const bottom = 42;
-  const plotWidth = width - left - right;
-  const plotHeight = height - top - bottom;
-  const x = (second: number): number => left + (Math.min(durationSeconds, second) / durationSeconds) * plotWidth;
-  const y = (damage: number): number => top + plotHeight - (Math.max(0, damage) / maximumDamage) * plotHeight;
-  const grid = Array.from({ length: 5 }, (_, index) => {
-    const fraction = index / 4;
-    const gridY = top + plotHeight * fraction;
-    const value = maximumDamage * (1 - fraction);
-    return `<line x1="${left}" y1="${gridY.toFixed(2)}" x2="${width - right}" y2="${gridY.toFixed(2)}" class="parse-chart-grid"/><text x="${left - 8}" y="${(gridY + 4).toFixed(2)}" text-anchor="end">${escapeHtml(formatCompact(value))}</text>`;
-  }).join("");
-  const timeTicks = Array.from({ length: 5 }, (_, index) => {
-    const second = (durationSeconds * index) / 4;
-    return `<text x="${x(second).toFixed(2)}" y="${height - 12}" text-anchor="middle">${escapeHtml(formatSeconds(second))}</text>`;
-  }).join("");
-  let segmentElapsed = 0;
-  const segmentMarkers = run.segments
-    .map((segment) => {
-      segmentElapsed += segment.wall_time_micros / 1_000_000;
-      if (segmentElapsed >= durationSeconds) return "";
-      const markerX = x(segmentElapsed);
-      return `<line x1="${markerX.toFixed(2)}" y1="${top}" x2="${markerX.toFixed(2)}" y2="${top + plotHeight}" class="parse-segment-line"><title>${escapeHtml(`${title(segment.kind)} ends at ${formatSeconds(segmentElapsed)}`)}</title></line>`;
-    })
-    .join("");
-  const paths = actors
-    .map((actor, index) => {
-      const color = chartColors[index % chartColors.length];
-      const path = damageSeriesPath(actor.series ?? [], durationSeconds, x, y);
-      const deaths = (actor.death_seconds ?? [])
-        .map((second) => {
-          const centerX = x(second);
-          const centerY = y(timelineDamageAtSecond(actor.series ?? [], second));
-          const size = 5;
-          const diamond = `M ${centerX.toFixed(2)} ${(centerY - size).toFixed(2)} L ${(centerX + size).toFixed(2)} ${centerY.toFixed(2)} L ${centerX.toFixed(2)} ${(centerY + size).toFixed(2)} L ${(centerX - size).toFixed(2)} ${centerY.toFixed(2)} Z`;
-          return `<path d="${diamond}" fill="${color}" class="parse-death-marker"><title>${escapeHtml(`${participantName(actor)} died at ${formatSeconds(second)}`)}</title></path>`;
-        })
-        .join("");
-      return `<g data-timeline-actor="${escapeHtml(actor.actor_id)}"><path d="${path}" fill="none" stroke="${color}" class="parse-timeline-path"><title>${escapeHtml(participantName(actor))} damage per second</title></path>${deaths}</g>`;
-    })
-    .join("");
-  const legend = actors
-    .map((actor, index) => `<button type="button" data-timeline-toggle="${escapeHtml(actor.actor_id)}" aria-pressed="true"><i style="--series-color:${chartColors[index % chartColors.length]}"></i>${escapeHtml(participantName(actor))}</button>`)
-    .join("");
-
-  return `<section class="parse-analysis-panel parse-timeline-panel">
-    <div class="parse-analysis-heading"><div><p class="eyebrow">Synchronized evidence</p><h4>Run timeline</h4></div><small>One-second damage · diamond markers are deaths</small></div>
-    <div class="parse-chart-scroll"><svg class="parse-timeline-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Per-player damage timeline for ${escapeHtml(formatSeconds(durationSeconds))}">
-      ${grid}${timeTicks}${segmentMarkers}${paths}
-    </svg></div>
-    <div class="parse-chart-legend">${legend}</div>
-  </section>`;
+  const timeline: CombatTimeline = {
+    schema_version: 1,
+    source: "single_report",
+    canonical_report_id: reportId,
+    canonical_run_index: run.run_index,
+    contributing_report_ids: [reportId],
+    duration_micros: durationMicros,
+    time_basis: "run_elapsed",
+    series_bucket_micros: 1_000_000,
+    coverage: {
+      authoritative_start: run.authoritative_start,
+      authoritative_completion: run.authoritative_completion,
+      data_gap_count: run.data_gap_count,
+      gap_timing: run.data_gap_count === 0 ? "no_known_gaps" : "count_only",
+    },
+    participant_tracks: participants.flatMap((actor, canonicalParticipantIndex) =>
+      actorIndexes.has(canonicalParticipantIndex) ? [{
+        actor_id: actor.actor_id,
+        character_id: actor.character_id,
+        observed_character_key: actor.observed_character_key ?? null,
+        display_name: actor.display_name,
+        canonical_participant_index: canonicalParticipantIndex,
+        series_point_count: actor.series?.length ?? 0,
+      }] : []),
+    death_markers: actors.flatMap((actor) => (actor.death_seconds ?? [])
+      .filter((second) => Number.isInteger(second) && second >= 0 && second * 1_000_000 <= durationMicros)
+      .map((second) => ({
+        actor_id: actor.actor_id,
+        at_micros: second * 1_000_000,
+        precision: "one_second_bucket" as const,
+      }))),
+    loadout_markers: [],
+    rdps_influence_spans: [],
+    omitted: {
+      participant_tracks: 0,
+      series_points: 0,
+      death_markers: 0,
+      loadout_markers: 0,
+      rdps_influence_spans: 0,
+      rate_clock_points: 0,
+    },
+  };
+  return renderTimeline({
+    participants,
+    timeline,
+    loadoutPhaseSources: [],
+    reconciled: false,
+    trustKind: "single",
+    contributingReportCount: 1,
+    rdpsStatus: run.rdps_status,
+    rdpsGameTimeMicros: run.game_time_micros,
+    rdpsRateClock: null,
+  }, messages);
 }
 
 export function timelineDamageAtSecond(

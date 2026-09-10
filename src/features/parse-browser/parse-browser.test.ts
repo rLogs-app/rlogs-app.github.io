@@ -1626,16 +1626,24 @@ describe("timeline rolling windows", () => {
 });
 
 describe("damage-rate labels", () => {
-  it("preserves the static damage timeline for legacy reports", () => {
+  it("upgrades the live schema-12 report path to interactive bucket-precise timeline controls", () => {
     const legacy = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
     legacy.schema_version = 12;
     legacy.projection_revision = 1;
+    legacy.report_id = "rpt_256c458814b83ffc9fe5d2ce258b5001";
     delete legacy.runs[0]!.timeline;
 
     const html = renderReport(legacy, 0);
-    expect(html).toContain('class="parse-analysis-panel parse-timeline-panel"');
-    expect(html).toContain('class="parse-timeline-chart"');
-    expect(html).not.toContain('class="combat-timeline"');
+    expect(html).toContain('class="combat-timeline"');
+    expect(html).toContain('data-timeline-play');
+    expect(html).toContain('data-timeline-scrubber');
+    expect(html).toContain('class="timeline-marker death"');
+    expect(html).toContain('class="timeline-death-skull"');
+    expect(html).toContain('class="timeline-death-bones"');
+    expect(html).toContain("death observed in the 0:03.000–0:04.000 one-second bucket");
+    expect(html).toContain("This legacy timeline predates exact death-cause evidence.");
+    expect(html).not.toContain("parse-death-marker");
+    expect(html).not.toContain("diamond markers");
   });
 
   it("maps stored history rates to eDPS and aDPS and identifies partial rDPS", () => {

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
 import {
   bindParseReportInteractions,
+  renderReport,
   renderTimeline,
   renderTimelineSnapshotTable,
   selectCanonicalGraph,
@@ -82,6 +83,19 @@ describe("combat timeline DOM interactions", () => {
     return root;
   }
 
+  function mountedLiveLegacyTimeline(): HTMLElement {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    report.schema_version = 12;
+    report.projection_revision = 1;
+    report.report_id = "rpt_256c458814b83ffc9fe5d2ce258b5001";
+    delete report.runs[0]!.timeline;
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderReport(report, 0);
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    return root;
+  }
+
   it("plays, pauses, scrubs, and supports keyboard cursor movement", () => {
     const root = mountedTimeline();
     const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
@@ -108,6 +122,38 @@ describe("combat timeline DOM interactions", () => {
     expect(inspector.getAttribute("aria-valuenow")).toBe("3");
     inspector.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Home", bubbles: true }) as unknown as Event);
     expect(inspector.getAttribute("aria-valuenow")).toBe("0");
+  });
+
+  it("gives the live legacy route canonical playback and accessible bucket death disclosure", () => {
+    const root = mountedLiveLegacyTimeline();
+    const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
+    const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
+    const trigger = root.querySelector<SVGGraphicsElement>("[data-timeline-death-trigger]")!;
+    const summary = root.querySelector<HTMLElement>("[data-timeline-death-summary]")!;
+
+    expect(root.querySelector(".parse-timeline-chart")).toBeNull();
+    expect(root.querySelector(".parse-death-marker")).toBeNull();
+    expect(trigger.querySelector(".timeline-death-skull")).not.toBeNull();
+    expect(trigger.getAttribute("style")).toContain("color:");
+    expect(summary.textContent).toContain("death observed in the 0:03.000–0:04.000 one-second bucket");
+    expect(summary.textContent).toContain("This legacy timeline predates exact death-cause evidence.");
+
+    play.click();
+    expect(play.textContent).toBe("Pause");
+    play.click();
+    expect(play.textContent).toBe("Play");
+    scrubber.value = "4";
+    scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("death observed");
+
+    trigger.dispatchEvent(new window.MouseEvent("pointerenter", { bubbles: false }) as unknown as Event);
+    expect(summary.hidden).toBe(false);
+    trigger.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }) as unknown as Event);
+    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }) as unknown as Event);
+    expect(summary.hidden).toBe(true);
+    trigger.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }) as unknown as Event);
+    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }) as unknown as Event);
+    expect(summary.hidden).toBe(false);
   });
 
   it("keeps authoritative marker context synchronized across scrub, keyboard, and playback cursors", () => {
