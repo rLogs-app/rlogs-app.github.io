@@ -1,5 +1,5 @@
 export interface ParsePresentationCatalog {
-  schema_version: 3;
+  schema_version: 4;
   locale: "en-US";
   deployment_id: string;
   game_build: string;
@@ -17,13 +17,21 @@ export interface ParsePresentationCatalog {
     battle_imagine_count: number;
     localized_battle_imagine_count: number;
     uncovered_battle_imagine_skill_ids: readonly string[];
+    module_count: number;
+    localized_module_count: number;
+    uncovered_module_ids: readonly string[];
+    module_effect_count: number;
+    localized_module_effect_count: number;
+    uncovered_module_effect_ids: readonly string[];
   };
   actions: Readonly<Record<string, string>>;
   effects: Readonly<Record<string, string>>;
   imagines: Readonly<Record<string, string>>;
+  modules: Readonly<Record<string, string>>;
+  module_effects: Readonly<Record<string, string>>;
 }
 
-const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/parse-presentation.en-US.v3.json?schema=3&labels=reviewed-observed-v1&authority=protocol-v1`;
+const catalogUrl = `${import.meta.env.BASE_URL}data/bpsr/parse-presentation.en-US.v4.json?schema=4&labels=reviewed-observed-v1&authority=protocol-v1`;
 let request: Promise<ParsePresentationCatalog> | undefined;
 
 export function loadParsePresentation(): Promise<ParsePresentationCatalog> {
@@ -59,6 +67,20 @@ export function localizedImagineName(
   skillId: string,
 ): string {
   return humanName(catalog?.imagines[skillId] ?? null) ?? unlocalizedLabel("imagine", skillId);
+}
+
+export function localizedModuleName(
+  catalog: ParsePresentationCatalog | undefined,
+  configId: string,
+): string {
+  return humanName(catalog?.modules[configId] ?? null) ?? unlocalizedLabel("module", configId);
+}
+
+export function localizedModuleEffectName(
+  catalog: ParsePresentationCatalog | undefined,
+  effectId: string,
+): string {
+  return humanName(catalog?.module_effects[effectId] ?? null) ?? unlocalizedLabel("module effect", effectId);
 }
 
 export async function renderCoreWithOptionalPresentation<T>(
@@ -140,7 +162,7 @@ function humanName(value: string | null): string | undefined {
   return trimmed;
 }
 
-function unlocalizedLabel(kind: "action" | "effect" | "imagine", id: string): string {
+function unlocalizedLabel(kind: "action" | "effect" | "imagine" | "module" | "module effect", id: string): string {
   const numericId = id.trim();
   return /^\d+$/u.test(numericId)
     ? `Unlocalized combat ${kind} #${numericId}`
@@ -150,7 +172,7 @@ function unlocalizedLabel(kind: "action" | "effect" | "imagine", id: string): st
 function isCatalog(value: unknown): value is ParsePresentationCatalog {
   return (
     isRecord(value) &&
-    value.schema_version === 3 &&
+    value.schema_version === 4 &&
     value.locale === "en-US" &&
     typeof value.deployment_id === "string" &&
     value.deployment_id.length > 0 &&
@@ -161,7 +183,9 @@ function isCatalog(value: unknown): value is ParsePresentationCatalog {
     typeof value.source === "string" &&
     isStringRecord(value.actions) &&
     isStringRecord(value.effects) &&
-    isStringRecord(value.imagines)
+    isStringRecord(value.imagines) &&
+    isStringRecord(value.modules) &&
+    isStringRecord(value.module_effects)
   );
 }
 

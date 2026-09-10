@@ -52,7 +52,7 @@ const load = <T>(name: string): T => JSON.parse(
 const siteStyles = readFileSync(new URL("../../styles/site.css", import.meta.url), "utf8");
 const localizationDigest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 const catalogPresentation: ParsePresentationCatalog = {
-  schema_version: 3,
+  schema_version: 4,
   locale: "en-US",
   deployment_id: "global",
   game_build: "24687926",
@@ -61,6 +61,8 @@ const catalogPresentation: ParsePresentationCatalog = {
   actions: {},
   effects: {},
   imagines: { "3948": "Battle Imagine - Rorola" },
+  modules: { "5500104": "Excellent Attack Module - Premium" },
+  module_effects: { "1110": "Strength Boost" },
 };
 
 const parse: PublicParseCatalogEntry = {
@@ -591,7 +593,7 @@ describe("parse search", () => {
     };
 
     const presentation: ParsePresentationCatalog = {
-      schema_version: 3,
+      schema_version: 4,
       locale: "en-US",
       deployment_id: "global",
       game_build: "24687926",
@@ -603,6 +605,8 @@ describe("parse search", () => {
       },
       effects: {},
       imagines: { "3948": "Battle Imagine - Rorola" },
+      modules: {},
+      module_effects: {},
     };
     const html = renderReport(report, 0, reconciliation, null, presentation);
     expect(html).toContain("Combat timeline");
@@ -1279,7 +1283,7 @@ describe("damage-rate labels", () => {
 });
 
 describe("party rune and loadout summaries", () => {
-  it("localizes exact-build skills and Battle Imagines once and fails closed across identities", () => {
+  it("localizes exact-build skills, Imagines, modules, and rune effects once and fails closed across identities", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     report.client_build = catalogPresentation.game_build;
     report.protocol_pack_digest = catalogPresentation.protocol_pack_digest;
@@ -1294,6 +1298,8 @@ describe("party rune and loadout summaries", () => {
     const exact = renderReport(report, 0, null, null, presentation);
     expect(exact).toContain("Falcon Strike / Falcon Lightning Strike");
     expect(exact).toContain("Battle Imagine - Rorola");
+    expect(exact).toContain("Excellent Attack Module - Premium");
+    expect(exact).toContain("Strength Boost");
     expect(exact.match(/class="party-loadouts"/gu)).toHaveLength(1);
     expect(exact).not.toContain("Time-gated profile evidence");
 
@@ -1301,6 +1307,8 @@ describe("party rune and loadout summaries", () => {
     const unavailable = renderReport(report, 0, null, null, presentation);
     expect(unavailable).toContain("Unlocalized combat action #2203291");
     expect(unavailable).toContain("Unlocalized combat imagine #3948");
+    expect(unavailable).toContain("Unlocalized combat module #5500104");
+    expect(unavailable).toContain("Unlocalized combat module effect #1110");
     expect(unavailable).not.toContain("Battle Imagine - Rorola");
   });
 
@@ -1317,8 +1325,8 @@ describe("party rune and loadout summaries", () => {
     expect(html.match(/class="party-loadout-card"/gu)).toHaveLength(5);
     expect(html).toContain("Conflicting POV loadouts — none selected");
     expect(html).toContain("Missing POV loadout evidence");
-    expect(html).toContain("Slot 1: module 5500104 · Lv 6");
-    expect(html).toContain("rune 1110 · 20 LP");
+    expect(html).toContain("Slot 1: Unlocalized combat module #5500104 · Lv 6");
+    expect(html).toContain("Rune: Unlocalized combat module effect #1110 · 20 LP");
     expect(html).toContain('data-loadout-at-micros="1000000"');
   });
 

@@ -4,13 +4,15 @@ import {
   localizedActionName,
   localizedEffectName,
   localizedImagineName,
+  localizedModuleEffectName,
+  localizedModuleName,
   presentationForReport,
   renderCoreWithOptionalPresentation,
   type ParsePresentationCatalog,
 } from "./parse-presentation";
 
 const catalog: ParsePresentationCatalog = {
-  schema_version: 3,
+  schema_version: 4,
   locale: "en-US",
   deployment_id: "global",
   game_build: "24687926",
@@ -19,6 +21,8 @@ const catalog: ParsePresentationCatalog = {
   actions: { "2900840": "Arcane! Divine Reliance" },
   effects: { "3003052": "Harmony Grace" },
   imagines: { "3948": "Battle Imagine - Rorola" },
+  modules: { "5500104": "Excellent Attack Module - Premium" },
+  module_effects: { "1110": "Strength Boost" },
 };
 
 describe("parse presentation", () => {
@@ -46,6 +50,13 @@ describe("parse presentation", () => {
   it("resolves Battle Imagines by their equipped skill ID", () => {
     expect(localizedImagineName(catalog, "3948")).toBe("Battle Imagine - Rorola");
     expect(localizedImagineName(catalog, "9999")).toBe("Unlocalized combat imagine #9999");
+  });
+
+  it("resolves exact-build modules and rune effects in separate namespaces", () => {
+    expect(localizedModuleName(catalog, "5500104")).toBe("Excellent Attack Module - Premium");
+    expect(localizedModuleEffectName(catalog, "1110")).toBe("Strength Boost");
+    expect(localizedModuleName(catalog, "9999999")).toBe("Unlocalized combat module #9999999");
+    expect(localizedModuleEffectName(catalog, "9999999")).toBe("Unlocalized combat module effect #9999999");
   });
 
   it("rejects unresolved CJK and internal design identifiers from reports", () => {
@@ -95,6 +106,8 @@ describe("parse presentation", () => {
       "Unlocalized combat effect #3003052",
     );
     expect(localizedImagineName(mismatched, "3948")).toBe("Unlocalized combat imagine #3948");
+    expect(localizedModuleName(mismatched, "5500104")).toBe("Unlocalized combat module #5500104");
+    expect(localizedModuleEffectName(mismatched, "1110")).toBe("Unlocalized combat module effect #1110");
   });
 
   it("renders core data before an optional presentation request settles", async () => {

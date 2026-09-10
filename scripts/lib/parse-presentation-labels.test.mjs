@@ -27,11 +27,11 @@ describe("parse presentation label gate", () => {
 
   it("ships complete observed-action and rDPS-effect coverage without unsafe labels", () => {
     const catalog = JSON.parse(readFileSync(
-      resolve("public/data/bpsr/parse-presentation.en-US.v3.json"),
+      resolve("public/data/bpsr/parse-presentation.en-US.v4.json"),
       "utf8",
     ));
     expect(catalog).toMatchObject({
-      schema_version: 3,
+      schema_version: 4,
       deployment_id: "global",
       game_build: "24687926",
       protocol_pack_digest: "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
@@ -46,6 +46,12 @@ describe("parse presentation label gate", () => {
       battle_imagine_count: 73,
       localized_battle_imagine_count: 73,
       uncovered_battle_imagine_skill_ids: [],
+      module_count: 12,
+      localized_module_count: 12,
+      uncovered_module_ids: [],
+      module_effect_count: 21,
+      localized_module_effect_count: 21,
+      uncovered_module_effect_ids: [],
     });
     expect(Object.keys(catalog.actions)).toHaveLength(catalog.coverage.reviewed_action_count);
     expect(Object.values(catalog.actions).every(
@@ -57,8 +63,16 @@ describe("parse presentation label gate", () => {
     expect(Object.values(catalog.imagines).every(
       (label) => !containsUnsupportedEnglishPresentation(label),
     )).toBe(true);
+    expect(Object.values(catalog.modules).every(
+      (label) => !containsUnsupportedEnglishPresentation(label),
+    )).toBe(true);
+    expect(Object.values(catalog.module_effects).every(
+      (label) => !containsUnsupportedEnglishPresentation(label),
+    )).toBe(true);
     expect(catalog.actions["1202"]).toBeUndefined();
     expect(catalog.actions["2900840"]).toBe("Arcane! Divine Reliance");
     expect(catalog.imagines["3948"]).toBe("Battle Imagine - Rorola");
+    expect(catalog.modules["5500104"]).toBe("Excellent Attack Module - Premium");
+    expect(catalog.module_effects["1110"]).toBe("Strength Boost");
   });
 });

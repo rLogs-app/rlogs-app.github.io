@@ -22,6 +22,8 @@ import {
   localizedActionName,
   localizedEffectName,
   localizedImagineName,
+  localizedModuleEffectName,
+  localizedModuleName,
   presentationForCatalogEntry,
   presentationForReport,
   type ParsePresentationCatalog,
@@ -747,10 +749,10 @@ function renderLoadoutPhase(phase: PublicCombatLoadoutPhase, index: number, coun
   const modules = phase.module_snapshot_disposition === "complete"
     ? phase.equipped_modules.length
       ? `<div class="loadout-modules">${phase.equipped_modules.map((module) => {
-        const moduleLabel = messages.message("parse.loadout.module", { slot: integer(module.equipped_slot), id: module.config_id });
+        const moduleLabel = messages.message("parse.loadout.module", { slot: integer(module.equipped_slot), name: localizedModuleName(presentation, String(module.config_id)) });
         const level = module.level == null ? "" : ` · ${messages.message("parse.loadout.level", { level: integer(module.level) })}`;
         const effects = module.effects.length ? module.effects.map((effect) => {
-          const rune = messages.message("parse.loadout.rune", { id: effect.effect_id });
+          const rune = messages.message("parse.loadout.rune", { name: localizedModuleEffectName(presentation, String(effect.effect_id)) });
           return effect.initial_link_points == null ? rune : `${rune} · ${messages.message("parse.loadout.link_points", { points: integer(effect.initial_link_points) })}`;
         }).join(" / ") : messages.message("parse.loadout.no_rune_effects");
         return `<span><strong>${escapeHtml(`${moduleLabel}${level}`)}</strong><small>${escapeHtml(effects)}</small></span>`;
