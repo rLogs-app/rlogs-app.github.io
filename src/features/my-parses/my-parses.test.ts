@@ -84,6 +84,7 @@ describe("My Parses", () => {
     expect(queried).toEqual([
       "[data-metric]",
       "[data-window]",
+      "[data-timeline-death-trigger]",
       "[data-participant-toggle]",
       "[data-participant-show-all], [data-participant-clear]",
       "[data-timeline-inspector]",

@@ -12,6 +12,7 @@ import {
   type PublicReconciledParticipant,
   type PublicRunReconciliation,
   type PublicRun,
+  type PublicTimelineDeathHit,
   type PublicTimelineRateClockPoint,
   validateReportId,
   validateRunGroupId,
@@ -962,6 +963,7 @@ export function renderTimeline(graph: CanonicalGraphSelection, messages = create
       <input type="range" data-timeline-scrubber min="0" max="${durationSeconds}" step="1" value="0" aria-label="${escapeHtml(messages.message("parse.timeline.position"))}" />
     </div>
     <div class="timeline-chart-scroll">${renderTimelineSvg(timeline, plotted, graph.loadoutPhaseSources, authorizedRateClock, rdpsLabel, partialRdps, messages)}</div>
+    <div class="timeline-death-tooltips">${renderTimelineDeathSummaries(timeline, plotted, messages)}</div>
     <div class="timeline-range-scroll" data-timeline-range></div>
     <div class="timeline-inspection" data-timeline-inspection><strong>${escapeHtml(messages.message("parse.timeline.inspection.title"))}</strong><span>${escapeHtml(messages.message("parse.timeline.inspection.hint"))}</span></div>
     <div class="timeline-events" data-timeline-events></div>
@@ -1027,7 +1029,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
     const visible = metric === "damage" && windowSeconds === 5;
     return `<g data-series="${metric}" data-series-window="${windowSeconds}" data-series-scale-maximum="${max}"${visible ? "" : " hidden"}>${grid}<g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)"><g data-timeline-scale-geometry>${lines}</g></g><text x="${left}" y="14" class="timeline-axis-label">${escapeHtml(metricLabel)}</text></g>`;
   })).join("");
-  const deaths = timeline.death_markers.map((marker) => {
+  const deaths = timeline.death_markers.map((marker, markerIndex) => {
     const matchingActors = plotted.flatMap(({ actor, color }, participantIndex) =>
       actor.actor_id === marker.actor_id ? [{ actor, color, participantIndex }] : []);
     const match = matchingActors.length === 1 ? matchingActors[0] : undefined;
@@ -1040,8 +1042,9 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: Array<{ actor: Pub
         end: formatDuration(Math.min(timeline.duration_micros, marker.at_micros + timeline.series_bucket_micros)),
       })
       : messages.message("parse.timeline.event.death_exact", { player, time: formatDuration(marker.at_micros) });
+    const triggerLabel = messages.message("parse.timeline.death.trigger", { death: label });
     return deathMarker(marker.at_micros, timeline.duration_micros, left, plotWidth, top, plotHeight,
-      boundary, label, match?.color ?? "#ff5e82", match?.participantIndex);
+      boundary, label, triggerLabel, match?.color ?? "#ff5e82", timelineDeathSummaryId(timeline, markerIndex), match?.participantIndex);
   }).join("");
   const loadouts = timeline.loadout_markers.map((marker) => {
     const matchingActors = plotted.flatMap(({ actor }, participantIndex) =>
@@ -1546,11 +1549,64 @@ function markerLine(atMicros: number, durationMicros: number, left: number, widt
   return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + height}" class="timeline-marker ${kind}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-label="${escapeHtml(title)}"${scope}><title>${escapeHtml(title)}</title></line>`;
 }
 
-function deathMarker(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, boundary: number, title: string, color: string, participant?: number): string {
+function timelineDeathSummaryId(timeline: CombatTimeline, markerIndex: number): string {
+  const report = timeline.canonical_report_id.replace(/[^a-zA-Z0-9_-]/g, "-");
+  return `timeline-death-${report}-${timeline.canonical_run_index}-${markerIndex}`;
+}
+
+function renderTimelineDeathSummaries(
+  timeline: CombatTimeline,
+  plotted: Array<{ actor: PublicParticipant; track: CombatTimelineTrack; color: string; pattern: typeof timelineLinePatterns[number] }>,
+  messages: MessageResolver,
+): string {
+  return timeline.death_markers.map((marker, markerIndex) => {
+    const matchingActors = plotted.flatMap(({ actor, color }, participantIndex) =>
+      actor.actor_id === marker.actor_id ? [{ actor, color, participantIndex }] : []);
+    const match = matchingActors.length === 1 ? matchingActors[0] : undefined;
+    const player = match?.actor.display_name ?? messages.message("parse.timeline.player", { id: marker.actor_id });
+    const title = marker.precision === "one_second_bucket"
+      ? messages.message("parse.timeline.event.death_bucket", {
+        player,
+        start: formatDuration(marker.at_micros),
+        end: formatDuration(Math.min(timeline.duration_micros, marker.at_micros + timeline.series_bucket_micros)),
+      })
+      : messages.message("parse.timeline.event.death_exact", { player, time: formatDuration(marker.at_micros) });
+    const scope = match ? ` data-timeline-death-participant="${match.participantIndex}"` : "";
+    const body = marker.cause
+      ? `<div class="timeline-death-section"><strong>${escapeHtml(messages.message("parse.timeline.death.terminal_hit"))}</strong><ul>${renderTimelineDeathHit(marker.cause.final_hit, messages)}</ul></div>
+        <div class="timeline-death-section"><strong>${escapeHtml(messages.message("parse.timeline.death.recent_hits"))}</strong>${marker.cause.prior_hits.length
+          ? `<ul>${[...marker.cause.prior_hits].reverse().map((hit) => renderTimelineDeathHit(hit, messages)).join("")}</ul>`
+          : `<p>${escapeHtml(messages.message("parse.timeline.death.no_recent_hits"))}</p>`}</div>
+        ${marker.cause.prior_hits_truncated ? `<p class="timeline-death-truncated">${escapeHtml(messages.message("parse.timeline.death.truncated"))}</p>` : ""}`
+      : `<p>${escapeHtml(messages.message(timeline.schema_version < 4
+        ? "parse.timeline.death.legacy_unavailable" : "parse.timeline.death.cause_unavailable"))}</p>`;
+    return `<aside class="timeline-death-tooltip" id="${escapeHtml(timelineDeathSummaryId(timeline, markerIndex))}" data-timeline-death-summary${scope} role="tooltip" style="--death-marker:${escapeHtml(match?.color ?? "#ff5e82")}" hidden><strong class="timeline-death-tooltip-title">${escapeHtml(title)}</strong>${body}<small>${escapeHtml(messages.message("parse.timeline.death.dismiss_hint"))}</small></aside>`;
+  }).join("");
+}
+
+function renderTimelineDeathHit(hit: PublicTimelineDeathHit, messages: MessageResolver): string {
+  const details = [
+    messages.message("parse.timeline.death.hit_time", { time: formatDuration(hit.at_micros) }),
+    messages.message("parse.timeline.death.hit_source", { id: hit.source_actor_id }),
+    hit.direct_source_actor_id ? messages.message("parse.timeline.death.hit_direct_source", { id: hit.direct_source_actor_id }) : "",
+    hit.ability_id ? messages.message("parse.timeline.death.hit_ability", { id: hit.ability_id })
+      : messages.message("parse.timeline.death.hit_ability_unavailable"),
+    hit.breakdown_ability_id ? messages.message("parse.timeline.death.hit_breakdown", { id: hit.breakdown_ability_id }) : "",
+    hit.critical ? messages.message("parse.timeline.death.hit_critical") : "",
+  ].filter(Boolean).map(escapeHtml).join(" · ");
+  const damage = messages.message("parse.timeline.death.hit_damage", {
+    damage: messages.number(hit.effective_damage, { maximumFractionDigits: 0 }),
+    reported: messages.number(hit.reported_damage, { maximumFractionDigits: 0 }),
+  });
+  return `<li><strong>${escapeHtml(damage)}</strong><span>${details}</span></li>`;
+}
+
+function deathMarker(atMicros: number, durationMicros: number, left: number, width: number, top: number, height: number, boundary: number, title: string, triggerTitle: string, color: string, summaryId: string, participant?: number): string {
   const x = left + Math.min(1, atMicros / Math.max(1, durationMicros)) * width;
   const scope = participant === undefined ? "" : ` data-timeline-marker-participant="${participant}"`;
   const label = escapeHtml(title);
-  return `<g class="timeline-marker death" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(color)}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-label="${label}"${scope} role="img" aria-label="${label}"><line class="timeline-marker-line" x1="0" y1="${top}" x2="0" y2="${top + height}" vector-effect="non-scaling-stroke"/><g class="timeline-death-icon" data-timeline-marker-symbol transform="translate(0 ${top + 12})"><path class="timeline-death-bones" d="M-7-6L7 7M7-6L-7 7"/><circle cx="-7" cy="-6" r="1.5"/><circle cx="7" cy="7" r="1.5"/><circle cx="7" cy="-6" r="1.5"/><circle cx="-7" cy="7" r="1.5"/><path class="timeline-death-skull" d="M-6-3A6 6 0 1 1 6-3C6 1 4 3 3 3V7H-3V3C-4 3-6 1-6-3Z"/><circle class="timeline-death-eye" cx="-2.3" cy="-2" r="1.25"/><circle class="timeline-death-eye" cx="2.3" cy="-2" r="1.25"/><path class="timeline-death-eye" d="M0 0.5L-1.2 2.5H1.2Z"/></g><title>${label}</title></g>`;
+  const description = escapeHtml(summaryId);
+  return `<g class="timeline-marker death" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(color)}" data-timeline-marker-boundary="${boundary}" data-timeline-marker-label="${label}" data-timeline-death-trigger aria-label="${escapeHtml(triggerTitle)}" aria-describedby="${description}" aria-controls="${description}" aria-expanded="false" role="button" tabindex="0"${scope}><line class="timeline-marker-line" x1="0" y1="${top}" x2="0" y2="${top + height}" vector-effect="non-scaling-stroke"/><g class="timeline-death-icon" data-timeline-marker-symbol transform="translate(0 ${top + 12})"><rect class="timeline-death-hitbox" x="-12" y="-12" width="24" height="24"/><path class="timeline-death-bones" d="M-7-6L7 7M7-6L-7 7"/><circle cx="-7" cy="-6" r="1.5"/><circle cx="7" cy="7" r="1.5"/><circle cx="7" cy="-6" r="1.5"/><circle cx="-7" cy="7" r="1.5"/><path class="timeline-death-skull" d="M-6-3A6 6 0 1 1 6-3C6 1 4 3 3 3V7H-3V3C-4 3-6 1-6-3Z"/><circle class="timeline-death-eye" cx="-2.3" cy="-2" r="1.25"/><circle class="timeline-death-eye" cx="2.3" cy="-2" r="1.25"/><path class="timeline-death-eye" d="M0 0.5L-1.2 2.5H1.2Z"/></g><title>${label}</title></g>`;
 }
 
 function timelineViewportFor(timeline: HTMLElement, durationMicros: number): TimelineViewport {
@@ -1662,6 +1718,26 @@ function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" =
   return viewport;
 }
 
+function closeTimelineDeathSummary(timeline: HTMLElement, trigger?: SVGGraphicsElement): void {
+  const triggers = trigger ? [trigger] : [...timeline.querySelectorAll<SVGGraphicsElement>("[data-timeline-death-trigger]")];
+  for (const candidate of triggers) {
+    candidate.setAttribute("aria-expanded", "false");
+    candidate.dataset.timelineDeathPinned = "false";
+    const summaryId = candidate.getAttribute("aria-controls");
+    const summary = summaryId ? candidate.ownerDocument.getElementById(summaryId) : null;
+    if (summary && timeline.contains(summary)) summary.hidden = true;
+  }
+}
+
+function showTimelineDeathSummary(timeline: HTMLElement, trigger: SVGGraphicsElement): void {
+  closeTimelineDeathSummary(timeline);
+  const summaryId = trigger.getAttribute("aria-controls");
+  const summary = summaryId ? trigger.ownerDocument.getElementById(summaryId) : null;
+  if (!summary || !timeline.contains(summary) || trigger.hasAttribute("hidden")) return;
+  summary.hidden = false;
+  trigger.setAttribute("aria-expanded", "true");
+}
+
 function setTimelineParticipantVisibility(timeline: HTMLElement, participant: string, visible: boolean): void {
   timeline.querySelector<HTMLButtonElement>(`[data-participant-toggle="${participant}"]`)
     ?.setAttribute("aria-pressed", String(visible));
@@ -1669,11 +1745,13 @@ function setTimelineParticipantVisibility(timeline: HTMLElement, participant: st
     if (visible) track.removeAttribute("hidden");
     else track.setAttribute("hidden", "");
   });
-  timeline.querySelectorAll<SVGGraphicsElement>(`[data-timeline-marker-participant="${participant}"]`).forEach((marker) => {
+  timeline.querySelectorAll<SVGGraphicsElement>(`.timeline-marker[data-timeline-marker-participant="${participant}"]`).forEach((marker) => {
     if (visible) marker.removeAttribute("hidden");
     else {
       marker.setAttribute("hidden", "");
       marker.classList.remove("is-current");
+      const trigger = marker.matches("[data-timeline-death-trigger]") ? marker : marker.querySelector<SVGGraphicsElement>("[data-timeline-death-trigger]");
+      if (trigger) closeTimelineDeathSummary(timeline, trigger);
     }
   });
 }
@@ -1713,6 +1791,103 @@ function wireTimelineControls(root: HTMLElement): void {
     refreshTimelineScale(timeline, timelineViewportFor(timeline, Number(timeline.querySelector<SVGSVGElement>(".timeline-svg")?.dataset.durationMicros)));
     refreshTimelineInspection(timeline);
   }));
+  root.querySelectorAll<SVGGraphicsElement>("[data-timeline-death-trigger]").forEach((trigger) => {
+    const timeline = trigger.closest<HTMLElement>("[data-timeline-metric]");
+    if (!timeline) return;
+    const summaryId = trigger.getAttribute("aria-controls");
+    const summary = summaryId ? trigger.ownerDocument.getElementById(summaryId) : null;
+    if (!summary || !timeline.contains(summary)) return;
+    let pointerInside = false;
+    let summaryPointerInside = false;
+    let focusInside = false;
+    let forcedClosed = false;
+    let activationWasExpanded: boolean | null = null;
+    let closeTimer: ReturnType<typeof setTimeout> | null = null;
+    const cancelClose = () => {
+      if (closeTimer !== null) clearTimeout(closeTimer);
+      closeTimer = null;
+    };
+    const scheduleClose = () => {
+      cancelClose();
+      if (pointerInside || summaryPointerInside || focusInside || trigger.dataset.timelineDeathPinned === "true") return;
+      closeTimer = setTimeout(() => {
+        closeTimer = null;
+        if (!pointerInside && !summaryPointerInside && !focusInside && trigger.dataset.timelineDeathPinned !== "true") {
+          closeTimelineDeathSummary(timeline, trigger);
+        }
+      }, 1_200);
+    };
+    const open = (pinned = false) => {
+      forcedClosed = false;
+      cancelClose();
+      showTimelineDeathSummary(timeline, trigger);
+      if (pinned) trigger.dataset.timelineDeathPinned = "true";
+    };
+    const toggle = (wasExpanded: boolean) => {
+      if (wasExpanded) {
+        forcedClosed = true;
+        cancelClose();
+        closeTimelineDeathSummary(timeline, trigger);
+      } else {
+        open(true);
+      }
+    };
+    trigger.addEventListener("pointerenter", (event) => {
+      if (event.pointerType === "touch") return;
+      pointerInside = true;
+      if (!forcedClosed) open();
+    });
+    trigger.addEventListener("pointerleave", (event) => {
+      if (event.pointerType === "touch") return;
+      pointerInside = false;
+      if (event.relatedTarget && summary.contains(event.relatedTarget as Node)) summaryPointerInside = true;
+      forcedClosed = false;
+      scheduleClose();
+    });
+    summary.addEventListener("pointerenter", (event) => {
+      if (event.pointerType === "touch") return;
+      summaryPointerInside = true;
+      cancelClose();
+    });
+    summary.addEventListener("pointerleave", (event) => {
+      if (event.pointerType === "touch") return;
+      summaryPointerInside = false;
+      if (event.relatedTarget && trigger.contains(event.relatedTarget as Node)) pointerInside = true;
+      scheduleClose();
+    });
+    trigger.addEventListener("focus", () => {
+      focusInside = true;
+      if (!forcedClosed) open();
+    });
+    trigger.addEventListener("blur", () => {
+      focusInside = false;
+      forcedClosed = false;
+      trigger.dataset.timelineDeathPinned = "false";
+      scheduleClose();
+    });
+    trigger.addEventListener("pointerdown", () => {
+      activationWasExpanded = trigger.getAttribute("aria-expanded") === "true";
+    });
+    trigger.addEventListener("click", () => {
+      toggle(activationWasExpanded ?? trigger.getAttribute("aria-expanded") === "true");
+      activationWasExpanded = null;
+    });
+    trigger.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        if (trigger.getAttribute("aria-expanded") !== "true") return;
+        event.preventDefault();
+        event.stopPropagation();
+        forcedClosed = true;
+        cancelClose();
+        closeTimelineDeathSummary(timeline, trigger);
+        return;
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggle(trigger.getAttribute("aria-expanded") === "true");
+      }
+    });
+  });
   root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]").forEach((button) => {
     const setFocus = (focused: boolean) => {
       const timeline = button.closest<HTMLElement>("[data-timeline-metric]");

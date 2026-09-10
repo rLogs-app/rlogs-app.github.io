@@ -2143,12 +2143,33 @@ summary.party-loadout-title {
   stroke-dasharray: 5 4;
 }
 
-.timeline-marker.death .timeline-marker-line { stroke: currentColor; }
+.timeline-marker.death .timeline-marker-line {
+  stroke: currentColor;
+  pointer-events: none;
+}
 .timeline-marker.loadout { stroke: #ffcc66; }
 
 .timeline-death-icon {
   fill: currentColor;
   filter: drop-shadow(0 0 2px rgb(3 16 20 / 82%));
+  cursor: help;
+}
+
+.timeline-death-hitbox {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: all;
+}
+
+.timeline-marker.death:focus {
+  outline: none;
+}
+
+.timeline-marker.death:focus-visible .timeline-death-hitbox {
+  fill: color-mix(in srgb, currentColor 16%, transparent);
+  stroke: currentColor;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
 }
 
 .timeline-death-bones {
@@ -2168,6 +2189,68 @@ summary.party-loadout-title {
 }
 
 .timeline-marker.death.is-current .timeline-marker-line { stroke-width: 3; }
+
+.timeline-death-tooltips:empty {
+  display: none;
+}
+
+.timeline-death-tooltip {
+  margin-top: 0.65rem;
+  padding: 0.85rem 1rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-raised) 96%, black 4%);
+  border: 1px solid color-mix(in srgb, var(--death-marker) 46%, var(--line));
+  border-left: 3px solid var(--death-marker);
+  border-radius: 0.65rem;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 22%);
+}
+
+.timeline-death-tooltip[hidden] {
+  display: none;
+}
+
+.timeline-death-tooltip-title,
+.timeline-death-section > strong {
+  display: block;
+}
+
+.timeline-death-section {
+  margin-top: 0.7rem;
+}
+
+.timeline-death-section ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-death-section li {
+  display: grid;
+  gap: 0.15rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+}
+
+.timeline-death-section li span,
+.timeline-death-tooltip p,
+.timeline-death-tooltip small {
+  color: var(--muted);
+}
+
+.timeline-death-tooltip p {
+  margin: 0.55rem 0 0;
+}
+
+.timeline-death-tooltip small {
+  display: block;
+  margin-top: 0.65rem;
+}
+
+.timeline-death-truncated {
+  font-style: italic;
+}
 
 .timeline-rdps-evidence {
   fill: color-mix(in srgb, var(--accent) 72%, transparent);

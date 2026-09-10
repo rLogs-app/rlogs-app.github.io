@@ -51,6 +51,32 @@ describe("combat timeline DOM interactions", () => {
     return root;
   }
 
+  function mountedDeathCauseTimeline(): HTMLElement {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const timeline = report.runs[0]!.timeline!;
+    timeline.schema_version = 4;
+    const marker = timeline.death_markers[0]!;
+    marker.precision = "exact_microsecond";
+    marker.cause = {
+      evidence: "packet_terminal_damage",
+      final_hit: {
+        at_micros: marker.at_micros,
+        source_actor_id: "12",
+        ability_id: "2203291",
+        reported_damage: 1_000,
+        effective_damage: 900,
+        critical: true,
+      },
+      prior_hits: [],
+      prior_hits_truncated: false,
+    };
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+    return root;
+  }
+
   it("plays, pauses, scrubs, and supports keyboard cursor movement", () => {
     const root = mountedTimeline();
     const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
@@ -136,6 +162,115 @@ describe("combat timeline DOM interactions", () => {
     expect(inspector.getAttribute("aria-valuenow")).toBe("4");
     expect(root.querySelector("[data-timeline-events]")?.textContent).toContain("Marksman death observed");
     expect(play.textContent).toBe("Play");
+  });
+
+  it("opens death details on hover and focus, closes on Escape and participant hide", () => {
+    const root = mountedDeathCauseTimeline();
+    const trigger = root.querySelector<SVGGraphicsElement>("[data-timeline-death-trigger]")!;
+    const summary = root.querySelector<HTMLElement>("[data-timeline-death-summary]")!;
+    let escapedToDocument = false;
+    window.document.addEventListener("keydown", () => { escapedToDocument = true; });
+
+    expect(summary.hidden).toBe(true);
+    trigger.dispatchEvent(new window.MouseEvent("pointerenter", { bubbles: false }) as unknown as Event);
+    expect(summary.hidden).toBe(false);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    trigger.dispatchEvent(new window.MouseEvent("pointerleave", { bubbles: false }) as unknown as Event);
+    expect(summary.hidden).toBe(false);
+
+    trigger.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);
+    expect(summary.hidden).toBe(false);
+    trigger.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }) as unknown as Event);
+    expect(summary.hidden).toBe(true);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(escapedToDocument).toBe(false);
+
+    trigger.dispatchEvent(new window.FocusEvent("blur") as unknown as Event);
+    trigger.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);
+    expect(summary.hidden).toBe(false);
+    const participantToggle = root.querySelector<HTMLButtonElement>('[data-participant-toggle="2"]')!;
+    participantToggle.click();
+    expect(trigger.hasAttribute("hidden")).toBe(true);
+    expect(summary.hidden).toBe(true);
+    participantToggle.click();
+    expect(trigger.hasAttribute("hidden")).toBe(false);
+    expect(summary.hidden).toBe(true);
+  });
+
+  it("keeps hover details open while crossing the SVG-to-summary gap", () => {
+    vi.useFakeTimers();
+    try {
+      const root = mountedDeathCauseTimeline();
+      const trigger = root.querySelector<SVGGraphicsElement>("[data-timeline-death-trigger]")!;
+      const summary = root.querySelector<HTMLElement>("[data-timeline-death-summary]")!;
+
+      trigger.dispatchEvent(new window.MouseEvent("pointerenter") as unknown as Event);
+      expect(summary.hidden).toBe(false);
+      trigger.dispatchEvent(new window.MouseEvent("pointerleave") as unknown as Event);
+      vi.advanceTimersByTime(800);
+      expect(summary.hidden).toBe(false);
+      summary.dispatchEvent(new window.MouseEvent("pointerenter") as unknown as Event);
+      vi.advanceTimersByTime(500);
+      expect(summary.hidden).toBe(false);
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+      summary.dispatchEvent(new window.MouseEvent("pointerleave") as unknown as Event);
+      vi.advanceTimersByTime(1_199);
+      expect(summary.hidden).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(summary.hidden).toBe(true);
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("toggles death details with repeated click and keyboard activation", () => {
+    const root = mountedDeathCauseTimeline();
+    const trigger = root.querySelector<SVGGraphicsElement>("[data-timeline-death-trigger]")!;
+    const summary = root.querySelector<HTMLElement>("[data-timeline-death-summary]")!;
+    const click = () => trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }) as unknown as Event);
+    const key = (value: string) => trigger.dispatchEvent(new window.KeyboardEvent("keydown", { key: value, bubbles: true, cancelable: true }) as unknown as Event);
+
+    click();
+    expect(summary.hidden).toBe(false);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    click();
+    expect(summary.hidden).toBe(true);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+    key("Enter");
+    expect(summary.hidden).toBe(false);
+    key("Enter");
+    expect(summary.hidden).toBe(true);
+    key(" ");
+    expect(summary.hidden).toBe(false);
+    key(" ");
+    expect(summary.hidden).toBe(true);
+  });
+
+  it("opens and pins on the first touch activation, then closes on the second", () => {
+    const root = mountedDeathCauseTimeline();
+    const trigger = root.querySelector<SVGGraphicsElement>("[data-timeline-death-trigger]")!;
+    const summary = root.querySelector<HTMLElement>("[data-timeline-death-summary]")!;
+    const touchPointerDown = () => {
+      const event = new window.Event("pointerdown", { bubbles: true });
+      Object.defineProperty(event, "pointerType", { value: "touch" });
+      trigger.dispatchEvent(event as unknown as Event);
+    };
+
+    touchPointerDown();
+    trigger.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);
+    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }) as unknown as Event);
+    expect(summary.hidden).toBe(false);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(trigger.dataset.timelineDeathPinned).toBe("true");
+
+    touchPointerDown();
+    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }) as unknown as Event);
+    expect(summary.hidden).toBe(true);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.dataset.timelineDeathPinned).toBe("false");
   });
 
   it("hides and restores participant-scoped markers and cursor evidence without resetting timeline state", () => {

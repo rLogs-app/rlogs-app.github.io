@@ -1067,7 +1067,8 @@ describe("timeline rolling windows", () => {
     const deathMarker = html.match(/<g[^>]+class="timeline-marker death"[^>]*>/u)?.[0];
     expect(deathMarker).toContain('data-timeline-marker-participant="2"');
     expect(deathMarker).toContain('style="color:#91e6a5"');
-    expect(deathMarker).toContain('role="img"');
+    expect(deathMarker).toContain('role="button"');
+    expect(deathMarker).toContain('tabindex="0"');
     expect(html).toContain('class="timeline-death-skull"');
     expect(html).toContain('class="timeline-death-bones"');
     expect(html.indexOf("timeline-inspector-hitbox")).toBeLessThan(html.indexOf('class="timeline-marker death"'));
@@ -1081,6 +1082,53 @@ describe("timeline rolling windows", () => {
     const unresolved = renderTimeline({ ...graph, loadoutPhaseSources: [] });
     expect(unresolved).toContain("MarieRose loadout changed at 0:01");
     expect(unresolved).not.toContain("MarieRose loadout phase 1 at 0:01");
+  });
+
+  it("renders escaped packet-proven death summaries newest-first with explicit fallbacks", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const marker = graph.timeline!.death_markers[0]!;
+    const hit = (atMicros: number, source: string, ability: string) => ({
+      at_micros: atMicros,
+      source_actor_id: source,
+      direct_source_actor_id: "direct-7",
+      ability_id: ability,
+      breakdown_ability_id: "breakdown-9",
+      reported_damage: 1_000,
+      effective_damage: 900,
+      critical: true,
+    });
+    const exactMarker = {
+      ...marker,
+      precision: "exact_microsecond" as const,
+      cause: {
+        evidence: "packet_terminal_damage" as const,
+        final_hit: hit(marker.at_micros, "source-<script>", "ability-<img>"),
+        prior_hits: [
+          hit(marker.at_micros - 1_500_000, "oldest", "ability-old"),
+          hit(marker.at_micros - 250_000, "newest", "ability-new"),
+        ],
+        prior_hits_truncated: true,
+      },
+    };
+    const html = renderTimeline({ ...graph, timeline: { ...graph.timeline!, schema_version: 4, death_markers: [exactMarker] } });
+    expect(html).toContain('data-timeline-death-trigger');
+    expect(html).toContain('role="button"');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('aria-label="Marksman died at 0:03.000. Show death details."');
+    expect(html).toContain('class="timeline-death-hitbox" x="-12" y="-12" width="24" height="24"');
+    expect(html).toContain('role="tooltip"');
+    expect(html).toContain("Terminal recorded hit");
+    expect(html).toContain("900 effective damage (1,000 reported)");
+    expect(html).toContain("source actor ID source-&lt;script&gt;");
+    expect(html).toContain("ability ID ability-&lt;img&gt;");
+    expect(html).not.toContain("source-<script>");
+    expect(html.indexOf("source actor ID newest")).toBeLessThan(html.indexOf("source actor ID oldest"));
+    expect(html).toContain("Earlier hits in this two-second window were omitted");
+
+    expect(renderTimeline(graph)).toContain("This legacy timeline predates exact death-cause evidence.");
+    expect(renderTimeline({ ...graph, timeline: { ...graph.timeline!, schema_version: 4 } }))
+      .toContain("Exact terminal-hit evidence is unavailable for this death.");
   });
 
   it("leaves ambiguous and unmatched marker identities visible but unscoped", () => {
