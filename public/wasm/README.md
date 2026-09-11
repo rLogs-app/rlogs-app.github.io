@@ -14,3 +14,7 @@ block page interaction.
 The adapter accepts only the typed optimizer request. Profile input is reduced
 to string instance IDs, config IDs, quality, and module part/link values before
 it crosses the worker boundary.
+
+Regenerate the checked-in browser files with `wasm-bindgen --target web
+--no-typescript` so the hand-maintained TypeScript worker contract remains the
+single binding definition.
