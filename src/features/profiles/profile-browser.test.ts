@@ -17,7 +17,7 @@ const digest = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c45
 const presentation: ParsePresentationCatalog = {
   schema_version: 5, locale: "en-US", deployment_id: "global", game_build: "24687926",
   protocol_pack_digest: digest, source: "test", actions: {}, effects: {}, imagines: {}, modules: {}, module_effects: {},
-  scenes: { "13021": "Clash! Field of Forgotten Illusions", "6515": "Cursed Radiant Tomb" }, classes: { "1": "Stormblade", "4": "Wind Knight" }, specializations: { "101": "Iaido Slash Spec", "107": "Vanguard Spec" },
+  scenes: { "12023": "Guild Hunt - Hard", "13021": "Clash! Field of Forgotten Illusions", "6515": "Cursed Radiant Tomb" }, classes: { "1": "Stormblade", "4": "Wind Knight" }, specializations: { "101": "Iaido Slash Spec", "107": "Vanguard Spec" },
 };
 describe("public profile routes", () => {
   it("uses the observable character UID as the canonical URL", () => {
@@ -152,7 +152,27 @@ describe("public profile routes", () => {
 
     expect(observedClassLabel({ ...character, reports: wrong.reports }, presentation, 2)).toBe("Wind Knight / Vanguard Spec");
     expect(observedReportSceneLabel(wrong.reports[0]!, presentation, 2)).toBe("Cursed Radiant Tomb");
-    expect(observedReportDifficultyLabel({ ...character.reports[0]!, difficulty_tier: null }, presentation, 2)).toBe("Master");
+    expect(observedReportDifficultyLabel({ ...character.reports[0]!, difficulty_tier: null }, presentation, 2))
+      .toBe("Master (tier unresolved)");
+    expect(observedReportDifficultyLabel({
+      ...character.reports[0]!,
+      scene_id: 12023,
+      scene_name: "Guild Hunt - Hard",
+      difficulty_family: "hard",
+      difficulty_tier: null,
+    }, presentation, 2)).toBeUndefined();
+    expect(observedReportDifficultyLabel({
+      ...character.reports[0]!,
+      protocol_pack_digest: `sha256:${"f".repeat(64)}`,
+      difficulty_family: "master",
+      difficulty_tier: 17,
+    }, presentation, 2)).toBe("Tier 17");
+    expect(observedReportDifficultyLabel({
+      ...character.reports[0]!,
+      protocol_pack_digest: `sha256:${"f".repeat(64)}`,
+      difficulty_family: "master",
+      difficulty_tier: null,
+    }, presentation, 2)).toBeUndefined();
     expect(observedReportDifficultyLabel({ ...character.reports[0]!, difficulty_family: null, difficulty_tier: null }, presentation, 2)).toBeUndefined();
   });
 });

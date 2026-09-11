@@ -20,6 +20,8 @@ import {
   semanticPresentationForIdentity,
   type ParsePresentationCatalog,
 } from "../parse-browser/parse-presentation";
+import { supplementalDifficultyLabel } from "../parse-browser/difficulty-presentation";
+import { createMessageResolver } from "../../localization/messages";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
@@ -316,11 +318,13 @@ export function observedReportDifficultyLabel(
   schemaVersion: 1 | 2 = 1,
 ): string | undefined {
   const authorized = presentationForObservedReport(presentation, schemaVersion, report) != null;
-  const family = authorized && report.difficulty_family ? humanize(report.difficulty_family) : undefined;
-  const tier = report.difficulty_tier ?? undefined;
-  if (family && tier !== undefined) return `${family} ${tier}`;
-  if (family) return family;
-  return tier === undefined ? undefined : `Tier ${tier}`;
+  return supplementalDifficultyLabel(
+    report,
+    observedReportSceneLabel(report, presentation, schemaVersion),
+    authorized,
+    createMessageResolver(),
+    false,
+  ) ?? undefined;
 }
 
 function presentationForObservedReport(
