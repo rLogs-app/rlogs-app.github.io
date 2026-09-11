@@ -21,6 +21,7 @@ import { createParseDetailModal } from "./parse-detail-modal";
 import {
   loadParsePresentation,
   localizedActionName,
+  localizedActionNameWithAuthority,
   localizedClassNameWithAuthority,
   localizedEffectName,
   localizedImagineName,
@@ -31,6 +32,7 @@ import {
   localizedSpecializationNameWithAuthority,
   presentationForReport,
   semanticPresentationForCatalogEntry,
+  semanticPresentationForIdentity,
   semanticPresentationForReport,
   type NullablePresentationIdentity,
   type ParsePresentationCatalog,
@@ -430,7 +432,7 @@ export function renderReport(
     ${renderSwiftVortexCandidateAudit(associatedReconciliation)}
     ${renderPartyTable(participants, reconciled ? graph.rdpsGameTimeMicros : run.game_time_micros, reconciled, graph.rdpsStatus ?? messages.message("parse.timeline.rdps.partial"), messages, graphPresentation, graphIdentity)}
     ${renderPartyLoadouts(run, graph.participants, associatedReconciliation ?? undefined, messages, associatedReconciliation ? associatedPresentation : viewedPresentation, graphIdentity)}
-    ${graph.timeline ? renderTimeline(graph, messages, graphPresentation) : renderRunTimeline(run, participants, report.report_id, messages)}
+    ${graph.timeline ? renderTimeline(graph, messages, graphPresentation, graphIdentity) : renderRunTimeline(run, participants, report.report_id, messages)}
     ${renderSkillContributions(participants, skillInfluences, skillEffects, graphPresentation, graphIdentity)}
     ${renderRdpsCalculations(run, selectedReconciliation, participants, reconciled, graphPresentation)}
     ${renderEvidenceCoverage(report, run, associatedReconciliation, participants, reconciled)}
@@ -901,6 +903,7 @@ export function renderTimeline(
   graph: CanonicalGraphSelection,
   messages = createMessageResolver(),
   presentation?: ParsePresentationCatalog,
+  identity?: NullablePresentationIdentity | null,
 ): string {
   const { timeline, participants } = graph;
   if (!timeline) return "";
@@ -918,7 +921,9 @@ export function renderTimeline(
     ? plotted.filter(({ actor, track }) => hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)))
     : [];
   const exactCumulativeRdpsTracks = rdpsTracks.filter(({ actor }) => actor.rdps_incomplete === false);
-  const markerLanes = normalizeTimelineLaneEvents(timeline, plotted, graph.loadoutPhaseSources, messages, presentation);
+  const markerLanes = normalizeTimelineLaneEvents(
+    timeline, plotted, graph.loadoutPhaseSources, messages, presentation, identity,
+  );
   const hasHostileMechanics = markerLanes.some((lane) => lane.hostileSource);
   const omittedMarkerCount = timeline.omitted.death_markers + timeline.omitted.loadout_markers +
     (timeline.omitted.skill_uses ?? 0) + (timeline.omitted.hostile_casts ?? 0) +
@@ -1053,8 +1058,10 @@ export function normalizeTimelineLaneEvents(
   loadoutPhaseSources: TimelineLoadoutPhaseSource[],
   messages: MessageResolver,
   presentation?: ParsePresentationCatalog,
+  identity?: NullablePresentationIdentity | null,
 ): TimelineLane[] {
   const events: TimelineLaneEvent[] = [];
+  const playerActionSemanticsAuthorized = Boolean(semanticPresentationForIdentity(presentation, identity));
   (timeline.hostile_casts ?? []).forEach((cast, castIndex) => {
     const enemy = messages.message("parse.timeline.enemy_actor", { id: cast.source_actor_id });
     const action = localizedActionName(presentation, cast.action_id, null);
@@ -1153,12 +1160,20 @@ export function normalizeTimelineLaneEvents(
       actor.actor_id === skill.actor_id ? [{ actor, participantIndex }] : []);
     const match = matches.length === 1 ? matches[0] : undefined;
     const player = match?.actor.display_name ?? messages.message("parse.timeline.player", { id: skill.actor_id });
-    const action = localizedActionName(presentation, skill.action_id, null);
+    const matchingAbilities = match?.actor.abilities?.filter((ability) =>
+      ability.ability_id === skill.action_id) ?? [];
+    const attachedName = matchingAbilities.length === 1
+      ? matchingAbilities[0]!.presentation_name
+      : null;
+    const action = localizedActionNameWithAuthority(
+      presentation, skill.action_id, attachedName, identity,
+    );
     const label = messages.message("parse.timeline.event.skill", {
       player, action, time: formatDuration(skill.at_micros),
     });
-    const publishedIconPath = match?.actor.abilities?.find((ability) => ability.ability_id === skill.action_id)
-      ?.icon_asset_path ?? undefined;
+    const publishedIconPath = playerActionSemanticsAuthorized && matchingAbilities.length === 1
+      ? matchingAbilities[0]!.icon_asset_path ?? undefined
+      : undefined;
     const iconAssetPath = timelineSkillIconPath(presentation, skill.action_id, publishedIconPath);
     events.push({
       key: `skill-${skillIndex}`, kind: "skill",
@@ -3836,16 +3851,19 @@ function renderSkillCard(
   identity?: NullablePresentationIdentity | null,
 ): string {
   const allAbilities = [...(actor.abilities ?? [])];
-  const castContext = skillCastContext(allAbilities);
+  const semanticAuthorized = Boolean(semanticPresentationForIdentity(presentation, identity));
+  const castContext = skillCastContext(allAbilities, semanticAuthorized);
   const abilities = allAbilities.filter((ability) => ability.damage > 0).sort((left, right) => right.damage - left.damage);
   const total = abilities.reduce((sum, ability) => sum + ability.damage, 0);
   const visible = abilities.slice(0, 7).map((ability) => ({
-    name: localizedActionName(presentation, ability.ability_id, presentation ? ability.presentation_name : null),
+    name: localizedActionNameWithAuthority(
+      presentation, ability.ability_id, ability.presentation_name, identity,
+    ),
     damage: ability.damage,
     castLabel: skillCastLabel(ability, castContext),
     hits: ability.hits,
     criticalHits: ability.critical_hits,
-    supportGenerated: Boolean(presentation && ability.presentation_kind === "support-generated-damage"),
+    supportGenerated: semanticAuthorized && ability.presentation_kind === "support-generated-damage",
     isOther: false,
   }));
   const other = abilities.slice(7);
@@ -3875,7 +3893,9 @@ function renderSkillCard(
         : `${ability.castLabel} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit`;
       if (ability.isOther) {
         const actorName = participantName(actor);
-        const details = renderOtherSkillDetails(actor, other, total, castContext, presentation);
+        const details = renderOtherSkillDetails(
+          actor, other, total, castContext, presentation, identity, semanticAuthorized,
+        );
         return `<li class="parse-skill-other-row"><button class="parse-skill-other-trigger" type="button" data-skill-other-trigger aria-haspopup="dialog" aria-label="View ${other.length} other skill details for ${escapeHtml(actorName)}"><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${ability.castLabel} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span><b aria-hidden="true">›</b></button><template data-skill-other-content>${details}</template></li>`;
       }
       return `<li><i style="--series-color:${chartColors[(actorIndex + index) % chartColors.length]}"></i><span><strong>${escapeHtml(ability.name)}</strong><small>${escapeHtml(observation)}</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
@@ -3890,14 +3910,18 @@ function renderOtherSkillDetails(
   totalDamage: number,
   castContext: SkillCastContext,
   presentation?: ParsePresentationCatalog,
+  identity?: NullablePresentationIdentity | null,
+  semanticAuthorized = false,
 ): string {
   const groupedDamage = abilities.reduce((sum, ability) => sum + ability.damage, 0);
   const groupedPercent = totalDamage > 0 ? (groupedDamage / totalDamage) * 100 : 0;
   const rows = abilities.map((ability, index) => {
     const percent = totalDamage > 0 ? (ability.damage / totalDamage) * 100 : 0;
     const criticalRate = ability.hits > 0 ? (ability.critical_hits / ability.hits) * 100 : 0;
-    const name = localizedActionName(presentation, ability.ability_id, presentation ? ability.presentation_name : null);
-    const observation = presentation && ability.presentation_kind === "support-generated-damage"
+    const name = localizedActionNameWithAuthority(
+      presentation, ability.ability_id, ability.presentation_name, identity,
+    );
+    const observation = semanticAuthorized && ability.presentation_kind === "support-generated-damage"
       ? `${ability.hits.toLocaleString()} generated hits · provider proven`
       : `${skillCastLabel(ability, castContext)} · ${ability.hits.toLocaleString()} hits · ${criticalRate.toFixed(1)}% crit`;
     return `<li><span class="parse-skill-drilldown-rank">${index + 8}</span><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(observation)}</small></span><span><strong>${formatNumber(ability.damage)}</strong><small>${percent.toFixed(1)}%</small></span></li>`;
@@ -3907,20 +3931,23 @@ function renderOtherSkillDetails(
 
 interface SkillCastContext {
   observed: boolean;
+  recountGroupsAuthorized: boolean;
   groupTotals: Map<string, number>;
 }
 
 function skillCastContext(
   abilities: NonNullable<AnalysisParticipant["abilities"]>,
+  recountGroupsAuthorized = true,
 ): SkillCastContext {
   const groupTotals = new Map<string, number>();
   for (const ability of abilities) {
-    const groupId = ability.presentation_recount_group_id;
+    const groupId = recountGroupsAuthorized ? ability.presentation_recount_group_id : null;
     if (!groupId || ability.casts <= 0) continue;
     groupTotals.set(groupId, (groupTotals.get(groupId) ?? 0) + ability.casts);
   }
   return {
     observed: abilities.some((ability) => ability.casts > 0),
+    recountGroupsAuthorized,
     groupTotals,
   };
 }
@@ -3929,7 +3956,7 @@ function skillCastCount(
   ability: NonNullable<AnalysisParticipant["abilities"]>[number],
   context: SkillCastContext,
 ): number {
-  const groupId = ability.presentation_recount_group_id;
+  const groupId = context.recountGroupsAuthorized ? ability.presentation_recount_group_id : null;
   return groupId ? (context.groupTotals.get(groupId) ?? 0) : ability.casts;
 }
 
@@ -3950,7 +3977,7 @@ function groupedSkillCastLabel(
   const seen = new Set<string>();
   let casts = 0;
   for (const ability of abilities) {
-    const key = ability.presentation_recount_group_id
+    const key = context.recountGroupsAuthorized && ability.presentation_recount_group_id
       ? `group:${ability.presentation_recount_group_id}`
       : `ability:${ability.ability_id}`;
     if (seen.has(key)) continue;

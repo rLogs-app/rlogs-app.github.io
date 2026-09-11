@@ -756,13 +756,12 @@ describe("parse search", () => {
     expect(html).toContain("Skill contribution");
     expect(html).toContain("Falcon Strike");
     expect(html).toContain("5 casts · 4 hits");
-    expect(html).toContain("Unlocalized combat action #2220329109");
+    expect(html).toContain("Falcon Lightning Strike");
     expect(html).toContain("Other (2)");
     expect(html).toContain("data-skill-other-trigger");
     expect(html).toContain("View 2 other skill details for MarieRose");
     expect(html).toContain("Other skills · MarieRose");
-    expect(html).not.toContain("Grouped Skill 7");
-    expect(html).toContain("Unlocalized combat action");
+    expect(html).toContain("Grouped Skill 7");
     expect(html).toContain("rDPS calculations");
     expect(html).toContain("Harmony Grace");
 
@@ -857,6 +856,43 @@ describe("parse search", () => {
     const legacyHtml = renderReport(legacyReport, 0, null, null);
     expect(legacyHtml).toContain("Casts not observed · 4 hits");
     expect(legacyHtml).not.toContain("0 casts · 4 hits");
+  });
+
+  it("carries authority-backed action labels into skill cards and Other details without semantics", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const actor = report.runs[0]!.participants[0]!;
+    actor.abilities = Array.from({ length: 9 }, (_, index) => ({
+      ability_id: String(9_000_001 + index),
+      presentation_name: `Future Stable Action ${index + 1}`,
+      presentation_kind: index === 0 ? "support-generated-damage" : "skill",
+      icon_asset_path: `/game-assets/blue-protocol-star-resonance/shared/icons/combat/future-${index + 1}.png`,
+      presentation_recount_group_id: index < 2 ? "future-group" : null,
+      presentation_recount_group_name: index < 2 ? "Future Group" : null,
+      casts: index + 2,
+      hits: 1,
+      critical_hits: 0,
+      damage: 100 - index,
+      effective_damage: 100 - index,
+      healing: 0,
+      effective_healing: 0,
+      shielding: 0,
+    }));
+    const otherBuildPresentation = {
+      ...catalogPresentation,
+      game_build: "different-build",
+      protocol_pack_digest: `sha256:${"c".repeat(64)}`,
+      actions: {},
+    } satisfies ParsePresentationCatalog;
+
+    const html = renderReport(report, 0, null, null, otherBuildPresentation);
+
+    expect(html).toContain("Future Stable Action 1");
+    expect(html).toContain("Future Stable Action 9");
+    expect(html).toContain("Other skills");
+    expect(html).toContain("2 casts · 1 hits");
+    expect(html).toContain("3 casts · 1 hits");
+    expect(html).not.toContain("generated hits · provider proven");
+    expect(html).not.toContain("future-1.png");
   });
 });
 
@@ -1556,9 +1592,14 @@ describe("timeline rolling windows", () => {
     const graph = selectCanonicalGraph(report.runs[0]);
     const actor = graph.participants[0]!;
     actor.abilities = [{
-      ability_id: "2233", presentation_name: "Untrusted server label", presentation_kind: "skill",
+      ability_id: "2233", presentation_name: "Conflicting published label", presentation_kind: "skill",
       icon_asset_path: "/game-assets/blue-protocol-star-resonance/shared/icons/combat/textures/skill_weapon_gj/weapon_gj-01_kx05.png", casts: 1, hits: 1,
       critical_hits: 0, damage: 1, effective_damage: 1, healing: 0, effective_healing: 0, shielding: 0,
+    }, {
+      ability_id: "9999999", presentation_name: "Future Stable Action", presentation_kind: "support-generated-damage",
+      icon_asset_path: "/assets/skills/future.webp",
+      presentation_recount_group_id: "future-group", presentation_recount_group_name: "Future Group",
+      casts: 1, hits: 1, critical_hits: 0, damage: 1, effective_damage: 1, healing: 0, effective_healing: 0, shielding: 0,
     }];
     const presentation = {
       schema_version: 5, locale: "en-US", deployment_id: "global", game_build: "24687926",
@@ -1578,14 +1619,33 @@ describe("timeline rolling windows", () => {
       ],
       omitted: { ...graph.timeline!.omitted, skill_uses: 0 },
     };
-    const html = renderTimeline({ ...graph, timeline }, createMessageResolver(), presentation);
+    const identity = {
+      deployment_id: "global", client_build: "24699999",
+      protocol_pack_digest: `sha256:${"b".repeat(64)}`,
+    };
+    const html = renderTimeline({ ...graph, timeline }, createMessageResolver(), presentation, identity);
     expect(html).toContain('class="timeline-marker skill"');
     expect(html).toContain("used Powerdraw at 0:01.250");
-    expect(html).toContain("Unlocalized combat action #9999999");
-    expect(html).not.toContain("Untrusted server label");
-    expect(html).toContain('href="/assets/bpsr/profile/skills/weapon_gj-01_kx05.png"');
+    expect(html).toContain("used Future Stable Action at 0:01.500");
+    expect(html).not.toContain("Conflicting published label");
+    expect(html).not.toContain('href="/assets/bpsr/profile/skills/weapon_gj-01_kx05.png"');
+    expect(html).not.toContain("/assets/skills/future.webp");
+    expect(html).not.toContain("future.png");
     expect(html).not.toContain("/game-assets/");
     expect(html).toContain("data-timeline-lane-playhead");
+
+    const exactIdentity = {
+      deployment_id: presentation.deployment_id,
+      client_build: presentation.game_build,
+      protocol_pack_digest: presentation.protocol_pack_digest,
+    };
+    const exact = renderTimeline({ ...graph, timeline }, createMessageResolver(), presentation, exactIdentity);
+    expect(exact).toContain('href="/assets/bpsr/profile/skills/weapon_gj-01_kx05.png"');
+
+    actor.abilities.push({ ...actor.abilities[1]! });
+    const ambiguous = renderTimeline({ ...graph, timeline }, createMessageResolver(), presentation, identity);
+    expect(ambiguous).toContain("Unlocalized combat action #9999999");
+    expect(ambiguous).not.toContain("Future Stable Action");
   });
 
   it("renders hostile cast sources in distinct lanes before player lanes without boss inference", () => {

@@ -71,6 +71,21 @@ export function localizedActionName(
   return humanName(catalog?.actions[abilityId] ?? null) ?? unlocalizedLabel("action", abilityId);
 }
 
+/** Stable action labels may outlive the site's bundled catalog. Prefer that
+ * catalog, then accept the verifier-published label only when its complete
+ * source identity travels with the report. This does not authorize any
+ * build-sensitive action semantics, grouping, or icon. */
+export function localizedActionNameWithAuthority(
+  catalog: ParsePresentationCatalog | undefined,
+  abilityId: string,
+  publishedName: string | null | undefined,
+  identity: NullablePresentationIdentity | null | undefined,
+): string {
+  return humanName(catalog?.actions[abilityId] ?? null)
+    ?? (completePresentationIdentity(identity) ? humanName(publishedName ?? null) : undefined)
+    ?? unlocalizedLabel("action", abilityId);
+}
+
 export function localizedEffectName(
   catalog: ParsePresentationCatalog | undefined,
   effectId: string,

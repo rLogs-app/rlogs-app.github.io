@@ -442,7 +442,11 @@ describe("combat timeline DOM interactions", () => {
       effects: {}, imagines: {}, modules: {}, module_effects: {}, scenes: {}, classes: {}, specializations: {},
     } satisfies ParsePresentationCatalog;
     const root = window.document.createElement("main") as unknown as HTMLElement;
-    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!), undefined, presentation);
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!), undefined, presentation, {
+      deployment_id: presentation.deployment_id,
+      client_build: presentation.game_build,
+      protocol_pack_digest: presentation.protocol_pack_digest,
+    });
 
     const icon = root.querySelector<SVGImageElement>(".timeline-lane-skill-icon");
     expect(icon?.getAttribute("href")).toBe("/assets/bpsr/profile/skills/weapon_gj-01_kx05.png");

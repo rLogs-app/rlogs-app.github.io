@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   localizedActionName,
+  localizedActionNameWithAuthority,
   localizedClassName,
   localizedClassNameWithAuthority,
   localizedEffectName,
@@ -62,6 +63,33 @@ describe("parse presentation", () => {
     expect(localizedEffectName(catalog, "9999999", null)).toBe(
       "Unlocalized combat effect #9999999",
     );
+  });
+
+  it("uses an authority-backed attached action label only when the catalog has not learned the ID", () => {
+    const identity = {
+      deployment_id: "global",
+      client_build: "24699999",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+    };
+    expect(localizedActionNameWithAuthority(catalog, "9999999", "Future Stable Action", identity))
+      .toBe("Future Stable Action");
+    expect(localizedActionNameWithAuthority(catalog, "2900840", "Conflicting Published Name", identity))
+      .toBe("Arcane! Divine Reliance");
+  });
+
+  it("fails closed for attached action labels without a complete source identity", () => {
+    expect(localizedActionNameWithAuthority(catalog, "9999999", "Future Stable Action", null))
+      .toBe("Unlocalized combat action #9999999");
+    expect(localizedActionNameWithAuthority(catalog, "9999999", "Future Stable Action", {
+      deployment_id: "global",
+      client_build: "24699999",
+      protocol_pack_digest: "sha256:not-a-digest",
+    })).toBe("Unlocalized combat action #9999999");
+    expect(localizedActionNameWithAuthority(catalog, "9999999", "Player_SKILL_02_BD", {
+      deployment_id: "global",
+      client_build: "24699999",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+    })).toBe("Unlocalized combat action #9999999");
   });
 
   it("presents trusted high-ID damage-row labels without accepting report labels", () => {
