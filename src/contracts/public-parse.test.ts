@@ -300,10 +300,9 @@ describe("public parse contract", () => {
     }
   });
 
-  it("requires schema-20 runtime and replay-status fields on schema-21 status reconciliations", () => {
+  it("accepts reconciliation schemas 21 and 22 only with timeline 8 and current trust fields", () => {
     const reconciliation = completedSchema18Reconciliation();
     const report = reportWithTimelineV8();
-    reconciliation.schema_version = 21;
     reconciliation.timeline = {
       ...report.runs[0].timeline,
       source: "reconciled_canonical_spine",
@@ -318,13 +317,26 @@ describe("public parse contract", () => {
       clock_anchor: { at_micros: 0, game_time_millis: 1_000,
         source_report_id: reconciliation.canonical_spine.report_id, event_sequence: 1 },
     };
-    expect(isPublicRunReconciliation(reconciliation)).toBe(true);
-    const missingIdentity = structuredClone(reconciliation);
-    delete missingIdentity.reports[0].client_build;
-    expect(isPublicRunReconciliation(missingIdentity)).toBe(false);
-    const missingReplayStatus = structuredClone(reconciliation);
-    delete missingReplayStatus.rdps_status;
-    expect(isPublicRunReconciliation(missingReplayStatus)).toBe(false);
+    for (const schemaVersion of [21, 22]) {
+      const current = structuredClone(reconciliation);
+      current.schema_version = schemaVersion;
+      expect(isPublicRunReconciliation(current), `schema ${schemaVersion}`).toBe(true);
+
+      const wrongTimeline = structuredClone(current);
+      wrongTimeline.timeline.schema_version = 7;
+      expect(isPublicRunReconciliation(wrongTimeline), `schema ${schemaVersion} timeline 7`).toBe(false);
+
+      const missingIdentity = structuredClone(current);
+      delete missingIdentity.reports[0].client_build;
+      expect(isPublicRunReconciliation(missingIdentity), `schema ${schemaVersion} identity`).toBe(false);
+
+      const missingReplayStatus = structuredClone(current);
+      delete missingReplayStatus.rdps_status;
+      expect(isPublicRunReconciliation(missingReplayStatus), `schema ${schemaVersion} rDPS status`).toBe(false);
+    }
+    const unsupported = structuredClone(reconciliation);
+    unsupported.schema_version = 23;
+    expect(isPublicRunReconciliation(unsupported)).toBe(false);
   });
   it("keeps catalog 6 and My Parses 1 raw-readable while requiring identity on catalog 7 and My Parses 2", () => {
     const legacy = fixture("parse-catalog.v1.json") as any;
