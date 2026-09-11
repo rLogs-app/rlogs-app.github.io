@@ -99,6 +99,25 @@ describe("profile leaderboards", () => {
     expect(optionLabels("training-dummy-specialization")).toContainEqual(["101", "Iaido Slash"]);
   });
 
+  it("keeps whitelisted English labels when a valid presentation catalog is sparse", async () => {
+    installLeaderboardDom();
+    vi.spyOn(parsePresentation, "loadParsePresentation").mockResolvedValue({
+      ...presentation,
+      scenes: {},
+      classes: {},
+      specializations: {},
+    });
+
+    await mountLeaderboards();
+
+    expect(optionLabels("leaderboard-activity")).toContainEqual(["1633", "Void - Tina's Mindrealm"]);
+    expect(optionLabels("training-dummy-class")).toContainEqual(["11", "Marksman"]);
+    expect(optionLabels("training-dummy-specialization")).toContainEqual(["101", "Iaido Slash"]);
+    expect(optionLabels("leaderboard-activity").map(([value]) => Number(value))).toEqual(
+      seasonThreeActivities.map(([id]) => id),
+    );
+  });
+
   it("formats the game's recorded pass time in minutes and seconds", () => {
     expect(formatClearTime(329)).toBe("5:29");
   });

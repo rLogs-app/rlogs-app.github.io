@@ -105,14 +105,14 @@ export async function mountLeaderboards(): Promise<void> {
   const trainingSpecialization = requiredSelect("training-dummy-specialization");
   const presentation = await loadParsePresentation().catch(() => undefined);
   for (const [id, name] of seasonThreeActivities) {
-    activity.add(new Option(presentation ? localizedSceneName(presentation, id) : name, String(id)));
+    activity.add(new Option(whitelistedSceneName(presentation, id, name), String(id)));
   }
   activity.value = "1633";
   for (let value = 20; value >= 1; value -= 1) tier.add(new Option(`M${value}`, String(value)));
   tier.value = "20";
   for (const entry of trainingClassFilters) {
     trainingClass.add(new Option(
-      presentation ? localizedClassName(presentation, entry.id) ?? entry.name : entry.name,
+      whitelistedClassName(presentation, entry.id, entry.name),
       String(entry.id),
     ));
   }
@@ -210,10 +210,8 @@ function populateTrainingSpecializations(
   for (const entry of trainingClassFilters) {
     if (Number.isSafeInteger(requestedClass) && entry.id !== requestedClass) continue;
     for (const [id, name] of entry.specializations) {
-      const className = presentation ? localizedClassName(presentation, entry.id) ?? entry.name : entry.name;
-      const specializationName = presentation
-        ? localizedSpecializationName(presentation, id) ?? name
-        : name;
+      const className = whitelistedClassName(presentation, entry.id, entry.name);
+      const specializationName = whitelistedSpecializationName(presentation, id, name);
       const label = Number.isSafeInteger(requestedClass)
         ? specializationName
         : `${className} · ${specializationName}`;
@@ -350,12 +348,46 @@ function trainingSpecializationName(
   const classEntry = trainingClassFilters.find((entry) => entry.id === classId);
   const specialization = classEntry?.specializations.find(([id]) => id === specializationId);
   if (presentation) {
-    return `${localizedClassName(presentation, classId) ?? `Class ${classId}`} · ${
-      localizedSpecializationName(presentation, specializationId) ?? `Spec ${specializationId}`
-    }`;
+    const className = classEntry
+      ? whitelistedClassName(presentation, classId, classEntry.name)
+      : localizedClassName(presentation, classId) ?? `Class ${classId}`;
+    const specializationName = specialization
+      ? whitelistedSpecializationName(presentation, specializationId, specialization[1])
+      : localizedSpecializationName(presentation, specializationId) ?? `Spec ${specializationId}`;
+    return `${className} · ${specializationName}`;
   }
   if (!classEntry) return `Class ${classId} · Spec ${specializationId}`;
   return `${classEntry.name} · ${specialization?.[1] ?? `Spec ${specializationId}`}`;
+}
+
+function whitelistedSceneName(
+  presentation: ParsePresentationCatalog | undefined,
+  sceneId: number,
+  fallback: string,
+): string {
+  if (!presentation) return fallback;
+  const localized = localizedSceneName(presentation, sceneId);
+  return localized === `Scene #${sceneId}` ? fallback : localized;
+}
+
+function whitelistedClassName(
+  presentation: ParsePresentationCatalog | undefined,
+  classId: number,
+  fallback: string,
+): string {
+  if (!presentation) return fallback;
+  const localized = localizedClassName(presentation, classId);
+  return localized === `Class #${classId}` ? fallback : localized ?? fallback;
+}
+
+function whitelistedSpecializationName(
+  presentation: ParsePresentationCatalog | undefined,
+  specializationId: number,
+  fallback: string,
+): string {
+  if (!presentation) return fallback;
+  const localized = localizedSpecializationName(presentation, specializationId);
+  return localized === `Specialization #${specializationId}` ? fallback : localized ?? fallback;
 }
 
 function formatDps(value: number): string {
