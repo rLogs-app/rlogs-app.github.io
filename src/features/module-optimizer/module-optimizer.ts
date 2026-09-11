@@ -30,6 +30,7 @@ import {
   moduleSolutionScoreSummary,
   optimizerPresentationIdentityForPublishedSelection,
   optimizerPresentationForIdentity,
+  optimizerScoringStatus,
   scoreModuleSet,
   sortModuleInventory,
   type OptimizerPresentationCatalog,
@@ -471,7 +472,7 @@ function renderCatalog(value: OptimizerCatalog): void {
       ? " · trusted labels catalog"
       : "";
   requiredElement("optimizer-catalog-revision").textContent =
-    `Game build ${value.client_builds.map((build) => Number(build).toLocaleString("en-US")).join(", ")}${labelStatus}`;
+    `${optimizerScoringStatus(value)}${labelStatus}`;
   requiredElement("optimizer-catalog-revision").title = value.catalog_revision;
   if (presentation) {
     requiredElement("optimizer-catalog-revision").title += ` · ${presentation.optimizer_label_catalog_provenance}`;

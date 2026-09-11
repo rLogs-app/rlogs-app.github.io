@@ -155,6 +155,15 @@ export function moduleSolutionScoreSummary(solution: ModuleSolution): string {
     : `Score ${score} · Priority ${solution.ranking_score.toLocaleString("en-US")}`;
 }
 
+export function optimizerScoringStatus(
+  catalog: Pick<OptimizerCatalog, "client_builds" | "scoring_revision">,
+): string {
+  const builds = catalog.client_builds
+    .map((build) => Number(build).toLocaleString("en-US"))
+    .join(", ");
+  return `Reviewed scoring ${catalog.scoring_revision} · catalog build ${builds} · ordinary builds carry forward unless a seasonal update is declared`;
+}
+
 export function scoreModuleSet(
   modules: readonly ModuleCandidate[],
   catalog: OptimizerCatalog,

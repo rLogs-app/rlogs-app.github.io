@@ -8,6 +8,7 @@ import {
   moduleSolutionScoreSummary,
   optimizerPresentationIdentityForPublishedSelection,
   optimizerPresentationForIdentity,
+  optimizerScoringStatus,
   scoreModuleSet,
   sortModuleInventory,
 } from "./optimizer-presentation";
@@ -34,6 +35,15 @@ describe("module optimizer presentation", () => {
       ...solution,
       ranking_score: 23_456,
     })).toBe("Score 12,345 · Priority 23,456");
+  });
+
+  it("describes reviewed scoring as ordinary-build carry-forward", () => {
+    expect(optimizerScoringStatus({
+      scoring_revision: "global-reviewed-v5",
+      client_builds: ["24252055"],
+    })).toBe(
+      "Reviewed scoring global-reviewed-v5 · catalog build 24,252,055 · ordinary builds carry forward unless a seasonal update is declared",
+    );
   });
 
   it("scores individual modules with the same catalog thresholds and Link power as the app", () => {
