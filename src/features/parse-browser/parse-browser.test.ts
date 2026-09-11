@@ -781,14 +781,32 @@ describe("parse search", () => {
     expect(viewedWrongDigestHtml).not.toContain("viewed-derived-difficulty");
     expect(viewedWrongDigestHtml).not.toContain("Viewed Derived Class");
     expect(viewedWrongDigestHtml).not.toContain("Viewed Derived Specialization");
+    expect(viewedWrongDigestHtml).toContain("Marksman / Falconry");
+    expect(viewedWrongDigestHtml).not.toContain("Class #4 / Specialization #2");
     expect(viewedWrongDigestHtml).toContain("Scene #30120");
     expect(viewedWrongDigestHtml).toContain("Tier 20");
     const wrongReconciliationDigest = structuredClone(reconciliation);
     wrongReconciliationDigest.reports[0]!.protocol_pack_digest = "sha256:wrong-canonical-authority";
     const wrongReconciliationHtml = renderReport(report, 0, wrongReconciliationDigest, null, presentation);
     expect(wrongReconciliationHtml).toContain("Canonical Falcon Strike");
+    expect(wrongReconciliationHtml).not.toContain("Marksman / Falconry");
+    expect(wrongReconciliationHtml).toContain("Class #4 / Specialization #2");
     const singlePovHtml = renderReport(report, 0, null, null, presentation);
     expect(singlePovHtml).toContain("Arcane! Divine Reliance");
+    const newerBuild = structuredClone(report);
+    newerBuild.client_build = "24699999";
+    newerBuild.protocol_pack_digest = `sha256:${"a".repeat(64)}`;
+    newerBuild.runs[0]!.participants[0]!.class_id = 999;
+    newerBuild.runs[0]!.participants[0]!.class_name = "Beat Performer";
+    newerBuild.runs[0]!.participants[0]!.specialization_id = 99901;
+    newerBuild.runs[0]!.participants[0]!.specialization_name = "Concerto";
+    newerBuild.runs[0]!.combat_loadout_phases![0]!.class_id = 999;
+    newerBuild.runs[0]!.combat_loadout_phases![0]!.class_name = "Beat Performer";
+    newerBuild.runs[0]!.combat_loadout_phases![0]!.specialization_id = 99901;
+    newerBuild.runs[0]!.combat_loadout_phases![0]!.specialization_name = "Concerto";
+    const newerBuildHtml = renderReport(newerBuild, 0, null, null, presentation);
+    expect(newerBuildHtml).toContain("Beat Performer / Concerto");
+    expect(newerBuildHtml).not.toContain("Class #999 / Specialization #99901");
     const wrongDigest = structuredClone(report);
     wrongDigest.protocol_pack_digest = "sha256:wrong-localization-authority";
     wrongDigest.runs[0]!.activity_id = "derived.secret-activity";
@@ -821,8 +839,8 @@ describe("parse search", () => {
     expect(missingDigestHtml).toContain("Class #4 / Specialization #2");
     expect(html).toContain("Evidence coverage");
     expect(html).toContain("Cross-vantage reconciled");
-    expect(html).not.toContain("Marksman / Falconry");
-    expect(html).toContain("Class #4 / Specialization #2");
+    expect(html).toContain("Marksman / Falconry");
+    expect(html).not.toContain("Class #4 / Specialization #2");
     expect(html).toContain(`Run ID</small><code>${runGroupId}`);
     expect(html).toContain(`Report ID</small><code>${reportId}`);
     expect(html).toContain('data-party-sort="adps" aria-sort="descending"');
@@ -2255,6 +2273,37 @@ describe("party rune and loadout summaries", () => {
     expect(html).toContain("Slot 1: Unlocalized combat module #5500104 · Lv 6");
     expect(html).toContain("Rune: Unlocalized combat module effect #1110 · 20 LP");
     expect(html).toContain('data-loadout-at-micros="1000000"');
+  });
+
+  it("authorizes reconciled loadout labels from each selected source report", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const reconciliation = load<PublicRunReconciliation>("parse-reconciliation.v1.json");
+    const selected = reconciliation.characters.find((character) => character.character_id === "c7")!;
+    const phase = selected.selected_combat_loadout_phases![0]!;
+    phase.class_id = 999;
+    phase.class_name = "Beat Performer";
+    phase.specialization_id = 99901;
+    phase.specialization_name = "Concerto";
+    const source = reconciliation.reports.find((candidate) => candidate.report_id === selected.selected_report_id)!;
+    source.deployment_id = "global";
+    source.client_build = "24699999";
+    source.protocol_pack_digest = `sha256:${"a".repeat(64)}`;
+    const presentation = { ...catalogPresentation, classes: {}, specializations: {} };
+    const trusted = renderPartyLoadouts(
+      report.runs[0], report.runs[0].participants, reconciliation,
+      createMessageResolver(), presentation, null,
+    );
+    expect(trusted).toContain("Beat Performer / Concerto");
+
+    source.client_build = undefined;
+    const incomplete = renderPartyLoadouts(
+      report.runs[0], report.runs[0].participants, reconciliation,
+      createMessageResolver(), presentation, {
+        deployment_id: "global", client_build: "24699999", protocol_pack_digest: `sha256:${"b".repeat(64)}`,
+      },
+    );
+    expect(incomplete).not.toContain("Beat Performer / Concerto");
+    expect(incomplete).toContain("Class #999 / Specialization #99901");
   });
 
   it("falls back only to exact canonical-POV phases and never renders private instance ids", () => {

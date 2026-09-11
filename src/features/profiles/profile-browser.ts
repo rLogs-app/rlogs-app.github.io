@@ -13,9 +13,9 @@ import {
   isObservedCharacterCatalog,
 } from "../../contracts/public-characters";
 import {
-  localizedClassName,
+  localizedClassNameWithAuthority,
   localizedSceneNameWithAuthority,
-  localizedSpecializationName,
+  localizedSpecializationNameWithAuthority,
   loadParsePresentation,
   semanticPresentationForIdentity,
   type ParsePresentationCatalog,
@@ -200,12 +200,15 @@ export function searchableDirectoryEntry(
   presentation?: ParsePresentationCatalog,
   observedSchemaVersion: 1 | 2 = 1,
 ): string {
+  const identity = entry.kind === "observed" && observedSchemaVersion === 2
+    ? entry.character.presentation_authority
+    : null;
   const values = entry.kind === "claimed"
     ? [entry.profile.display_name, entry.profile.character_id, entry.profile.deployment, entry.profile.region, entry.profile.realm, entry.profile.world]
     : [
       entry.character.display_name,
-      localizedClassName(presentation, entry.character.class_id),
-      localizedSpecializationName(presentation, entry.character.specialization_id),
+      localizedClassNameWithAuthority(presentation, entry.character.class_id, entry.character.class_name, identity),
+      localizedSpecializationNameWithAuthority(presentation, entry.character.specialization_id, entry.character.specialization_name, identity),
       entry.character.class_id == null ? undefined : String(entry.character.class_id),
       entry.character.specialization_id == null ? undefined : String(entry.character.specialization_id),
       entry.character.deployment,
@@ -291,10 +294,10 @@ export function observedClassLabel(
   presentation?: ParsePresentationCatalog,
   schemaVersion: 1 | 2 = 1,
 ): string {
-  void schemaVersion;
+  const identity = schemaVersion === 2 ? character.presentation_authority : null;
   return [
-    localizedClassName(presentation, character.class_id),
-    localizedSpecializationName(presentation, character.specialization_id),
+    localizedClassNameWithAuthority(presentation, character.class_id, character.class_name, identity),
+    localizedSpecializationNameWithAuthority(presentation, character.specialization_id, character.specialization_name, identity),
   ].filter(Boolean).join(" / ") || "Class not observed";
 }
 

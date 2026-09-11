@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   localizedActionName,
   localizedClassName,
+  localizedClassNameWithAuthority,
   localizedEffectName,
   localizedImagineName,
   localizedModuleEffectName,
@@ -10,6 +11,7 @@ import {
   localizedSceneName,
   localizedSceneNameWithAuthority,
   localizedSpecializationName,
+  localizedSpecializationNameWithAuthority,
   presentationForReport,
   semanticPresentationForReport,
   renderCoreWithOptionalPresentation,
@@ -151,6 +153,22 @@ describe("parse presentation", () => {
     expect(localizedSceneNameWithAuthority(catalog, 99991, "博伊斯ATK_02", identity)).toBe("Scene #99991");
     expect(localizedSceneNameWithAuthority(catalog, 13021, "Wrong attached name", identity))
       .toBe("Clash! Field of Forgotten Illusions");
+  });
+
+  it("falls back to authority-backed attached class labels without overriding the current catalog", () => {
+    const identity = {
+      deployment_id: "global",
+      client_build: "24699999",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+    };
+    expect(localizedClassNameWithAuthority(catalog, 999, "Beat Performer", identity)).toBe("Beat Performer");
+    expect(localizedSpecializationNameWithAuthority(catalog, 99901, "Concerto", identity)).toBe("Concerto");
+    expect(localizedClassNameWithAuthority(catalog, 999, "Beat Performer", null)).toBe("Class #999");
+    expect(localizedSpecializationNameWithAuthority(catalog, 99901, "博伊斯ATK_02", identity))
+      .toBe("Specialization #99901");
+    expect(localizedClassNameWithAuthority(catalog, 1, "Wrong attached class", identity)).toBe("Stormblade");
+    expect(localizedSpecializationNameWithAuthority(catalog, 101, "Wrong attached spec", identity))
+      .toBe("Iaido Slash Spec");
   });
 
   it("renders core data before an optional presentation request settles", async () => {

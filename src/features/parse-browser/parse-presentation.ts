@@ -134,6 +134,19 @@ export function localizedClassName(
   return humanName(catalog?.classes[id] ?? null) ?? `Class #${id}`;
 }
 
+export function localizedClassNameWithAuthority(
+  catalog: ParsePresentationCatalog | undefined,
+  classId: number | string | null | undefined,
+  attachedName: string | null | undefined,
+  identity: NullablePresentationIdentity | null | undefined,
+): string | undefined {
+  if (classId == null) return undefined;
+  const id = String(classId);
+  return humanName(catalog?.classes[id] ?? null)
+    ?? (completePresentationIdentity(identity) ? humanName(attachedName ?? null) : undefined)
+    ?? `Class #${id}`;
+}
+
 export function localizedSpecializationName(
   catalog: ParsePresentationCatalog | undefined,
   specializationId: number | string | null | undefined,
@@ -141,6 +154,19 @@ export function localizedSpecializationName(
   if (specializationId == null) return undefined;
   const id = String(specializationId);
   return humanName(catalog?.specializations[id] ?? null) ?? `Specialization #${id}`;
+}
+
+export function localizedSpecializationNameWithAuthority(
+  catalog: ParsePresentationCatalog | undefined,
+  specializationId: number | string | null | undefined,
+  attachedName: string | null | undefined,
+  identity: NullablePresentationIdentity | null | undefined,
+): string | undefined {
+  if (specializationId == null) return undefined;
+  const id = String(specializationId);
+  return humanName(catalog?.specializations[id] ?? null)
+    ?? (completePresentationIdentity(identity) ? humanName(attachedName ?? null) : undefined)
+    ?? `Specialization #${id}`;
 }
 
 export async function renderCoreWithOptionalPresentation<T>(

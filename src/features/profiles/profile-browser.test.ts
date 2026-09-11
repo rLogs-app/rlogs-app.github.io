@@ -129,6 +129,21 @@ describe("public profile routes", () => {
     expect(observedReportDifficultyLabel(character.reports[0]!, presentation, 2)).toBe("Master 5");
     expect(searchableDirectoryEntry(directory, presentation, 2)).toContain("wind knight");
 
+    const newIdentity = {
+      ...character,
+      class_id: 999,
+      class_name: "Beat Performer",
+      specialization_id: 99901,
+      specialization_name: "Concerto",
+    };
+    expect(observedClassLabel(newIdentity, presentation, 2)).toBe("Beat Performer / Concerto");
+    expect(searchableDirectoryEntry({ kind: "observed", character: newIdentity }, presentation, 2))
+      .toContain("beat performer concerto");
+    expect(observedClassLabel({ ...newIdentity, presentation_authority: null }, presentation, 2))
+      .toBe("Class #999 / Specialization #99901");
+    expect(observedClassLabel(newIdentity, presentation, 1))
+      .toBe("Class #999 / Specialization #99901");
+
     const wrong = {
       ...character,
       presentation_authority: { ...character.presentation_authority!, protocol_pack_digest: `sha256:${"f".repeat(64)}` },
