@@ -11,6 +11,17 @@ export interface ParsePresentationCatalog {
     localized_observed_action_count: number;
     uncovered_action_ids: readonly string[];
     reviewed_action_count: number;
+    saved_history_observed_action_count?: number;
+    saved_history_localized_observed_action_count?: number;
+    trusted_enrichment_count?: number;
+    trusted_enrichment_action_ids?: readonly string[];
+    conflicting_action_ids?: readonly string[];
+    public_action_observation?: {
+      captured_at: string;
+      list_endpoint: string;
+      report_detail_endpoint_template: string;
+      report_count: number;
+    };
     rdps_effect_count: number;
     localized_rdps_effect_count: number;
     uncovered_rdps_effect_ids: readonly string[];

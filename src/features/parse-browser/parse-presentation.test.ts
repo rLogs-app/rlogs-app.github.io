@@ -22,7 +22,11 @@ const catalog: ParsePresentationCatalog = {
   game_build: "24687926",
   protocol_pack_digest: "sha256:localization-authority",
   source: "test",
-  actions: { "2900840": "Arcane! Divine Reliance" },
+  actions: {
+    "2900840": "Arcane! Divine Reliance",
+    "122330103": "Powerdraw",
+    "2220329107": "Falcon Strike",
+  },
   effects: { "3003052": "Harmony Grace" },
   imagines: { "3948": "Battle Imagine - Rorola" },
   modules: { "5500104": "Excellent Attack Module - Premium" },
@@ -52,6 +56,11 @@ describe("parse presentation", () => {
     expect(localizedEffectName(catalog, "9999999", null)).toBe(
       "Unlocalized combat effect #9999999",
     );
+  });
+
+  it("presents trusted high-ID damage-row labels without accepting report labels", () => {
+    expect(localizedActionName(catalog, "122330103", "Stale Power Shot")).toBe("Powerdraw");
+    expect(localizedActionName(catalog, "2220329107", "Server Falcon Name")).toBe("Falcon Strike");
   });
 
   it("resolves Battle Imagines by their equipped skill ID", () => {

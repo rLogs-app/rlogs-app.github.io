@@ -75,4 +75,41 @@ describe("parse presentation label gate", () => {
     expect(catalog.modules["5500104"]).toBe("Excellent Attack Module - Premium");
     expect(catalog.module_effects["1110"]).toBe("Strength Boost");
   });
+
+  it("reconciles current public action IDs only through trusted ROOT relationships", () => {
+    const catalog = JSON.parse(readFileSync(
+      resolve("public/data/bpsr/parse-presentation.en-US.v5.json"),
+      "utf8",
+    ));
+    const observation = JSON.parse(readFileSync(
+      resolve("scripts/data/public-parse-action-observation.v1.json"),
+      "utf8",
+    ));
+
+    expect(catalog.coverage).toMatchObject({
+      scope: "captured-public-api-action-ids-with-trusted-root-label-reconciliation",
+      observed_action_count: observation.action_ids.length,
+      localized_observed_action_count: 229,
+      trusted_enrichment_count: 15,
+      conflicting_action_ids: [],
+      public_action_observation: {
+        captured_at: observation.captured_at,
+        list_endpoint: observation.list_endpoint,
+        report_detail_endpoint_template: observation.report_detail_endpoint_template,
+        report_count: observation.report_count,
+      },
+    });
+    expect(catalog.coverage.uncovered_action_ids).toHaveLength(33);
+    expect(catalog.coverage.uncovered_action_ids).toContain("700009");
+    expect(catalog.actions["122330103"]).toBe("Powerdraw");
+    expect(catalog.actions["2220329107"]).toBe("Falcon Strike");
+    expect(catalog.actions["2220329109"]).toBe("Falcon Lightning Strike");
+    expect(catalog.actions["25524003"]).toBe("Radiance Barrage");
+    expect(catalog.actions["150101"]).toBe("Vines' Embrace");
+    expect(catalog.actions["700009"]).toBeUndefined();
+    expect(catalog.actions["9999999"]).toBeUndefined();
+    expect(Object.values(catalog.actions).every(
+      (label) => !containsUnsupportedEnglishPresentation(label),
+    )).toBe(true);
+  });
 });
