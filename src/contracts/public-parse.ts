@@ -154,7 +154,7 @@ export interface PublicCharacterWitnessSource {
   report_id: string; run_index: number; artifact_sha256: string; snapshots: PublicLocalProfileWitness[]; state_snapshots: PublicLocalStateWitness[];
 }
 export interface PublicRunReconciliation {
-  schema_version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22; reconciliation_id: string; run_group_id: string; status: ReconciliationStatus;
+  schema_version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15 | 16 | 17 | 18 | 19 | 20 | 21; reconciliation_id: string; run_group_id: string; status: ReconciliationStatus;
   canonical_spine: { report_id: string; run_index: number; artifact_sha256: string; authoritative_start: boolean;
     authoritative_completion: boolean; data_gap_count: number; event_count: number };
   reports: Array<{ report_id: string; run_index: number; artifact_sha256: string; deployment_id?: string; client_build?: string; protocol_pack_digest: string;
@@ -279,9 +279,9 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
       ((value.schema_version === 16 || value.schema_version === 17 || value.schema_version === 18) && timelineSchema === 3) ||
       (value.schema_version === 19 && timelineSchema === 4) ||
       (value.schema_version === 20 && (timelineSchema === 5 || timelineSchema === 6 || timelineSchema === 7)) ||
-      ((value.schema_version === 21 || value.schema_version === 22) && timelineSchema === 8))) return false;
-  const requireRuntimeIdentity = value.schema_version === 17 || value.schema_version === 18 || value.schema_version === 19 || value.schema_version === 20 || value.schema_version === 21 || value.schema_version === 22;
-  const replayRdpsStatusValid = (value.schema_version !== 18 && value.schema_version !== 19 && value.schema_version !== 20 && value.schema_version !== 21 && value.schema_version !== 22) || value.rdps_status === null ||
+      (value.schema_version === 21 && timelineSchema === 8))) return false;
+  const requireRuntimeIdentity = value.schema_version === 17 || value.schema_version === 18 || value.schema_version === 19 || value.schema_version === 20 || value.schema_version === 21;
+  const replayRdpsStatusValid = (value.schema_version !== 18 && value.schema_version !== 19 && value.schema_version !== 20 && value.schema_version !== 21) || value.rdps_status === null ||
     (typeof value.rdps_status === "string" && value.rdps_status.length > 0);
   return typeof value.reconciliation_id === "string" && reconciliationIdPattern.test(value.reconciliation_id) &&
     typeof value.run_group_id === "string" && groupIdPattern.test(value.run_group_id) && isReconciliationStatus(value.status) &&
