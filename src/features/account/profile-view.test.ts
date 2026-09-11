@@ -74,15 +74,16 @@ describe("Battle Imagine ownership presentation", () => {
 });
 
 describe("weapon item presentation", () => {
-  it("fails closed without exact presentation authority while retaining other equipment names", () => {
-    expect(profileEquipmentName(2_000_631, 200, allTreesCatalog, allTreesCatalog))
+  it("resolves trusted weapon and equipment labels only by catalog ID", () => {
+    expect(profileEquipmentName(2_000_631, 200, allTreesCatalog))
       .toBe("Ember - Gaze of the Far Sea");
-    expect(profileEquipmentName(2_000_631, 200, allTreesCatalog, undefined))
-      .toBe("Unlocalized weapon item #2000631");
+    expect(profileEquipmentName(9_999_999, 200, allTreesCatalog))
+      .toBe("Unlocalized weapon item #9999999");
     const [nonWeaponId, nonWeapon] = Object.entries(allTreesCatalog.items)
       .find(([, item]) => item.type !== 200)!;
-    expect(profileEquipmentName(Number(nonWeaponId), nonWeapon.type ?? null, allTreesCatalog, undefined))
+    expect(profileEquipmentName(Number(nonWeaponId), nonWeapon.type ?? null, allTreesCatalog))
       .toBe(nonWeapon.name);
+    expect(profileEquipmentName(9_999_998, 201, allTreesCatalog)).toBeUndefined();
   });
 });
 

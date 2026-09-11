@@ -244,9 +244,17 @@ export interface ProfilePresentationIdentity {
 
 export function profilePresentationForIdentity(
   catalog: ProfilePresentationCatalog,
-  identity: ProfilePresentationIdentity,
+  _identity: ProfilePresentationIdentity | null | undefined,
+): ProfilePresentationCatalog {
+  return catalog;
+}
+
+export function profileSemanticPresentationForIdentity(
+  catalog: ProfilePresentationCatalog,
+  identity: ProfilePresentationIdentity | null | undefined,
 ): ProfilePresentationCatalog | undefined {
-  return catalog.deployment_id === identity.deployment
+  return identity != null
+    && catalog.deployment_id === identity.deployment
     && catalog.game_build === identity.source_client_build
     && catalog.protocol_pack_digest === identity.source_protocol_pack_digest
     ? catalog

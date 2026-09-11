@@ -12,7 +12,6 @@ import { optimizerProfileHref } from "../module-optimizer/optimizer-profile-rout
 
 type JsonRecord = Record<string, JsonValue>;
 let presentation: ProfilePresentationCatalog;
-let weaponPresentation: ProfilePresentationCatalog | undefined;
 let profileDetailModal: ProfileDetailModal;
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
@@ -30,7 +29,7 @@ export async function renderSyncedCharacterProfile(
   options: SyncedCharacterProfileRenderOptions = {},
 ): Promise<HTMLElement> {
   presentation = await loadProfilePresentation();
-  weaponPresentation = profilePresentationForIdentity(presentation, profile.entry);
+  presentation = profilePresentationForIdentity(presentation, profile.entry);
   const body = profile.envelope.body;
   const root = element("article", "synced-character-profile");
   const characterName = stringValue(body.display_name) ?? profile.entry.label;
@@ -635,7 +634,7 @@ function equipmentSection(body: JsonRecord): HTMLElement {
     const localized = itemId == null ? undefined : presentation.items[String(itemId)];
     const localizedName = itemId == null
       ? undefined
-      : profileEquipmentName(itemId, slotId, presentation, weaponPresentation);
+      : profileEquipmentName(itemId, slotId, presentation);
     const setId = numericValue(item.set_id) ?? localized?.set_id ?? undefined;
     const setEffects = resolveActiveEquipmentSetEffects(suitEntries, setId, presentation);
     const slotName = slotId == null ? "Equipment" : presentation.equipment_slots[String(slotId)] ?? `Equipment slot ${slotId}`;
@@ -685,11 +684,10 @@ export function profileEquipmentName(
   itemId: number,
   slotId: number | null | undefined,
   catalog: ProfilePresentationCatalog,
-  authorizedWeaponCatalog: ProfilePresentationCatalog | undefined,
 ): string | undefined {
   const item = catalog.items[String(itemId)];
   return slotId === 200 || item?.type === 200
-    ? authorizedWeaponCatalog?.items[String(itemId)]?.name ?? `Unlocalized weapon item #${itemId}`
+    ? item?.name ?? `Unlocalized weapon item #${itemId}`
     : item?.name;
 }
 

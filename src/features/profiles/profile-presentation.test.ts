@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeProfilePresentationCatalog,
   profilePresentationForIdentity,
+  profileSemanticPresentationForIdentity,
   type ProfilePresentationCatalog,
 } from "./profile-presentation";
 
@@ -41,17 +42,30 @@ describe("BPSR profile presentation catalog", () => {
     expect(catalog.titles["9062067"]?.name).toBe("Power from the Other Side");
   });
 
-  it("authorizes names only for the exact profile runtime identity", () => {
+  it.each([
+    ["exact identity", { deployment: "global", source_client_build: "24687926", source_protocol_pack_digest: "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae" }],
+    ["older build", { deployment: "global", source_client_build: "24252055", source_protocol_pack_digest: "sha256:older" }],
+    ["newer build", { deployment: "global", source_client_build: "25122485", source_protocol_pack_digest: "sha256:newer" }],
+    ["wrong digest", { deployment: "global", source_client_build: "24687926", source_protocol_pack_digest: "sha256:wrong" }],
+    ["missing build and digest", { deployment: "global" }],
+    ["different deployment", { deployment: "cn", source_client_build: "24687926", source_protocol_pack_digest: "sha256:other" }],
+    ["missing identity", undefined],
+  ])("keeps trusted catalog labels for %s", (_case, identity) => {
+    expect(profilePresentationForIdentity(catalog, identity)).toBe(catalog);
+  });
+
+  it("authorizes semantic presentation only for the exact profile runtime identity", () => {
     const exact = {
       deployment: "global",
       source_client_build: "24687926",
       source_protocol_pack_digest: "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
     };
-    expect(profilePresentationForIdentity(catalog, exact)).toBe(catalog);
-    expect(profilePresentationForIdentity(catalog, { ...exact, deployment: "cn" })).toBeUndefined();
-    expect(profilePresentationForIdentity(catalog, { ...exact, source_client_build: "24687927" })).toBeUndefined();
-    expect(profilePresentationForIdentity(catalog, { ...exact, source_protocol_pack_digest: "sha256:wrong" })).toBeUndefined();
-    expect(profilePresentationForIdentity(catalog, { deployment: "global", source_client_build: "24687926" })).toBeUndefined();
+    expect(profileSemanticPresentationForIdentity(catalog, exact)).toBe(catalog);
+    expect(profileSemanticPresentationForIdentity(catalog, { ...exact, deployment: "cn" })).toBeUndefined();
+    expect(profileSemanticPresentationForIdentity(catalog, { ...exact, source_client_build: "24687927" })).toBeUndefined();
+    expect(profileSemanticPresentationForIdentity(catalog, { ...exact, source_protocol_pack_digest: "sha256:wrong" })).toBeUndefined();
+    expect(profileSemanticPresentationForIdentity(catalog, { deployment: "global", source_client_build: "24687926" })).toBeUndefined();
+    expect(profileSemanticPresentationForIdentity(catalog, undefined)).toBeUndefined();
   });
 
   it("localizes every exact-build medal used by public profiles", () => {
