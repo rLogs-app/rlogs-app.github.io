@@ -1479,6 +1479,39 @@ describe("timeline rolling windows", () => {
     expect(html).toContain("data-timeline-lane-playhead");
   });
 
+  it("renders hostile cast sources in distinct lanes before player lanes without boss inference", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const presentation = {
+      schema_version: 5, locale: "en-US", deployment_id: "global", game_build: "24687926",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`, source: "test",
+      actions: { "2233": "Powerdraw" }, action_icons: { "2233": "/assets/bpsr/profile/skills/weapon_gj-01_kx05.png" },
+      effects: {}, imagines: {}, modules: {}, module_effects: {}, scenes: {}, classes: {}, specializations: {},
+    } satisfies ParsePresentationCatalog;
+    const timeline = {
+      ...graph.timeline!, schema_version: 7 as const,
+      hostile_casts: [{
+        source_actor_id: "enemy-44", target_actor_id: graph.participants[0]!.actor_id,
+        at_micros: 750_000, action_id: "2233", state: "started" as const,
+        evidence: [{ source_report_id: graph.timeline!.canonical_report_id, event_sequence: 5,
+          kind: "exact_wire_cast_start" as const }], omitted_evidence: 0,
+      }],
+      omitted: { ...graph.timeline!.omitted, skill_uses: 0, hostile_casts: 0 },
+      skill_uses: [],
+    };
+    const html = renderTimeline({ ...graph, timeline }, createMessageResolver(), presentation);
+    expect(html).toContain('class="timeline-marker hostile"');
+    expect(html).toContain('data-timeline-lane-key="hostile-enemy-44"');
+    expect(html).toContain('data-timeline-lane-hostile');
+    expect(html).toContain("Enemy actor enemy-44 used Powerdraw at 0:00.750");
+    expect(html).toContain('href="/assets/bpsr/profile/skills/weapon_gj-01_kx05.png"');
+    expect(html).not.toMatch(/boss[^-]/iu);
+    expect(html.indexOf('data-timeline-lane-key="hostile-enemy-44"'))
+      .toBeLessThan(html.indexOf('data-timeline-lane-key="participant-'));
+    const hostileMarker = html.match(/<g[^>]+class="timeline-marker hostile"[^>]*>/u)?.[0] ?? "";
+    expect(hostileMarker).not.toContain("data-timeline-marker-participant");
+  });
+
   it("discloses omitted death/loadout/skill facts without changing legacy timelines", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const graph = selectCanonicalGraph(report.runs[0]);

@@ -878,7 +878,8 @@ export function renderTimeline(
     : [];
   const exactCumulativeRdpsTracks = rdpsTracks.filter(({ actor }) => actor.rdps_incomplete === false);
   const markerLanes = normalizeTimelineLaneEvents(timeline, plotted, graph.loadoutPhaseSources, messages, presentation);
-  const omittedMarkerCount = timeline.omitted.death_markers + timeline.omitted.loadout_markers + (timeline.omitted.skill_uses ?? 0);
+  const omittedMarkerCount = timeline.omitted.death_markers + timeline.omitted.loadout_markers +
+    (timeline.omitted.skill_uses ?? 0) + (timeline.omitted.hostile_casts ?? 0);
   const partialRdps = graph.rdpsStatus !== "complete" || plotted.some(({ actor, track }) =>
     actor.rdps_incomplete === true || !hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)));
   const rdpsLabel = messages.message(partialRdps ? "parse.timeline.rdps.partial" : "parse.timeline.rdps.exact");
@@ -980,7 +981,7 @@ type PlottedTimelineParticipant = {
 
 export interface TimelineLaneEvent {
   key: string;
-  kind: "death" | "loadout" | "skill";
+  kind: "death" | "loadout" | "skill" | "hostile";
   laneKey: string;
   laneLabel: string;
   participantIndex?: number;
@@ -997,6 +998,7 @@ export interface TimelineLane {
   key: string;
   label: string;
   participantIndex?: number;
+  hostileSource?: boolean;
   color: string;
   events: TimelineLaneEvent[];
 }
@@ -1009,6 +1011,21 @@ export function normalizeTimelineLaneEvents(
   presentation?: ParsePresentationCatalog,
 ): TimelineLane[] {
   const events: TimelineLaneEvent[] = [];
+  (timeline.hostile_casts ?? []).forEach((cast, castIndex) => {
+    const enemy = messages.message("parse.timeline.enemy_actor", { id: cast.source_actor_id });
+    const action = localizedActionName(presentation, cast.action_id, null);
+    const iconAssetPath = trustedTimelineActionIconPath(presentation, cast.action_id);
+    events.push({
+      key: `hostile-${castIndex}`, kind: "hostile", laneKey: `hostile-${cast.source_actor_id}`,
+      laneLabel: enemy, atMicros: cast.at_micros,
+      boundary: timelineMarkerBoundary(cast.at_micros, timeline.duration_micros, "exact_microsecond"),
+      label: messages.message("parse.timeline.event.hostile_cast", {
+        enemy, action, time: formatDuration(cast.at_micros),
+      }),
+      sourceIndex: castIndex,
+      ...(iconAssetPath ? { iconAssetPath } : {}),
+    });
+  });
   timeline.death_markers.forEach((marker, markerIndex) => {
     const matches = plotted.flatMap(({ actor, color }, participantIndex) =>
       actor.actor_id === marker.actor_id ? [{ actor, color, participantIndex }] : []);
@@ -1028,7 +1045,7 @@ export function normalizeTimelineLaneEvents(
       ...(match ? { participantIndex: match.participantIndex } : {}),
       atMicros: marker.at_micros, ...(endMicros === undefined ? {} : { endMicros }),
       boundary: timelineMarkerBoundary(marker.at_micros, timeline.duration_micros, marker.precision),
-      label, sourceIndex: markerIndex, deathSummaryId: timelineDeathSummaryId(timeline, markerIndex),
+      label, sourceIndex: (timeline.hostile_casts?.length ?? 0) + markerIndex, deathSummaryId: timelineDeathSummaryId(timeline, markerIndex),
     });
   });
   timeline.loadout_markers.forEach((marker, markerIndex) => {
@@ -1051,7 +1068,7 @@ export function normalizeTimelineLaneEvents(
       ...(match ? { participantIndex: match.participantIndex } : {}),
       atMicros: marker.at_micros,
       boundary: timelineMarkerBoundary(marker.at_micros, timeline.duration_micros, "exact_microsecond"),
-      label, sourceIndex: timeline.death_markers.length + markerIndex,
+      label, sourceIndex: (timeline.hostile_casts?.length ?? 0) + timeline.death_markers.length + markerIndex,
     });
   });
   (timeline.skill_uses ?? []).forEach((skill, skillIndex) => {
@@ -1073,18 +1090,27 @@ export function normalizeTimelineLaneEvents(
       ...(match ? { participantIndex: match.participantIndex } : {}),
       atMicros: skill.at_micros,
       boundary: timelineMarkerBoundary(skill.at_micros, timeline.duration_micros, "exact_microsecond"),
-      label, sourceIndex: timeline.death_markers.length + timeline.loadout_markers.length + skillIndex,
+      label, sourceIndex: (timeline.hostile_casts?.length ?? 0) + timeline.death_markers.length + timeline.loadout_markers.length + skillIndex,
       ...(iconAssetPath ? { iconAssetPath } : {}),
     });
   });
-  const lanes: TimelineLane[] = plotted.flatMap(({ actor, color }, participantIndex) => {
+  const hostileSources = [...new Set((timeline.hostile_casts ?? []).map((cast) => cast.source_actor_id))];
+  const lanes: TimelineLane[] = hostileSources.flatMap((sourceActorId, sourceIndex) => {
+    const owned = events.filter((event) => event.kind === "hostile" && event.laneKey === `hostile-${sourceActorId}`);
+    return owned.length ? [{
+      key: `hostile-${sourceActorId}`,
+      label: messages.message("parse.timeline.enemy_actor", { id: sourceActorId }),
+      hostileSource: true, color: palette[(sourceIndex + 5) % palette.length], events: owned,
+    }] : [];
+  });
+  lanes.push(...plotted.flatMap(({ actor, color }, participantIndex) => {
     const owned = events.filter((event) => event.participantIndex === participantIndex);
     return owned.length ? [{
       key: `participant-${participantIndex}`,
       label: actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id }),
       participantIndex, color, events: owned,
     }] : [];
-  });
+  }));
   const unscoped = events.filter((event) => event.participantIndex === undefined);
   if (unscoped.length) lanes.push({
     key: "unscoped", label: messages.message("parse.timeline.lanes.unscoped"),
@@ -1186,8 +1212,9 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
   const chrome = lanes.map((lane, laneIndex) => {
     const y = 4 + laneIndex * laneHeight;
     const scope = lane.participantIndex === undefined ? "" : ` data-timeline-lane-participant="${lane.participantIndex}"`;
+    const hostile = lane.hostileSource ? " data-timeline-lane-hostile" : "";
     const compactLabel = lane.label.length > 9 ? `${lane.label.slice(0, 8)}…` : lane.label;
-    return `<g class="timeline-lane-row" data-timeline-lane-key="${escapeHtml(lane.key)}" aria-label="${escapeHtml(lane.label)}"${scope} style="--track:${escapeHtml(lane.color)}"><line x1="${left}" y1="${y + laneHeight}" x2="${left + plotWidth}" y2="${y + laneHeight}"/><circle cx="10" cy="${y + laneHeight / 2}" r="3"/><text x="18" y="${y + laneHeight / 2 + 4}">${escapeHtml(compactLabel)}</text></g>`;
+    return `<g class="timeline-lane-row" data-timeline-lane-key="${escapeHtml(lane.key)}" aria-label="${escapeHtml(lane.label)}"${scope}${hostile} style="--track:${escapeHtml(lane.color)}"><line x1="${left}" y1="${y + laneHeight}" x2="${left + plotWidth}" y2="${y + laneHeight}"/><circle cx="10" cy="${y + laneHeight / 2}" r="3"/><text x="18" y="${y + laneHeight / 2 + 4}">${escapeHtml(compactLabel)}</text></g>`;
   }).join("");
   const markers = lanes.flatMap((lane, laneIndex) => lane.events.map((event) => {
     const x = left + Math.min(1, event.atMicros / Math.max(1, timeline.duration_micros)) * plotWidth;
@@ -1202,12 +1229,12 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
     const label = death ? messages.message("parse.timeline.death.trigger", { death: event.label }) : event.label;
     const glyph = death
       ? `<path class="timeline-death-bones" d="M-7-6L7 7M7-6L-7 7"/><path class="timeline-death-skull" d="M-5-3A5 5 0 1 1 5-3C5 0 3 2 2 2V6H-2V2C-3 2-5 0-5-3Z"/>`
-      : event.kind === "skill"
+      : event.kind === "skill" || event.kind === "hostile"
         ? event.iconAssetPath
           ? `<circle class="timeline-lane-skill-icon-ring" cx="0" cy="0" r="10"/><image class="timeline-lane-skill-icon" href="${escapeHtml(event.iconAssetPath)}" x="-8" y="-8" width="16" height="16" preserveAspectRatio="xMidYMid slice"/>`
           : `<circle class="timeline-lane-skill-glyph" cx="0" cy="0" r="6"/><path class="timeline-lane-skill-bolt" d="M1-7L-4 1H0L-1 7L5-2H1Z"/>`
         : `<path class="timeline-lane-loadout-glyph" d="M0-7L7 0L0 7L-7 0Z"/>`;
-    const clusterBadge = event.kind === "skill"
+    const clusterBadge = event.kind === "skill" || event.kind === "hostile"
       ? `<g class="timeline-skill-cluster-badge" data-timeline-skill-cluster-badge hidden><rect x="1" y="-17" width="14" height="14" rx="7"/><text x="8" y="-7" text-anchor="middle" data-timeline-skill-cluster-count></text></g>` : "";
     const hitboxClass = death ? "timeline-death-hitbox" : "timeline-lane-marker-hitbox";
     return `<g class="timeline-marker ${event.kind}" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(lane.color)}" data-timeline-marker-boundary="${event.boundary}" data-timeline-marker-at-micros="${event.atMicros}"${interval} data-timeline-marker-label="${escapeHtml(event.label)}" data-timeline-marker-kind="${event.kind}" data-timeline-marker-lane="${escapeHtml(event.laneKey)}" data-timeline-marker-source-index="${event.sourceIndex}" aria-label="${escapeHtml(label)}" aria-expanded="false" role="button" tabindex="0"${controls}${scope}><g data-timeline-marker-symbol data-timeline-marker-y="${y}" transform="translate(0 ${y})"><rect class="${hitboxClass}" x="-12" y="-12" width="24" height="24"/>${glyph}${clusterBadge}</g><title>${escapeHtml(event.label)}</title></g>`;
@@ -1235,6 +1262,14 @@ function timelineSkillIconPath(
   const publishedFilename = publishedPath.split("/").at(-1);
   const trustedFilename = trustedPath.split("/").at(-1);
   return publishedFilename && publishedFilename === trustedFilename ? trustedPath : undefined;
+}
+
+function trustedTimelineActionIconPath(
+  presentation: ParsePresentationCatalog | undefined,
+  actionId: string,
+): string | undefined {
+  const trustedPath = presentation?.action_icons?.[actionId];
+  return typeof trustedPath === "string" && safeTimelineIconPath(trustedPath) ? trustedPath : undefined;
 }
 
 function renderTimelineSvg(timeline: CombatTimeline, plotted: PlottedTimelineParticipant[], rdpsRateClock: PublicTimelineRateClockPoint[] | null, rdpsLabel: string, partialRdps: boolean, messages: MessageResolver): string {
@@ -2215,7 +2250,7 @@ function refreshTimelineSkillClusters(timeline: HTMLElement, viewport: TimelineV
   const startMicros = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
   const endMicros = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
   const plotWidth = Number(svg.dataset.plotWidth);
-  const markers = [...timeline.querySelectorAll<SVGGraphicsElement>(".timeline-marker.skill[data-timeline-marker-lane]")];
+  const markers = [...timeline.querySelectorAll<SVGGraphicsElement>(".timeline-marker.skill[data-timeline-marker-lane], .timeline-marker.hostile[data-timeline-marker-lane]")];
   timelineLanePreviewClosers.get(timeline)?.();
   markers.forEach((marker) => {
     marker.dataset.timelineMarkerBaseAriaLabel ??= marker.getAttribute("aria-label") ?? "";
@@ -2242,7 +2277,9 @@ function refreshTimelineSkillClusters(timeline: HTMLElement, viewport: TimelineV
     anchor.classList.add("is-skill-cluster-anchor");
     anchor.dataset.timelineSkillClusterSize = String(cluster.length);
     anchor.dataset.timelineSkillClusterMembers = cluster.map(({ sourceIndex }) => sourceIndex).join(",");
-    anchor.setAttribute("aria-label", messages.message("parse.timeline.skill_cluster", {
+    const clusterMessage = cluster.every(({ marker }) => marker.dataset.timelineMarkerKind === "skill")
+      ? "parse.timeline.skill_cluster" : "parse.timeline.cast_cluster";
+    anchor.setAttribute("aria-label", messages.message(clusterMessage, {
       count: cluster.length, events: labels.join("; "),
     }));
     const badge = anchor.querySelector<SVGGElement>("[data-timeline-skill-cluster-badge]");

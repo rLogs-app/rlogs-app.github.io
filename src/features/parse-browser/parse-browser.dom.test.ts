@@ -239,6 +239,37 @@ describe("combat timeline DOM interactions", () => {
     expect(lane.hasAttribute("hidden")).toBe(false);
   });
 
+  it("keeps hostile-source cast lanes visible when player visibility is cleared", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    const timeline = report.runs[0]!.timeline!;
+    timeline.schema_version = 7;
+    timeline.skill_uses = [];
+    timeline.hostile_casts = [{
+      source_actor_id: "enemy-44", target_actor_id: timeline.participant_tracks[0]!.actor_id,
+      at_micros: 1_250_000, action_id: "2203291", state: "started",
+      evidence: [{ source_report_id: timeline.canonical_report_id, event_sequence: 8,
+        game_time_millis: 2_250, kind: "exact_wire_cast_start" }], omitted_evidence: 0,
+    }];
+    timeline.omitted.skill_uses = 0;
+    timeline.omitted.hostile_casts = 0;
+    timeline.participant_tracks.forEach((track) => { track.omitted_skill_uses = 0; });
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+
+    const hostileLane = root.querySelector<SVGGElement>("[data-timeline-lane-hostile]")!;
+    const hostileMarker = root.querySelector<SVGGraphicsElement>(".timeline-marker.hostile")!;
+    expect(hostileLane).not.toBeNull();
+    expect(hostileMarker).not.toBeNull();
+    expect(hostileMarker.hasAttribute("data-timeline-marker-participant")).toBe(false);
+    root.querySelector<HTMLButtonElement>("[data-participant-clear]")!.click();
+    expect(hostileLane.hasAttribute("hidden")).toBe(false);
+    expect(hostileMarker.hasAttribute("hidden")).toBe(false);
+    expect([...root.querySelectorAll<SVGPolylineElement>("[data-participant]")]
+      .every((track) => track.hasAttribute("hidden"))).toBe(true);
+  });
+
   it("maps a real API game-assets skill icon to its trusted site-owned asset", () => {
     const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
     const timeline = report.runs[0]!.timeline!;

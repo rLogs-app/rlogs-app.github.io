@@ -2212,6 +2212,14 @@ summary.party-loadout-title {
   font: 600 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
+.timeline-lane-row[data-timeline-lane-hostile] text {
+  font-weight: 750;
+}
+
+.timeline-lane-row[data-timeline-lane-hostile] line {
+  stroke: color-mix(in srgb, var(--track) 45%, var(--line));
+}
+
 .timeline-lane-row[hidden],
 .timeline-marker[data-timeline-marker-lane][hidden] {
   display: none;
@@ -2266,7 +2274,8 @@ summary.party-loadout-title {
   vector-effect: non-scaling-stroke;
 }
 
-.timeline-marker.skill.is-skill-cluster-member {
+.timeline-marker.skill.is-skill-cluster-member,
+.timeline-marker.hostile.is-skill-cluster-member {
   display: none;
 }
 
@@ -2363,6 +2372,12 @@ summary.party-loadout-title {
 
 .timeline-lane-preview i.skill {
   background: #52cfff;
+  border-radius: 2px;
+  transform: none;
+}
+
+.timeline-lane-preview i.hostile {
+  background: #ff9166;
   border-radius: 2px;
   transform: none;
 }

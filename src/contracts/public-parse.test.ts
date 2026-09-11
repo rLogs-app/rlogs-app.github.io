@@ -95,6 +95,21 @@ function reportWithTimelineV6(): any {
   return report;
 }
 
+function reportWithTimelineV7(): any {
+  const report = reportWithTimelineV6();
+  report.projection_revision = 11;
+  const timeline = report.runs[0].timeline;
+  timeline.schema_version = 7;
+  timeline.hostile_casts = [{
+    source_actor_id: "enemy-44", target_actor_id: timeline.participant_tracks[0].actor_id,
+    at_micros: 1_750_000, action_id: "2203291", action_instance_id: "hostile-7", state: "started",
+    evidence: [{ source_report_id: report.report_id, event_sequence: 10,
+      game_time_millis: 2_750, kind: "exact_wire_cast_start" }], omitted_evidence: 0,
+  }];
+  timeline.omitted.hostile_casts = 0;
+  return report;
+}
+
 function packetTerminalDeathCause(atMicros: number): any {
   const hit = (hitMicros: number, sourceActorId: string) => ({
     at_micros: hitMicros,
@@ -183,6 +198,47 @@ describe("public parse contract", () => {
         game_time_millis: 1_500, kind: "exact_wire_cast_start" }], omitted_evidence: 0,
     }];
     reconciliation.timeline.omitted.skill_uses = 0;
+    expect(isPublicRunReconciliation(reconciliation)).toBe(true);
+  });
+  it("accepts only exact schema-v7 hostile cast evidence for non-player sources", () => {
+    const report = reportWithTimelineV7();
+    expect(isPublicParseReport(report)).toBe(true);
+    for (const mutate of [
+      (value: any) => { value.runs[0].timeline.hostile_casts[0].source_actor_id = value.runs[0].timeline.participant_tracks[0].actor_id; },
+      (value: any) => { value.runs[0].timeline.hostile_casts[0].at_micros = value.runs[0].timeline.duration_micros + 1; },
+      (value: any) => { value.runs[0].timeline.hostile_casts[0].evidence = []; },
+      (value: any) => { value.runs[0].timeline.hostile_casts[0].evidence[0].kind = "derived_damage_bucket"; },
+      (value: any) => { value.runs[0].timeline.omitted.hostile_casts = -1; },
+    ]) {
+      const invalid = structuredClone(report);
+      mutate(invalid);
+      expect(isPublicParseReport(invalid)).toBe(false);
+    }
+  });
+
+  it("accepts schema-v7 hostile casts on the schema-20 reconciliation envelope", () => {
+    const reconciliation = completedSchema18Reconciliation();
+    const report = reportWithTimelineV7();
+    reconciliation.schema_version = 20;
+    reconciliation.timeline = {
+      ...report.runs[0].timeline,
+      source: "reconciled_canonical_spine",
+      canonical_report_id: reconciliation.canonical_spine.report_id,
+      contributing_report_ids: reconciliation.reports.map((source: any) => source.report_id),
+      participant_tracks: reconciliation.reconciled_participants.map((participant: any, index: number) => ({
+        actor_id: participant.actor_id, character_id: participant.character_id,
+        observed_character_key: participant.observed_character_key ?? null, display_name: participant.display_name,
+        canonical_participant_index: index, series_point_count: 1, omitted_skill_uses: 0,
+      })),
+      skill_uses: [],
+      hostile_casts: [{
+        ...report.runs[0].timeline.hostile_casts[0],
+        evidence: [{ source_report_id: reconciliation.canonical_spine.report_id, event_sequence: 10,
+          game_time_millis: 2_750, kind: "exact_wire_cast_start" }],
+      }],
+      clock_anchor: { at_micros: 0, game_time_millis: 1_000,
+        source_report_id: reconciliation.canonical_spine.report_id, event_sequence: 1 },
+    };
     expect(isPublicRunReconciliation(reconciliation)).toBe(true);
   });
   it("keeps catalog 6 and My Parses 1 raw-readable while requiring identity on catalog 7 and My Parses 2", () => {
