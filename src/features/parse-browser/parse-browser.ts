@@ -2501,6 +2501,8 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
           : candidate.dataset.timelineMarkerKind === "skill" ? "skill" as const
             : candidate.dataset.timelineMarkerKind === "hostile" ? "hostile" as const : "loadout" as const,
         atMicros: Number(candidate.dataset.timelineMarkerAtMicros),
+        boundary: Number(candidate.dataset.timelineMarkerBoundary),
+        participant: candidate.dataset.timelineMarkerParticipant,
         ...(candidate.dataset.timelineMarkerEndMicros === undefined ? {} : { endMicros: Number(candidate.dataset.timelineMarkerEndMicros) }),
         label: candidate.dataset.timelineMarkerLabel ?? "",
         sourceIndex: Number(candidate.dataset.timelineMarkerSourceIndex),
@@ -2515,7 +2517,7 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
     const count = result.events.length + result.omitted;
     const heading = messages.message(count === 1 ? "parse.timeline.lanes.preview.one" : "parse.timeline.lanes.preview.other", { count });
     preview.innerHTML = `<strong>${escapeHtml(heading)}</strong><ul>${result.events.map((event) =>
-      `<li><i class="${event.kind}" aria-hidden="true"></i><span>${escapeHtml(event.label)}</span></li>`).join("")}</ul>${result.omitted
+      `<li><i class="${event.kind}" aria-hidden="true"></i><button type="button" data-timeline-preview-event-boundary="${event.boundary}"${event.participant === undefined ? "" : ` data-timeline-preview-event-participant="${escapeHtml(event.participant)}"`}>${escapeHtml(event.label)}</button></li>`).join("")}</ul>${result.omitted
         ? `<small>${escapeHtml(messages.message("parse.timeline.lanes.preview.more", { count: result.omitted }))}</small>` : ""}<small>${escapeHtml(messages.message("parse.timeline.lanes.preview.dismiss"))}</small>`;
     preview.hidden = false;
     active = marker;
@@ -2527,6 +2529,22 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
     marker.setAttribute("aria-describedby", [...new Set([
       ...(marker.getAttribute("aria-describedby") ?? "").split(/\s+/u).filter(Boolean), preview.id,
     ])].join(" "));
+    preview.querySelectorAll<HTMLButtonElement>("[data-timeline-preview-event-boundary]").forEach((eventButton) => {
+      const participant = eventButton.dataset.timelinePreviewEventParticipant;
+      eventButton.addEventListener("focus", () => {
+        if (participant !== undefined) setTimelineParticipantFocus(timeline, participant);
+      });
+      eventButton.addEventListener("blur", () => setTimelineParticipantFocus(
+        timeline, timeline.dataset.timelinePinnedTargetParticipant ?? null,
+      ));
+      eventButton.addEventListener("click", () => {
+        const boundary = Number(eventButton.dataset.timelinePreviewEventBoundary);
+        if (!Number.isInteger(boundary)) return;
+        showTimelineInspection(timeline, boundary, true);
+        const live = timeline.querySelector<HTMLOutputElement>("[data-timeline-live]");
+        if (live) live.textContent = eventButton.textContent ?? "";
+      });
+    });
     const focusParticipant = marker.dataset.timelineFocusParticipant || null;
     setTimelineParticipantFocus(timeline, focusParticipant);
     if (pin && focusParticipant !== null) timeline.dataset.timelinePinnedTargetParticipant = focusParticipant;

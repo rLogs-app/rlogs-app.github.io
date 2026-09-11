@@ -485,6 +485,23 @@ describe("combat timeline DOM interactions", () => {
     expect(preview.querySelectorAll("li")).toHaveLength(2);
     expect(preview.textContent).toContain("0:01.200");
     expect(preview.textContent).toContain("0:01.250");
+    anchor.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }) as unknown as Event);
+    const disclosedEvents = [...preview.querySelectorAll<HTMLButtonElement>("[data-timeline-preview-event-boundary]")];
+    expect(disclosedEvents).toHaveLength(2);
+    expect(disclosedEvents[0]!.textContent).toContain("at 0:01.200");
+    expect(disclosedEvents[1]!.textContent).toContain("at 0:01.250");
+    expect(disclosedEvents[0]!.textContent).not.toBe(disclosedEvents[1]!.textContent);
+    disclosedEvents[1]!.focus();
+    expect(root.querySelector('[data-participant-toggle="0"]')?.classList.contains("is-focused")).toBe(true);
+    disclosedEvents[1]!.click();
+    expect(root.querySelector("[data-timeline-inspector]")?.getAttribute("aria-valuenow")).toBe("2");
+    expect(root.querySelector("[data-timeline-live]")?.textContent).toBe(disclosedEvents[1]!.textContent);
+    expect(preview.hidden).toBe(false);
+    root.querySelector<HTMLButtonElement>('[data-participant-toggle="0"]')!.click();
+    expect(preview.hidden).toBe(true);
+    expect(skills.every((marker) => marker.hasAttribute("hidden"))).toBe(true);
+    root.querySelector<HTMLButtonElement>("[data-participant-show-all]")!.click();
+    expect(skills.every((marker) => !marker.hasAttribute("hidden"))).toBe(true);
 
     const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
     const end = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-end]")!;

@@ -2378,6 +2378,24 @@ summary.party-loadout-title {
   align-items: baseline;
 }
 
+.timeline-lane-preview li button {
+  min-width: 0;
+  padding: 2px 4px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+  text-align: left;
+}
+
+.timeline-lane-preview li button:hover,
+.timeline-lane-preview li button:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  outline: none;
+}
+
 .timeline-lane-preview i {
   width: 7px;
   height: 7px;
