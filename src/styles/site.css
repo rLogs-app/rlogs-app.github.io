@@ -2266,6 +2266,30 @@ summary.party-loadout-title {
   vector-effect: non-scaling-stroke;
 }
 
+.timeline-marker.skill.is-skill-cluster-member {
+  display: none;
+}
+
+.timeline-skill-cluster-badge {
+  pointer-events: none;
+}
+
+.timeline-skill-cluster-badge[hidden] {
+  display: none;
+}
+
+.timeline-skill-cluster-badge rect {
+  fill: var(--surface-raised);
+  stroke: currentColor;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-skill-cluster-badge text {
+  fill: var(--text);
+  font: 700 9px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
 .timeline-lane-playhead {
   stroke: #f7fbff;
   stroke-width: 1.5;

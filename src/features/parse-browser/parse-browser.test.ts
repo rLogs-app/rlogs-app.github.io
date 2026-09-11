@@ -36,6 +36,7 @@ import {
   timelineMaximumBoundary,
   timelineMarkerBoundary,
   timelineLaneHoverEvents,
+  timelineSkillMarkerClusters,
   clampTimelineViewport,
   panTimelineViewport,
   timelineViewportAtStart,
@@ -1071,6 +1072,19 @@ describe("canonical timeline selection", () => {
 });
 
 describe("timeline rolling windows", () => {
+  it("clusters skill markers deterministically by visible x distance and separates them when zoomed", () => {
+    const events = [
+      { laneKey: "participant-0", atMicros: 1_200_000, sourceIndex: 4 },
+      { laneKey: "participant-0", atMicros: 1_250_000, sourceIndex: 2 },
+      { laneKey: "participant-0", atMicros: 2_000_000, sourceIndex: 1 },
+      { laneKey: "participant-1", atMicros: 1_210_000, sourceIndex: 3 },
+    ];
+    expect(timelineSkillMarkerClusters(events, 0, 5_000_000, 954).map((cluster) =>
+      cluster.map(({ sourceIndex }) => sourceIndex))).toEqual([[4, 2]]);
+    expect(timelineSkillMarkerClusters(events, 1_000_000, 2_000_000, 954)).toEqual([]);
+    expect(timelineSkillMarkerClusters(events, 0, 5_000_000, 954, 0)).toEqual([]);
+  });
+
   it("selects deterministic same-lane hover events with zoom-aware tolerance, dedupe, and a hard cap", () => {
     const event = (sourceIndex: number, atMicros: number, label = `event ${sourceIndex}`) => ({
       kind: "loadout" as const, atMicros, label, sourceIndex,

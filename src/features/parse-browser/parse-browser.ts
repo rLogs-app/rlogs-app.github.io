@@ -1105,6 +1105,39 @@ export function timelineLaneHoverEvents<T extends Pick<TimelineLaneEvent, "kind"
   return { events: deduped.slice(0, cap), omitted: Math.max(0, deduped.length - cap), toleranceMicros };
 }
 
+export function timelineSkillMarkerClusters<T extends Pick<TimelineLaneEvent, "laneKey" | "atMicros" | "sourceIndex">>(
+  events: readonly T[], viewportStartMicros: number, viewportEndMicros: number, plotWidth: number, threshold = 24,
+): T[][] {
+  const span = viewportEndMicros - viewportStartMicros;
+  if (!(span > 0) || !(plotWidth > 0) || threshold < 0) return [];
+  const byLane = new Map<string, T[]>();
+  events.filter((event) => Number.isFinite(event.atMicros) && event.atMicros >= viewportStartMicros && event.atMicros <= viewportEndMicros)
+    .forEach((event) => {
+      const lane = byLane.get(event.laneKey);
+      if (lane) lane.push(event);
+      else byLane.set(event.laneKey, [event]);
+    });
+  const clusters: T[][] = [];
+  [...byLane].sort(([left], [right]) => left.localeCompare(right)).forEach(([, laneEvents]) => {
+    const sorted = laneEvents.slice().sort((left, right) => left.atMicros - right.atMicros || left.sourceIndex - right.sourceIndex);
+    let cluster: T[] = [];
+    let anchorX = 0;
+    for (const event of sorted) {
+      const x = ((event.atMicros - viewportStartMicros) / span) * plotWidth;
+      if (!cluster.length || x - anchorX <= threshold) {
+        if (!cluster.length) anchorX = x;
+        cluster.push(event);
+      } else {
+        if (cluster.length > 1) clusters.push(cluster);
+        cluster = [event];
+        anchorX = x;
+      }
+    }
+    if (cluster.length > 1) clusters.push(cluster);
+  });
+  return clusters;
+}
+
 function renderTimelineOverview(
   timeline: CombatTimeline,
   plotted: PlottedTimelineParticipant[],
@@ -1173,8 +1206,10 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
           ? `<circle class="timeline-lane-skill-icon-ring" cx="0" cy="0" r="10"/><image class="timeline-lane-skill-icon" href="${escapeHtml(event.iconAssetPath)}" x="-8" y="-8" width="16" height="16" preserveAspectRatio="xMidYMid slice"/>`
           : `<circle class="timeline-lane-skill-glyph" cx="0" cy="0" r="6"/><path class="timeline-lane-skill-bolt" d="M1-7L-4 1H0L-1 7L5-2H1Z"/>`
         : `<path class="timeline-lane-loadout-glyph" d="M0-7L7 0L0 7L-7 0Z"/>`;
+    const clusterBadge = event.kind === "skill"
+      ? `<g class="timeline-skill-cluster-badge" data-timeline-skill-cluster-badge hidden><rect x="1" y="-17" width="14" height="14" rx="7"/><text x="8" y="-7" text-anchor="middle" data-timeline-skill-cluster-count></text></g>` : "";
     const hitboxClass = death ? "timeline-death-hitbox" : "timeline-lane-marker-hitbox";
-    return `<g class="timeline-marker ${event.kind}" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(lane.color)}" data-timeline-marker-boundary="${event.boundary}" data-timeline-marker-at-micros="${event.atMicros}"${interval} data-timeline-marker-label="${escapeHtml(event.label)}" data-timeline-marker-kind="${event.kind}" data-timeline-marker-lane="${escapeHtml(event.laneKey)}" data-timeline-marker-source-index="${event.sourceIndex}" aria-label="${escapeHtml(label)}" aria-expanded="false" role="button" tabindex="0"${controls}${scope}><g data-timeline-marker-symbol data-timeline-marker-y="${y}" transform="translate(0 ${y})"><rect class="${hitboxClass}" x="-12" y="-12" width="24" height="24"/>${glyph}</g><title>${escapeHtml(event.label)}</title></g>`;
+    return `<g class="timeline-marker ${event.kind}" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(lane.color)}" data-timeline-marker-boundary="${event.boundary}" data-timeline-marker-at-micros="${event.atMicros}"${interval} data-timeline-marker-label="${escapeHtml(event.label)}" data-timeline-marker-kind="${event.kind}" data-timeline-marker-lane="${escapeHtml(event.laneKey)}" data-timeline-marker-source-index="${event.sourceIndex}" aria-label="${escapeHtml(label)}" aria-expanded="false" role="button" tabindex="0"${controls}${scope}><g data-timeline-marker-symbol data-timeline-marker-y="${y}" transform="translate(0 ${y})"><rect class="${hitboxClass}" x="-12" y="-12" width="24" height="24"/>${glyph}${clusterBadge}</g><title>${escapeHtml(event.label)}</title></g>`;
   })).join("");
   return `<svg class="timeline-marker-lanes-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.lanes.aria"))}" data-duration-micros="${timeline.duration_micros}"><defs><clipPath id="${clipId}"><rect x="${left}" y="0" width="${plotWidth}" height="${height}"/></clipPath></defs>${chrome}<g data-timeline-viewport-elapsed-geometry clip-path="url(#${clipId})">${markers}</g><line class="timeline-lane-playhead" data-timeline-lane-playhead x1="${left}" x2="${left}" y1="0" y2="${height}"/></svg>`;
 }
@@ -2094,6 +2129,7 @@ function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" =
     overview.setAttribute("aria-valuetext", viewportText);
     overview.setAttribute("aria-disabled", String(maximumStart === 0));
   }
+  refreshTimelineSkillClusters(timeline, viewport);
   refreshTimelineScale(timeline, viewport);
   refreshTimelineRange(timeline);
   return viewport;
@@ -2146,9 +2182,66 @@ function setTimelineParticipantVisibility(timeline: HTMLElement, participant: st
 
 function refreshTimelineVisibility(timeline: HTMLElement): void {
   const durationMicros = Number(timeline.querySelector<SVGSVGElement>(".timeline-svg")?.dataset.durationMicros);
-  refreshTimelineScale(timeline, timelineViewportFor(timeline, durationMicros));
+  const viewport = timelineViewportFor(timeline, durationMicros);
+  refreshTimelineSkillClusters(timeline, viewport);
+  refreshTimelineScale(timeline, viewport);
   refreshTimelineRange(timeline);
   refreshTimelineInspection(timeline);
+}
+
+function refreshTimelineSkillClusters(timeline: HTMLElement, viewport: TimelineViewport): void {
+  const svg = timeline.querySelector<SVGSVGElement>(".timeline-svg");
+  if (!svg) return;
+  const durationMicros = Number(svg.dataset.durationMicros);
+  const startMicros = timelineBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+  const endMicros = timelineBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+  const plotWidth = Number(svg.dataset.plotWidth);
+  const markers = [...timeline.querySelectorAll<SVGGraphicsElement>(".timeline-marker.skill[data-timeline-marker-lane]")];
+  timelineLanePreviewClosers.get(timeline)?.();
+  markers.forEach((marker) => {
+    marker.dataset.timelineMarkerBaseAriaLabel ??= marker.getAttribute("aria-label") ?? "";
+    marker.setAttribute("aria-label", marker.dataset.timelineMarkerBaseAriaLabel);
+    marker.classList.remove("is-skill-cluster-anchor", "is-skill-cluster-member");
+    marker.removeAttribute("aria-hidden");
+    marker.removeAttribute("data-timeline-skill-cluster-size");
+    marker.removeAttribute("data-timeline-skill-cluster-members");
+    const badge = marker.querySelector<SVGGElement>("[data-timeline-skill-cluster-badge]");
+    badge?.setAttribute("hidden", "");
+  });
+  const eligible = markers.flatMap((marker) => {
+    const atMicros = Number(marker.dataset.timelineMarkerAtMicros);
+    const sourceIndex = Number(marker.dataset.timelineMarkerSourceIndex);
+    const laneKey = marker.dataset.timelineMarkerLane;
+    return !marker.hasAttribute("hidden") && Number.isFinite(atMicros) && Number.isFinite(sourceIndex) && laneKey
+      ? [{ marker, laneKey, atMicros, sourceIndex }] : [];
+  });
+  const messages = createMessageResolver(timeline.dataset.locale);
+  timelineSkillMarkerClusters(eligible, startMicros, endMicros, plotWidth).forEach((cluster) => {
+    const anchor = cluster[0]!.marker;
+    const labels = cluster.map(({ marker }) => marker.dataset.timelineMarkerLabel ?? "").filter(Boolean);
+    anchor.classList.add("is-skill-cluster-anchor");
+    anchor.dataset.timelineSkillClusterSize = String(cluster.length);
+    anchor.dataset.timelineSkillClusterMembers = cluster.map(({ sourceIndex }) => sourceIndex).join(",");
+    anchor.setAttribute("aria-label", messages.message("parse.timeline.skill_cluster", {
+      count: cluster.length, events: labels.join("; "),
+    }));
+    const badge = anchor.querySelector<SVGGElement>("[data-timeline-skill-cluster-badge]");
+    const count = badge?.querySelector<SVGTextElement>("[data-timeline-skill-cluster-count]");
+    const rect = badge?.querySelector<SVGRectElement>("rect");
+    if (badge && count && rect) {
+      const text = String(cluster.length);
+      const width = Math.max(14, 8 + text.length * 6);
+      rect.setAttribute("x", String(8 - width / 2));
+      rect.setAttribute("width", String(width));
+      count.textContent = text;
+      badge.removeAttribute("hidden");
+    }
+    cluster.slice(1).forEach(({ marker }) => {
+      marker.classList.add("is-skill-cluster-member");
+      marker.setAttribute("aria-hidden", "true");
+      marker.setAttribute("tabindex", "-1");
+    });
+  });
 }
 
 interface TimelineEventGroup {
@@ -2266,7 +2359,11 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
         label: candidate.dataset.timelineMarkerLabel ?? "",
         sourceIndex: Number(candidate.dataset.timelineMarkerSourceIndex),
       }));
-    const result = timelineLaneHoverEvents(candidates, targetMicros, endMicros - startMicros);
+    const clusteredSkillSources = new Set((marker.dataset.timelineSkillClusterMembers ?? "").split(",").filter(Boolean).map(Number));
+    const result = clusteredSkillSources.size
+      ? { events: candidates.filter((candidate) => candidate.kind === "skill" && clusteredSkillSources.has(candidate.sourceIndex))
+        .sort((left, right) => left.atMicros - right.atMicros || left.sourceIndex - right.sourceIndex), omitted: 0 }
+      : timelineLaneHoverEvents(candidates, targetMicros, endMicros - startMicros);
     const messages = createMessageResolver(timeline.dataset.locale);
     const count = result.events.length + result.omitted;
     const heading = messages.message(count === 1 ? "parse.timeline.lanes.preview.one" : "parse.timeline.lanes.preview.other", { count });

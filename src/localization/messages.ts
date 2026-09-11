@@ -102,6 +102,7 @@ const enUsMessages: MessageCatalog = {
   "parse.timeline.lanes.preview.other": "{count} nearby events",
   "parse.timeline.lanes.preview.more": "{count} more nearby events",
   "parse.timeline.lanes.preview.dismiss": "Press Escape or tap outside to close.",
+  "parse.timeline.skill_cluster": "{count} skill uses: {events}",
   "parse.timeline.event.death_exact": "{player} died at {time}",
   "parse.timeline.event.death_bucket": "{player} death observed in the {start}–{end} one-second bucket",
   "parse.timeline.death.trigger": "{death}. Show death details.",

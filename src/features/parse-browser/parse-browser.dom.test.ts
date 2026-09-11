@@ -101,12 +101,19 @@ describe("combat timeline DOM interactions", () => {
     const play = root.querySelector<HTMLButtonElement>("[data-timeline-play]")!;
     const scrubber = root.querySelector<HTMLInputElement>("[data-timeline-scrubber]")!;
     const inspector = root.querySelector<SVGRectElement>("[data-timeline-inspector]")!;
+    const graphPlayhead = root.querySelector<SVGLineElement>("[data-timeline-crosshair] line")!;
+    const lanePlayhead = root.querySelector<SVGLineElement>("[data-timeline-lane-playhead]")!;
 
     expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("DPS at 0:00");
+    expect(lanePlayhead.getAttribute("x1")).toBe(graphPlayhead.getAttribute("x1"));
     play.click();
     expect(play.textContent).toBe("Pause");
     expect(play.getAttribute("aria-pressed")).toBe("true");
     expect(animationFrame).not.toBeNull();
+    animationFrame!(0);
+    animationFrame!(1_100);
+    expect(inspector.getAttribute("aria-valuenow")).toBe("1");
+    expect(lanePlayhead.getAttribute("x1")).toBe(graphPlayhead.getAttribute("x1"));
     play.click();
     expect(play.textContent).toBe("Play");
     expect(play.getAttribute("aria-pressed")).toBe("false");
@@ -114,6 +121,7 @@ describe("combat timeline DOM interactions", () => {
     scrubber.value = "2";
     scrubber.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
     expect(inspector.getAttribute("aria-valuenow")).toBe("2");
+    expect(lanePlayhead.getAttribute("x1")).toBe(graphPlayhead.getAttribute("x1"));
     expect(root.querySelector(".timeline-snapshot-table caption")?.textContent).toContain("DPS at 0:02");
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("eDPS");
     expect(root.querySelector(".timeline-snapshot-table")?.textContent).toContain("aDPS");
@@ -193,6 +201,7 @@ describe("combat timeline DOM interactions", () => {
     const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
     const timeline = report.runs[0]!.timeline!;
     const actorId = timeline.participant_tracks[0]!.actor_id;
+    timeline.death_markers[0]!.actor_id = actorId;
     timeline.schema_version = 6;
     timeline.skill_uses = [{
       actor_id: actorId, at_micros: 1_250_000, action_id: "2203291", state: "started",
@@ -209,17 +218,70 @@ describe("combat timeline DOM interactions", () => {
     const toggle = root.querySelector<HTMLButtonElement>('[data-participant-toggle="0"]')!;
     const trace = root.querySelector<SVGPolylineElement>('[data-participant="0"]')!;
     const skill = root.querySelector<SVGGraphicsElement>('.timeline-marker.skill[data-timeline-marker-participant="0"]')!;
+    const death = root.querySelector<SVGGraphicsElement>('.timeline-marker.death[data-timeline-marker-participant="0"]')!;
     const lane = root.querySelector<SVGGElement>('[data-timeline-lane-participant="0"]')!;
     expect(skill).not.toBeNull();
+    expect(death).not.toBeNull();
     toggle.click();
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(trace.hasAttribute("hidden")).toBe(true);
     expect(skill.hasAttribute("hidden")).toBe(true);
+    expect(death.hasAttribute("hidden")).toBe(true);
     expect(lane.hasAttribute("hidden")).toBe(true);
     root.querySelector<HTMLButtonElement>("[data-participant-show-all]")!.click();
     expect(trace.hasAttribute("hidden")).toBe(false);
     expect(skill.hasAttribute("hidden")).toBe(false);
+    expect(death.hasAttribute("hidden")).toBe(false);
     expect(lane.hasAttribute("hidden")).toBe(false);
+  });
+
+  it("renders accessible skill stacks at full range and separates them when zoomed", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    const timeline = report.runs[0]!.timeline!;
+    const actorId = timeline.participant_tracks[0]!.actor_id;
+    timeline.schema_version = 6;
+    timeline.duration_micros = 5_000_000;
+    timeline.skill_uses = [1_200_000, 1_250_000].map((at_micros, index) => ({
+      actor_id: actorId, at_micros, action_id: String(2203291 + index), state: "started" as const,
+      evidence: [{ source_report_id: timeline.canonical_report_id, event_sequence: 20 + index,
+        game_time_millis: 2_200 + index * 50, kind: "exact_wire_cast_start" as const }], omitted_evidence: 0,
+    }));
+    timeline.omitted.skill_uses = 0;
+    timeline.participant_tracks.forEach((track) => { track.omitted_skill_uses = 0; });
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+
+    const skills = [...root.querySelectorAll<SVGGraphicsElement>(".timeline-marker.skill")];
+    const anchor = skills.find((marker) => marker.classList.contains("is-skill-cluster-anchor"))!;
+    const member = skills.find((marker) => marker.classList.contains("is-skill-cluster-member"))!;
+    const death = root.querySelector<SVGGraphicsElement>(".timeline-marker.death")!;
+    expect(anchor.dataset.timelineSkillClusterSize).toBe("2");
+    expect(anchor.getAttribute("aria-label")).toContain("2 skill uses:");
+    expect(anchor.getAttribute("aria-label")).toContain("at 0:01.200");
+    expect(anchor.getAttribute("aria-label")).toContain("at 0:01.250");
+    expect(anchor.querySelector("[data-timeline-skill-cluster-count]")?.textContent).toBe("2");
+    expect(member.getAttribute("aria-hidden")).toBe("true");
+    expect(death.classList.contains("is-skill-cluster-member")).toBe(false);
+    anchor.focus();
+    const preview = root.querySelector<HTMLElement>("[data-timeline-lane-preview]")!;
+    expect(preview.hidden).toBe(false);
+    expect(preview.querySelectorAll("li")).toHaveLength(2);
+    expect(preview.textContent).toContain("0:01.200");
+    expect(preview.textContent).toContain("0:01.250");
+
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    const end = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-end]")!;
+    start.value = "1";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    end.value = "2";
+    end.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(start.value).toBe("1");
+    expect(end.value).toBe("2");
+    expect(skills.some((marker) => marker.classList.contains("is-skill-cluster-anchor"))).toBe(false);
+    expect(skills.every((marker) => !marker.classList.contains("is-skill-cluster-member"))).toBe(true);
+    expect(skills.every((marker) => marker.getAttribute("aria-hidden") !== "true")).toBe(true);
   });
 
   it("excludes an exact 2.1-second marker from a viewport starting at 3 seconds", () => {
