@@ -174,5 +174,11 @@ describe("public profile routes", () => {
       difficulty_tier: null,
     }, presentation, 2)).toBeUndefined();
     expect(observedReportDifficultyLabel({ ...character.reports[0]!, difficulty_family: null, difficulty_tier: null }, presentation, 2)).toBeUndefined();
+    expect(observedReportSceneLabel({ ...character.reports[0]!, scene_id: 99991, scene_name: "Mech Facility" }, presentation, 2))
+      .toBe("Mech Facility");
+    expect(observedReportSceneLabel({
+      ...character.reports[0]!, scene_id: 99991, scene_name: "Mech Facility",
+      deployment_id: null, client_build: null, protocol_pack_digest: null,
+    }, presentation, 2)).toBe("Scene #99991");
   });
 });

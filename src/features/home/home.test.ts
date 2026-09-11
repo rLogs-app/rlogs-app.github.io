@@ -133,6 +133,16 @@ describe("home rankings", () => {
     expect(parseFeedRow(exact, presentation, 6)).toContain("Chaotic - Tina's Mindrealm");
   });
 
+  it("carries an authority-backed attached name when the current scene catalog has not caught up", () => {
+    const fresh = { ...entry(99991, "Mech Facility", 10), difficulty_family: "master", difficulty_tier: 1 };
+    expect(catalogEntrySceneLabel(fresh, presentation, 7)).toBe("Mech Facility");
+    expect(parseFeedRow(fresh, presentation, 7)).toContain("Mech Facility");
+    expect(buildSceneRankings([fresh], presentation, 7)[0]?.label).toBe("Mech Facility");
+    expect(catalogEntrySceneLabel({ ...fresh, protocol_pack_digest: `sha256:${"f".repeat(64)}` }, presentation, 7))
+      .toBe("Mech Facility");
+    expect(catalogEntrySceneLabel(fresh, presentation, 6)).toBe("Scene #99991");
+  });
+
   it("localizes unresolved Master tiers in recent parses without losing known tiers", () => {
     const messages = createMessageResolver("fr", {
       ...bundledMessageCatalogs,
@@ -253,5 +263,14 @@ describe("home milestones", () => {
       client_build: "24687926",
       protocol_pack_digest: digest,
     }, presentation, 2)).toEqual({ activity: "Chaotic Realm", achievement: "verified clear" });
+  });
+
+  it("uses attached milestone scene evidence only with a complete schema 2 identity", () => {
+    const fresh = { ...milestone, scene_id: 99991, scene_name: "Mech Facility" };
+    expect(milestonePresentationCopy(fresh, presentation, 2).activity).toBe("Mech Facility");
+    expect(milestonePresentationCopy({
+      ...fresh, deployment_id: null, client_build: null, protocol_pack_digest: null,
+    }, presentation, 2).activity).toBe("Scene #99991");
+    expect(milestonePresentationCopy(fresh, presentation, 1).activity).toBe("Scene #99991");
   });
 });

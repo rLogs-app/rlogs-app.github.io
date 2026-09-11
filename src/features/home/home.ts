@@ -19,7 +19,7 @@ import {
 } from "../../contracts/public-activity";
 import { fetchPublicRead } from "../../public-api";
 import {
-  localizedSceneName,
+  localizedSceneNameWithAuthority,
   loadParsePresentation,
   semanticPresentationForCatalogEntry,
   semanticPresentationForIdentity,
@@ -171,7 +171,7 @@ export function buildSceneRankings(
       : `${season.cohort}:${season.seasonId ?? "unknown"}:${hasPresentation ? "presented" : "raw"}:scene:${entry.scene_id ?? (hasPresentation ? entry.activity_id ?? entry.scene_name : undefined) ?? "unknown"}:${difficultyKey}`;
     const label = isStimenRun(entry, hasPresentation)
       ? `Stimen Remains · Floor ${highestStimenFloor}`
-      : localizedSceneName(presentation, entry.scene_id);
+      : catalogEntrySceneLabel(entry, presentation, schemaVersion);
     const group = groups.get(key) ?? {
       key,
       label,
@@ -300,8 +300,11 @@ export function catalogEntrySceneLabel(
   presentation?: ParsePresentationCatalog,
   schemaVersion: 6 | 7 = 6,
 ): string {
-  void schemaVersion;
-  return localizedSceneName(presentation, entry.scene_id);
+  return localizedSceneNameWithAuthority(presentation, entry.scene_id, entry.scene_name, schemaVersion === 7 ? {
+    deployment_id: entry.deployment_id,
+    client_build: entry.client_build ?? null,
+    protocol_pack_digest: entry.protocol_pack_digest ?? null,
+  } : null);
 }
 
 function renderPhotoCatalog(catalog: PublicPhotoCatalog, target: HTMLElement): void {
@@ -352,7 +355,7 @@ export function milestonePresentationCopy(
     protocol_pack_digest: entry.protocol_pack_digest ?? null,
   } : null;
   const authorized = semanticPresentationForIdentity(presentation, identity) != null;
-  const activity = localizedSceneName(presentation, entry.scene_id);
+  const activity = localizedSceneNameWithAuthority(presentation, entry.scene_id, entry.scene_name, identity);
   const achievement = authorized && entry.kind === "master_twenty_dungeon"
     ? `first M${entry.difficulty_tier ?? 20} clear`
     : authorized && entry.kind === "nightmare_raid"

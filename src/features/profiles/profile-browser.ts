@@ -14,7 +14,7 @@ import {
 } from "../../contracts/public-characters";
 import {
   localizedClassName,
-  localizedSceneName,
+  localizedSceneNameWithAuthority,
   localizedSpecializationName,
   loadParsePresentation,
   semanticPresentationForIdentity,
@@ -308,8 +308,7 @@ export function observedReportSceneLabel(
     client_build: report.client_build ?? null,
     protocol_pack_digest: report.protocol_pack_digest ?? null,
   } : null;
-  void identity;
-  return localizedSceneName(presentation, report.scene_id);
+  return localizedSceneNameWithAuthority(presentation, report.scene_id, report.scene_name, identity);
 }
 
 export function observedReportDifficultyLabel(

@@ -27,8 +27,8 @@ import {
   localizedModuleEffectName,
   localizedModuleName,
   localizedSceneName,
+  localizedSceneNameWithAuthority,
   localizedSpecializationName,
-  presentationForCatalogEntry,
   presentationForReport,
   semanticPresentationForCatalogEntry,
   semanticPresentationForReport,
@@ -330,7 +330,7 @@ export function renderCatalogEntry(
   messages = createMessageResolver(),
 ): string {
   const semanticAuthorized = Boolean(semanticPresentationForCatalogEntry(presentation, schemaVersion, entry));
-  const scene = localizedSceneName(presentationForCatalogEntry(presentation, schemaVersion, entry), entry.scene_id);
+  const scene = catalogSceneLabel(entry, presentation, schemaVersion);
   const difficulty = supplementalDifficultyLabel(entry, scene, semanticAuthorized, messages);
   return `<button class="parse-row" type="button" data-report-id="${escapeHtml(entry.report_id)}" data-run-index="${entry.run_index}">
     <span><strong>${escapeHtml(scene)}</strong>
@@ -398,7 +398,11 @@ export function renderReport(
     gaps: messages.message(run.data_gap_count === 1 ? "parse.report.proof.gaps.one" : "parse.report.proof.gaps.other", { count: gapCount }),
     report: report.report_id,
   });
-  const sceneHeading = localizedSceneName(viewedPresentation, run.scene_id);
+  const sceneHeading = localizedSceneNameWithAuthority(viewedPresentation, run.scene_id, run.scene_name, {
+    deployment_id: report.deployment_id,
+    client_build: report.client_build,
+    protocol_pack_digest: report.protocol_pack_digest ?? null,
+  });
   return `<article class="parse-report">
     <div class="parse-report-heading"><div><p class="eyebrow">${escapeHtml(report.region_id)} / ${escapeHtml(report.verification.tier)}</p>
       <h3>${escapeHtml(sceneHeading)}</h3>
@@ -4141,7 +4145,7 @@ export function filterSearch(
   return entries.filter((entry) => {
     const authorized = Boolean(semanticPresentationForCatalogEntry(presentation, schemaVersion, entry));
     const searchable = [
-      localizedSceneName(presentation, entry.scene_id),
+      catalogSceneLabel(entry, presentation, schemaVersion),
       authorized ? entry.activity_id : undefined,
       authorized ? entry.activity_family_id : undefined,
       authorized ? entry.activity_category_id : undefined,
@@ -4168,6 +4172,18 @@ export function catalogSemanticFacetsAuthorized(
 ): boolean {
   return entries.length > 0 && entries.length === totalEntries && entries.every((entry) =>
     semanticPresentationForCatalogEntry(presentation, schemaVersion, entry) != null);
+}
+
+function catalogSceneLabel(
+  entry: PublicParseCatalogEntry,
+  presentation: ParsePresentationCatalog | undefined,
+  schemaVersion: 6 | 7,
+): string {
+  return localizedSceneNameWithAuthority(presentation, entry.scene_id, entry.scene_name, schemaVersion === 7 ? {
+    deployment_id: entry.deployment_id,
+    client_build: entry.client_build ?? null,
+    protocol_pack_digest: entry.protocol_pack_digest ?? null,
+  } : null);
 }
 
 export function populateSceneFacet(

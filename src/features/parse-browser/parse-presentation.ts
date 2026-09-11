@@ -109,6 +109,22 @@ export function localizedSceneName(
   return humanName(catalog?.scenes[id] ?? null) ?? `Scene #${id}`;
 }
 
+/** Stable labels carry forward across non-seasonal builds. When the bundled
+ * catalog has not learned a new scene yet, accept the server-retained label
+ * only with a complete producer identity; otherwise keep the numeric evidence. */
+export function localizedSceneNameWithAuthority(
+  catalog: ParsePresentationCatalog | undefined,
+  sceneId: number | string | null | undefined,
+  attachedName: string | null | undefined,
+  identity: NullablePresentationIdentity | null | undefined,
+): string {
+  if (sceneId == null) return "Scene unresolved";
+  const id = String(sceneId);
+  return humanName(catalog?.scenes[id] ?? null)
+    ?? (completePresentationIdentity(identity) ? humanName(attachedName ?? null) : undefined)
+    ?? `Scene #${id}`;
+}
+
 export function localizedClassName(
   catalog: ParsePresentationCatalog | undefined,
   classId: number | string | null | undefined,
@@ -211,6 +227,13 @@ export function semanticPresentationForIdentity(
   return identity?.deployment_id != null && identity.client_build != null && identity.protocol_pack_digest != null
     ? semanticPresentationForReport(catalog, identity.deployment_id, identity.client_build, identity.protocol_pack_digest)
     : undefined;
+}
+
+function completePresentationIdentity(identity: NullablePresentationIdentity | null | undefined): boolean {
+  return typeof identity?.deployment_id === "string" && identity.deployment_id.trim().length > 0
+    && typeof identity.client_build === "string" && identity.client_build.trim().length > 0
+    && typeof identity.protocol_pack_digest === "string"
+    && /^sha256:[0-9a-f]{64}$/u.test(identity.protocol_pack_digest);
 }
 
 function humanName(value: string | null): string | undefined {

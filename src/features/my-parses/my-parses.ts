@@ -16,7 +16,7 @@ import {
 } from "../parse-browser/parse-browser";
 import { createParseDetailModal } from "../parse-browser/parse-detail-modal";
 import {
-  localizedSceneName,
+  localizedSceneNameWithAuthority,
   loadParsePresentation,
   semanticPresentationForCatalogEntry,
   type ParsePresentationCatalog,
@@ -264,7 +264,7 @@ export function filterMyParses(
   return entries.filter((entry) => {
     const authorized = Boolean(semanticPresentationForCatalogEntry(presentation, schemaVersion, entry));
     const value = [
-      localizedSceneName(presentation, entry.scene_id),
+      myParseSceneLabel(entry, presentation, schemaVersion),
       authorized ? entry.activity_id : undefined,
       authorized ? entry.activity_family_id : undefined,
       entry.region_id,
@@ -294,12 +294,24 @@ export function renderMyParseEntry(
     ? "Submitted by you"
     : `Participant${entry.matched_character_ids.length === 1 ? "" : "s"}: ${entry.matched_character_ids.join(", ")}`;
   const visibility = entry.submitted_by_you
-    ? `<label class="my-parse-visibility"><span>Visibility</span><select data-visibility-report="${escapeHtml(entry.report_id)}" data-current-visibility="${entry.visibility}" aria-label="Visibility for ${escapeHtml(localizedSceneName(presentation, entry.scene_id))}"><option value="public"${entry.visibility === "public" ? " selected" : ""}>Public</option><option value="unlisted"${entry.visibility === "unlisted" ? " selected" : ""}>Unlisted</option><option value="private"${entry.visibility === "private" ? " selected" : ""}>Private</option></select></label>`
+    ? `<label class="my-parse-visibility"><span>Visibility</span><select data-visibility-report="${escapeHtml(entry.report_id)}" data-current-visibility="${entry.visibility}" aria-label="Visibility for ${escapeHtml(myParseSceneLabel(entry, presentation, schemaVersion))}"><option value="public"${entry.visibility === "public" ? " selected" : ""}>Public</option><option value="unlisted"${entry.visibility === "unlisted" ? " selected" : ""}>Unlisted</option><option value="private"${entry.visibility === "private" ? " selected" : ""}>Private</option></select></label>`
     : `<span class="status-chip neutral">${escapeHtml(title(entry.visibility))}</span>`;
   return `<article class="my-parse-entry">
     <div class="my-parse-entry-meta">${visibility}<span>${escapeHtml(relationship)}</span></div>
     ${renderCatalogEntry(entry, presentation, schemaVersion)}
   </article>`;
+}
+
+function myParseSceneLabel(
+  entry: MyParseCatalogEntry,
+  presentation: ParsePresentationCatalog | undefined,
+  schemaVersion: 6 | 7,
+): string {
+  return localizedSceneNameWithAuthority(presentation, entry.scene_id, entry.scene_name, schemaVersion === 7 ? {
+    deployment_id: entry.deployment_id,
+    client_build: entry.client_build ?? null,
+    protocol_pack_digest: entry.protocol_pack_digest ?? null,
+  } : null);
 }
 
 function renderLoadMore(catalog: MyParseCatalog): string {

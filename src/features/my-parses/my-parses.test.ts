@@ -112,6 +112,16 @@ describe("My Parses", () => {
     }
   });
 
+  it("uses trusted attached names for new scenes in rows, search, and visibility controls", () => {
+    const fresh = { ...entry, scene_id: 99991, scene_name: "Mech Facility", submitted_by_you: true };
+    const html = renderMyParseEntry(fresh, presentation, 7);
+    expect(html).toContain("Mech Facility");
+    expect(html).toContain('aria-label="Visibility for Mech Facility"');
+    expect(filterMyParses([fresh], "mech facility", presentation, 7)).toEqual([fresh]);
+    expect(renderMyParseEntry(fresh, presentation, 6)).toContain("Scene #99991");
+    expect(filterMyParses([fresh], "mech facility", presentation, 6)).toEqual([]);
+  });
+
   it("lets only the uploader change a parse's visibility", () => {
     const participantHtml = renderMyParseEntry(entry, presentation, 7);
     const ownerHtml = renderMyParseEntry({ ...entry, submitted_by_you: true }, presentation, 7);

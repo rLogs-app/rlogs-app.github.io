@@ -8,6 +8,7 @@ import {
   localizedModuleEffectName,
   localizedModuleName,
   localizedSceneName,
+  localizedSceneNameWithAuthority,
   localizedSpecializationName,
   presentationForReport,
   semanticPresentationForReport,
@@ -134,6 +135,22 @@ describe("parse presentation", () => {
     expect(semanticPresentationForReport(catalog, "global", "24252055", "sha256:older")).toBeUndefined();
     expect(semanticPresentationForReport(catalog, "global", "24687926", "sha256:other")).toBeUndefined();
     expect(semanticPresentationForReport(catalog, "cn", "24687926", "sha256:localization-authority")).toBeUndefined();
+  });
+
+  it("falls back to an authority-backed attached scene name only when the current catalog is missing it", () => {
+    const identity = {
+      deployment_id: "global",
+      client_build: "24699999",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+    };
+    expect(localizedSceneNameWithAuthority(catalog, 99991, "Mech Facility", identity)).toBe("Mech Facility");
+    expect(localizedSceneNameWithAuthority(catalog, 99991, "Mech Facility", null)).toBe("Scene #99991");
+    expect(localizedSceneNameWithAuthority(catalog, 99991, "Mech Facility", {
+      ...identity, client_build: "   ",
+    })).toBe("Scene #99991");
+    expect(localizedSceneNameWithAuthority(catalog, 99991, "博伊斯ATK_02", identity)).toBe("Scene #99991");
+    expect(localizedSceneNameWithAuthority(catalog, 13021, "Wrong attached name", identity))
+      .toBe("Clash! Field of Forgotten Illusions");
   });
 
   it("renders core data before an optional presentation request settles", async () => {

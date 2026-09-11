@@ -273,6 +273,26 @@ describe("parse search", () => {
     }
   });
 
+  it("uses trusted attached scene names for new catalog and report scenes", () => {
+    const fresh = { ...parse, scene_id: 99991, scene_name: "Mech Facility" };
+    expect(renderCatalogEntry(fresh, catalogPresentation, 7)).toContain("Mech Facility");
+    expect(filterSearch([fresh], "mech facility", catalogPresentation, 7)).toEqual([fresh]);
+    expect(renderCatalogEntry({ ...fresh, protocol_pack_digest: `sha256:${"f".repeat(64)}` }, catalogPresentation, 7))
+      .toContain("Mech Facility");
+    expect(renderCatalogEntry(fresh, catalogPresentation, 6)).toContain("Scene #99991");
+    expect(filterSearch([fresh], "mech facility", catalogPresentation, 6)).toEqual([]);
+
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    report.deployment_id = "global";
+    report.client_build = "24699999";
+    report.protocol_pack_digest = `sha256:${"a".repeat(64)}`;
+    report.runs[0]!.scene_id = 99991;
+    report.runs[0]!.scene_name = "Mech Facility";
+    expect(renderReport(report, 0, null, null, catalogPresentation)).toContain("<h3>Mech Facility</h3>");
+    delete report.protocol_pack_digest;
+    expect(renderReport(report, 0, null, null, catalogPresentation)).toContain("<h3>Scene #99991</h3>");
+  });
+
   it("shows applicable difficulty on both parse catalog and detail surfaces", () => {
     const masterEntry = { ...parse, difficulty_family: "master", difficulty_tier: 17 };
     expect(renderCatalogEntry(masterEntry, catalogPresentation, 7)).toContain("Master 17 / Completed");
