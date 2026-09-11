@@ -284,6 +284,21 @@ describe("combat timeline DOM interactions", () => {
     hostileMarker.dispatchEvent(new window.PointerEvent("pointerleave", { pointerType: "mouse" }) as unknown as Event);
     expect(targetTrace.classList.contains("is-focused")).toBe(false);
     expect(otherTrace.classList.contains("is-dimmed")).toBe(false);
+    hostileMarker.dispatchEvent(new window.MouseEvent("click") as unknown as Event);
+    expect(targetTrace.classList.contains("is-focused")).toBe(true);
+    const otherToggle = root.querySelector<HTMLButtonElement>('[data-participant-toggle="1"]')!;
+    otherToggle.dispatchEvent(new window.PointerEvent("pointerenter", { pointerType: "mouse" }) as unknown as Event);
+    expect(otherTrace.classList.contains("is-focused")).toBe(true);
+    otherToggle.dispatchEvent(new window.PointerEvent("pointerleave", { pointerType: "mouse" }) as unknown as Event);
+    expect(targetTrace.classList.contains("is-focused")).toBe(true);
+    expect(otherTrace.classList.contains("is-dimmed")).toBe(true);
+    otherToggle.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);
+    expect(otherTrace.classList.contains("is-focused")).toBe(true);
+    otherToggle.dispatchEvent(new window.FocusEvent("blur") as unknown as Event);
+    expect(targetTrace.classList.contains("is-focused")).toBe(true);
+    expect(otherTrace.classList.contains("is-dimmed")).toBe(true);
+    expect([...root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]")]
+      .map((button) => button.getAttribute("aria-pressed"))).toEqual(visibilityBeforeFocus);
     root.querySelector<HTMLButtonElement>("[data-participant-clear]")!.click();
     expect(hostileLane.hasAttribute("hidden")).toBe(false);
     expect(hostileMarker.hasAttribute("hidden")).toBe(false);
@@ -294,6 +309,47 @@ describe("combat timeline DOM interactions", () => {
     expect(targetLane.hasAttribute("hidden")).toBe(true);
     expect(hostileMarker.hasAttribute("hidden")).toBe(false);
     expect(targetToggle.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("does not imply one target for a mixed or partially untargeted hostile cast cluster", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    const timeline = report.runs[0]!.timeline!;
+    timeline.schema_version = 7;
+    timeline.skill_uses = [];
+    timeline.hostile_source_actor_ids = ["enemy-44"];
+    const base = {
+      source_actor_id: "enemy-44", hostility_evidence: "participant_outgoing_target" as const,
+      action_id: "2203291", state: "started" as const, omitted_evidence: 0,
+    };
+    timeline.hostile_casts = [
+      { ...base, target_actor_id: timeline.participant_tracks[0]!.actor_id, at_micros: 1_250_000,
+        evidence: [{ source_report_id: timeline.canonical_report_id, event_sequence: 8,
+          game_time_millis: 2_250, kind: "exact_wire_cast_start" }] },
+      { ...base, target_actor_id: timeline.participant_tracks[1]!.actor_id, at_micros: 1_250_100,
+        evidence: [{ source_report_id: timeline.canonical_report_id, event_sequence: 9,
+          game_time_millis: 2_251, kind: "exact_wire_cast_start" }] },
+      { ...base, at_micros: 1_250_200,
+        evidence: [{ source_report_id: timeline.canonical_report_id, event_sequence: 10,
+          game_time_millis: 2_252, kind: "exact_wire_cast_start" }] },
+    ];
+    timeline.omitted.skill_uses = 0;
+    timeline.omitted.hostile_casts = 0;
+    timeline.participant_tracks.forEach((track) => { track.omitted_skill_uses = 0; });
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+
+    const anchor = root.querySelector<SVGGraphicsElement>(".timeline-marker.hostile.is-skill-cluster-anchor")!;
+    expect(anchor).not.toBeNull();
+    expect(anchor.dataset.timelineSkillClusterSize).toBe("3");
+    expect(anchor.dataset.timelineFocusParticipant).toBe("");
+    anchor.dispatchEvent(new window.PointerEvent("pointerenter", { pointerType: "mouse" }) as unknown as Event);
+    expect(root.querySelector<HTMLElement>("[data-timeline-lane-preview]")!.textContent).toContain("3 nearby events");
+    expect([...root.querySelectorAll<SVGPolylineElement>(".timeline-trace")]
+      .some((trace) => trace.classList.contains("is-focused") || trace.classList.contains("is-dimmed"))).toBe(false);
+    expect([...root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]")]
+      .every((button) => button.getAttribute("aria-pressed") === "true")).toBe(true);
   });
 
   it("maps a real API game-assets skill icon to its trusted site-owned asset", () => {

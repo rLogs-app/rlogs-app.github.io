@@ -1119,7 +1119,7 @@ export function normalizeTimelineLaneEvents(
       participantIndex, color, events: owned,
     }] : [];
   }));
-  const unscoped = events.filter((event) => event.participantIndex === undefined);
+  const unscoped = events.filter((event) => event.kind !== "hostile" && event.participantIndex === undefined);
   if (unscoped.length) lanes.push({
     key: "unscoped", label: messages.message("parse.timeline.lanes.unscoped"),
     color: "#b8c8d9", events: unscoped,
@@ -2284,6 +2284,7 @@ function refreshTimelineSkillClusters(timeline: HTMLElement, viewport: TimelineV
     marker.removeAttribute("aria-hidden");
     marker.removeAttribute("data-timeline-skill-cluster-size");
     marker.removeAttribute("data-timeline-skill-cluster-members");
+    marker.dataset.timelineFocusParticipant = marker.dataset.timelineTargetParticipant ?? "";
     const badge = marker.querySelector<SVGGElement>("[data-timeline-skill-cluster-badge]");
     badge?.setAttribute("hidden", "");
   });
@@ -2301,6 +2302,10 @@ function refreshTimelineSkillClusters(timeline: HTMLElement, viewport: TimelineV
     anchor.classList.add("is-skill-cluster-anchor");
     anchor.dataset.timelineSkillClusterSize = String(cluster.length);
     anchor.dataset.timelineSkillClusterMembers = cluster.map(({ sourceIndex }) => sourceIndex).join(",");
+    const clusterTargets = cluster.map(({ marker }) => marker.dataset.timelineTargetParticipant);
+    const uniqueTargets = new Set(clusterTargets.filter((target): target is string => target !== undefined));
+    anchor.dataset.timelineFocusParticipant = clusterTargets.every((target) => target !== undefined) && uniqueTargets.size === 1
+      ? clusterTargets[0]! : "";
     const clusterMessage = cluster.every(({ marker }) => marker.dataset.timelineMarkerKind === "skill")
       ? "parse.timeline.skill_cluster" : "parse.timeline.cast_cluster";
     anchor.setAttribute("aria-label", messages.message(clusterMessage, {
@@ -2416,6 +2421,7 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
     });
     active = null;
     pinned = false;
+    delete timeline.dataset.timelinePinnedTargetParticipant;
     setTimelineParticipantFocus(timeline, null);
   };
   timelineLanePreviewClosers.set(timeline, close);
@@ -2464,7 +2470,10 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
     marker.setAttribute("aria-describedby", [...new Set([
       ...(marker.getAttribute("aria-describedby") ?? "").split(/\s+/u).filter(Boolean), preview.id,
     ])].join(" "));
-    setTimelineParticipantFocus(timeline, marker.dataset.timelineTargetParticipant ?? null);
+    const focusParticipant = marker.dataset.timelineFocusParticipant || null;
+    setTimelineParticipantFocus(timeline, focusParticipant);
+    if (pin && focusParticipant !== null) timeline.dataset.timelinePinnedTargetParticipant = focusParticipant;
+    else if (pin) delete timeline.dataset.timelinePinnedTargetParticipant;
     if (pin) {
       outsideHandler = (event) => {
         if (event.target && (marker.contains(event.target as Node) || preview.contains(event.target as Node))) return;
@@ -2631,7 +2640,8 @@ function wireTimelineControls(root: HTMLElement): void {
       const timeline = button.closest<HTMLElement>("[data-timeline-metric]");
       const participant = button.dataset.participantToggle;
       if (!timeline || participant == null) return;
-      setTimelineParticipantFocus(timeline, focused ? participant : null);
+      setTimelineParticipantFocus(timeline, focused
+        ? participant : timeline.dataset.timelinePinnedTargetParticipant ?? null);
     };
     button.addEventListener("pointerenter", () => setFocus(true));
     button.addEventListener("pointerleave", () => setFocus(false));
