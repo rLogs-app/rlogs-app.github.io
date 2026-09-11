@@ -89,8 +89,8 @@ describe("parse presentation label gate", () => {
     expect(catalog.coverage).toMatchObject({
       scope: "captured-public-api-action-ids-with-trusted-root-label-reconciliation",
       observed_action_count: observation.action_ids.length,
-      localized_observed_action_count: 229,
-      trusted_enrichment_count: 15,
+      localized_observed_action_count: 232,
+      trusted_enrichment_count: 18,
       conflicting_action_ids: [],
       public_action_observation: {
         captured_at: observation.captured_at,
@@ -99,13 +99,16 @@ describe("parse presentation label gate", () => {
         report_count: observation.report_count,
       },
     });
-    expect(catalog.coverage.uncovered_action_ids).toHaveLength(33);
+    expect(catalog.coverage.uncovered_action_ids).toHaveLength(30);
     expect(catalog.coverage.uncovered_action_ids).toContain("700009");
     expect(catalog.actions["122330103"]).toBe("Powerdraw");
     expect(catalog.actions["2220329107"]).toBe("Falcon Strike");
     expect(catalog.actions["2220329109"]).toBe("Falcon Lightning Strike");
     expect(catalog.actions["25524003"]).toBe("Radiance Barrage");
     expect(catalog.actions["150101"]).toBe("Vines' Embrace");
+    expect(catalog.actions["3021"]).toBe("Thunderfall Grasp");
+    expect(catalog.actions["3022"]).toBe("Flame Roar");
+    expect(catalog.actions["3613"]).toBe("Master of Stealth");
     expect(catalog.actions["700009"]).toBeUndefined();
     expect(catalog.actions["9999999"]).toBeUndefined();
     expect(Object.values(catalog.actions).every(

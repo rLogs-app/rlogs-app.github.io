@@ -497,6 +497,9 @@ function isReplayStateConsistent(value: Record<string, any>): boolean {
 function isCompletedReplayRdpsConsistent(value: Record<string, any>): boolean {
   if ((value.schema_version !== 18 && value.schema_version !== 19 && value.schema_version !== 20) || value.attribution_replay_completed !== true) return true;
   if (!Array.isArray(value.reconciled_participants) || !isRecord(value.conservation)) return false;
+  if (value.complete_local_vantage_coverage === false &&
+      value.reconciled_participants.some((participant: unknown) =>
+        !isRecord(participant) || participant.rdps_incomplete !== true)) return false;
   const conservationFields = ["raw_damage", "rdps_damage", "contribution_given", "contribution_received"] as const;
   if (!conservationFields.every((field) => isNonNegativeInteger(value.conservation[field]))) return false;
 

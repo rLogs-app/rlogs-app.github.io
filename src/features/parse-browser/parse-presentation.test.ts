@@ -26,6 +26,9 @@ const catalog: ParsePresentationCatalog = {
     "2900840": "Arcane! Divine Reliance",
     "122330103": "Powerdraw",
     "2220329107": "Falcon Strike",
+    "3021": "Thunderfall Grasp",
+    "3022": "Flame Roar",
+    "3613": "Master of Stealth",
   },
   effects: { "3003052": "Harmony Grace" },
   imagines: { "3948": "Battle Imagine - Rorola" },
@@ -116,6 +119,9 @@ describe("parse presentation", () => {
     expect(localizedActionName(resolved, "2900840", null)).toBe("Arcane! Divine Reliance");
     expect(localizedEffectName(resolved, "3003052", null)).toBe("Harmony Grace");
     expect(localizedImagineName(resolved, "3948")).toBe("Battle Imagine - Rorola");
+    expect(localizedActionName(resolved, "3021", null)).toBe("Thunderfall Grasp");
+    expect(localizedActionName(resolved, "3022", null)).toBe("Flame Roar");
+    expect(localizedActionName(resolved, "3613", null)).toBe("Master of Stealth");
     expect(localizedModuleName(resolved, "5500104")).toBe("Excellent Attack Module - Premium");
     expect(localizedModuleEffectName(resolved, "1110")).toBe("Strength Boost");
     expect(localizedSceneName(resolved, 13021)).toBe("Clash! Field of Forgotten Illusions");

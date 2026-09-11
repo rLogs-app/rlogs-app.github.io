@@ -24,6 +24,7 @@ const parse = readJson(resolve(publicRoot, "parse-presentation.en-US.v4.json"));
 const classes = readJson(resolve(runtimeRoot, "class-localization.v1.json"));
 const specializations = readJson(resolve(runtimeRoot, "specialization-localization.v1.json"));
 const scenes = readJson(resolve(runtimeRoot, "localization/en-US/scene-names.v1.json"));
+const auxiliaryActions = readJson(resolve(runtimeRoot, "localization/en-US/auxiliary-action-names.v1.json"));
 const observation = readJson(resolve(siteRoot, "scripts/data/public-parse-action-observation.v1.json"));
 const currentRecount = readJson(resolve(catalogRoot, "combat-actions/current-build-recount.v1.json"));
 
@@ -79,6 +80,13 @@ for (const [id, label] of Object.entries(parse.imagines)) {
   labels.add(label);
   candidates.set(id, labels);
 }
+for (const [id, label] of auxiliaryActions.skills ?? []) {
+  const reviewed = reviewedEnglishLabel(label);
+  if (!reviewed) continue;
+  const labels = candidates.get(String(id)) ?? new Set();
+  labels.add(reviewed);
+  candidates.set(String(id), labels);
+}
 
 const actions = { ...parse.actions };
 const trustedEnrichmentIds = [];
@@ -98,7 +106,7 @@ const uncoveredActionIds = observation.action_ids.filter((id) => !actions[id]);
 const output = {
   ...parse,
   schema_version: 5,
-  source: `${parse.source}; trusted ROOT scene/class/specialization, recount, skill-effect, and Battle Imagine label relationships`,
+  source: `${parse.source}; trusted ROOT scene/class/specialization, recount, skill-effect, auxiliary-action, and Battle Imagine label relationships`,
   coverage: {
     ...parse.coverage,
     scope: "captured-public-api-action-ids-with-trusted-root-label-reconciliation",

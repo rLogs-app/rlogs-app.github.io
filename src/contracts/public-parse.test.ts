@@ -606,6 +606,17 @@ describe("public parse contract", () => {
     duplicateActor.timeline.participant_tracks[1].actor_id = duplicateActor.timeline.participant_tracks[0].actor_id;
     expect(isPublicRunReconciliation(duplicateActor)).toBe(false);
   });
+  it("requires partial POV coverage to remain explicitly incomplete", () => {
+    const partial = completedSchema18Reconciliation();
+    partial.complete_local_vantage_coverage = false;
+    partial.local_vantage_character_count -= 1;
+    expect(isPublicRunReconciliation(partial)).toBe(false);
+
+    partial.reconciled_participants.forEach((participant: any) => {
+      participant.rdps_incomplete = true;
+    });
+    expect(isPublicRunReconciliation(partial)).toBe(true);
+  });
   it("validates complete schema 18 rDPS series without rejecting unavailable or truncated buckets", () => {
     const brokenBucketFormula = completedSchema18Reconciliation();
     brokenBucketFormula.reconciled_participants[0].series[0].rdps_damage += 1;

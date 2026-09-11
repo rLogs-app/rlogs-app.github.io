@@ -329,7 +329,7 @@ export function renderCatalogEntry(
 ): string {
   const semanticAuthorized = Boolean(semanticPresentationForCatalogEntry(presentation, schemaVersion, entry));
   const difficulty = semanticAuthorized
-    ? [title(entry.difficulty_family), entry.difficulty_tier ? ` ${entry.difficulty_tier}` : ""].join("").trim()
+    ? [title(entry.difficulty_family), entry.difficulty_tier == null ? "" : ` ${entry.difficulty_tier}`].join("").trim()
     : entry.difficulty_tier == null ? "Difficulty unresolved" : `Tier ${entry.difficulty_tier}`;
   return `<button class="parse-row" type="button" data-report-id="${escapeHtml(entry.report_id)}" data-run-index="${entry.run_index}">
     <span><strong>${escapeHtml(localizedSceneName(presentationForCatalogEntry(presentation, schemaVersion, entry), entry.scene_id))}</strong>
@@ -3997,7 +3997,7 @@ function formatDifficulty(run: PublicRun, presentationAuthorized = true): string
     return run.difficulty_tier == null ? "Difficulty unresolved" : `Tier ${run.difficulty_tier}`;
   }
   return (
-    [title(run.difficulty_family), run.difficulty_tier ? ` ${run.difficulty_tier}` : ""].join("").trim() ||
+    [title(run.difficulty_family), run.difficulty_tier == null ? "" : ` ${run.difficulty_tier}`].join("").trim() ||
     "Difficulty unresolved"
   );
 }
