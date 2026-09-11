@@ -717,6 +717,14 @@ describe("public parse contract", () => {
     report.runs[0].timeline.time_basis = "capture_observed";
     expect(isPublicParseReport(report)).toBe(false);
   });
+  it("requires an exact protocol identity for revision 10 reports", () => {
+    const report = reportWithTimelineV6();
+    expect(isPublicParseReport(report)).toBe(true);
+    delete report.protocol_pack_digest;
+    expect(isPublicParseReport(report)).toBe(false);
+    report.protocol_pack_digest = "sha256:not-a-digest";
+    expect(isPublicParseReport(report)).toBe(false);
+  });
   it("rejects participant tracks that cannot index the canonical series", () => {
     const report = fixture("parse-report.v1.json") as any;
     report.runs[0].timeline.participant_tracks[0].canonical_participant_index = 99;

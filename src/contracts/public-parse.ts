@@ -227,7 +227,7 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
   if (timelineSchema == null) return false;
   const requireProtocolIdentity = (value.schema_version === 15 && value.projection_revision === 7) ||
     (value.schema_version === 16 && value.projection_revision === 8) ||
-    (value.schema_version === 17 && value.projection_revision === 9);
+    (value.schema_version === 17 && (value.projection_revision === 9 || value.projection_revision === 10));
   return typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) && (value.visibility === "public" || value.visibility === "unlisted" || value.visibility === "private") &&
     typeof value.deployment_id === "string" && value.deployment_id.length > 0 &&
