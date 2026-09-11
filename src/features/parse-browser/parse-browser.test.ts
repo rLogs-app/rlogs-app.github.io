@@ -1189,7 +1189,7 @@ describe("timeline rolling windows", () => {
     expect(html).toContain('role="button"');
     expect(html).toContain('tabindex="0"');
     expect(html).toContain('aria-label="Marksman died at 0:03.000. Show death details."');
-    expect(html).toContain('class="timeline-death-hitbox" x="-12" y="-12" width="24" height="24"');
+    expect(html).toContain('class="timeline-death-hitbox" x="-12" y="-12" width="24.0" height="24"');
     expect(html).toContain('role="tooltip"');
     expect(html).toContain("Terminal recorded hit");
     expect(html).toContain("900 effective damage (1,000 reported)");
@@ -1547,7 +1547,7 @@ describe("timeline rolling windows", () => {
       timeline: { ...graph.timeline!, omitted: { ...graph.timeline!.omitted, death_markers: 2, loadout_markers: 3, skill_uses: 4 } },
     });
     expect(html).toContain("9 events were omitted from publication");
-    expect(html).toContain("exact skill uses, deaths, and loadout changes from the public timeline only");
+    expect(html).toContain("exact skill uses, complete status lifecycles, deaths, and loadout changes from the public timeline only");
     const fullyOmitted = renderTimeline({
       ...graph,
       timeline: {

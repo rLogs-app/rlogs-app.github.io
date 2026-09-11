@@ -112,6 +112,24 @@ function reportWithTimelineV7(): any {
   return report;
 }
 
+function reportWithTimelineV8(): any {
+  const report = reportWithTimelineV7();
+  report.projection_revision = 12;
+  const timeline = report.runs[0].timeline;
+  timeline.schema_version = 8;
+  timeline.status_spans = [{
+    target_actor_id: timeline.participant_tracks[0].actor_id,
+    source_actor_id: timeline.participant_tracks[1].actor_id,
+    effect_id: "3003052", instance_id: "status-7",
+    start_micros: 1_000_000, end_micros: 1_500_000, terminal_state: "removed",
+    evidence: [{ source_report_id: report.report_id, applied_event_sequence: 11,
+      terminal_event_sequence: 12, applied_game_time_millis: 2_000, terminal_game_time_millis: 2_500 }],
+    omitted_evidence: 0,
+  }];
+  timeline.omitted.status_spans = 0;
+  return report;
+}
+
 function packetTerminalDeathCause(atMicros: number): any {
   const hit = (hitMicros: number, sourceActorId: string) => ({
     at_micros: hitMicros,
@@ -259,6 +277,54 @@ describe("public parse contract", () => {
       target_actor_id: "different-target",
     });
     expect(isPublicRunReconciliation(targetConflict)).toBe(false);
+  });
+  it("accepts only complete exact schema-v8 participant status spans", () => {
+    const report = reportWithTimelineV8();
+    expect(isPublicParseReport(report)).toBe(true);
+    // Zero-length spans are valid exact wire ordering, not inferred duration.
+    const zeroLength = structuredClone(report);
+    zeroLength.runs[0].timeline.status_spans[0].end_micros =
+      zeroLength.runs[0].timeline.status_spans[0].start_micros;
+    expect(isPublicParseReport(zeroLength)).toBe(true);
+    for (const mutate of [
+      (value: any) => { value.runs[0].timeline.status_spans[0].target_actor_id = "enemy-44"; },
+      (value: any) => { value.runs[0].timeline.status_spans[0].source_actor_id = "enemy-44"; },
+      (value: any) => { value.runs[0].timeline.status_spans[0].start_micros = value.runs[0].timeline.status_spans[0].end_micros + 1; },
+      (value: any) => { value.runs[0].timeline.status_spans[0].terminal_state = "refreshed"; },
+      (value: any) => { value.runs[0].timeline.status_spans[0].evidence = []; },
+      (value: any) => { value.runs[0].timeline.status_spans[0].evidence[0].applied_event_sequence = 13; },
+      (value: any) => { value.runs[0].timeline.omitted.status_spans = -1; },
+    ]) {
+      const invalid = structuredClone(report); mutate(invalid);
+      expect(isPublicParseReport(invalid)).toBe(false);
+    }
+  });
+
+  it("requires schema-20 runtime and replay-status fields on schema-21 status reconciliations", () => {
+    const reconciliation = completedSchema18Reconciliation();
+    const report = reportWithTimelineV8();
+    reconciliation.schema_version = 21;
+    reconciliation.timeline = {
+      ...report.runs[0].timeline,
+      source: "reconciled_canonical_spine",
+      canonical_report_id: reconciliation.canonical_spine.report_id,
+      contributing_report_ids: reconciliation.reports.map((source: any) => source.report_id),
+      participant_tracks: reconciliation.reconciled_participants.map((participant: any, index: number) => ({
+        actor_id: participant.actor_id, character_id: participant.character_id,
+        observed_character_key: participant.observed_character_key ?? null, display_name: participant.display_name,
+        canonical_participant_index: index, series_point_count: 1, omitted_skill_uses: 0,
+      })),
+      skill_uses: [], hostile_casts: [], hostile_source_actor_ids: [], status_spans: [],
+      clock_anchor: { at_micros: 0, game_time_millis: 1_000,
+        source_report_id: reconciliation.canonical_spine.report_id, event_sequence: 1 },
+    };
+    expect(isPublicRunReconciliation(reconciliation)).toBe(true);
+    const missingIdentity = structuredClone(reconciliation);
+    delete missingIdentity.reports[0].client_build;
+    expect(isPublicRunReconciliation(missingIdentity)).toBe(false);
+    const missingReplayStatus = structuredClone(reconciliation);
+    delete missingReplayStatus.rdps_status;
+    expect(isPublicRunReconciliation(missingReplayStatus)).toBe(false);
   });
   it("keeps catalog 6 and My Parses 1 raw-readable while requiring identity on catalog 7 and My Parses 2", () => {
     const legacy = fixture("parse-catalog.v1.json") as any;

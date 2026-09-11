@@ -879,7 +879,8 @@ export function renderTimeline(
   const exactCumulativeRdpsTracks = rdpsTracks.filter(({ actor }) => actor.rdps_incomplete === false);
   const markerLanes = normalizeTimelineLaneEvents(timeline, plotted, graph.loadoutPhaseSources, messages, presentation);
   const omittedMarkerCount = timeline.omitted.death_markers + timeline.omitted.loadout_markers +
-    (timeline.omitted.skill_uses ?? 0) + (timeline.omitted.hostile_casts ?? 0);
+    (timeline.omitted.skill_uses ?? 0) + (timeline.omitted.hostile_casts ?? 0) +
+    (timeline.omitted.status_spans ?? 0);
   const partialRdps = graph.rdpsStatus !== "complete" || plotted.some(({ actor, track }) =>
     actor.rdps_incomplete === true || !hasCompleteRdpsBuckets((actor.series ?? []).slice(0, track.series_point_count)));
   const rdpsLabel = messages.message(partialRdps ? "parse.timeline.rdps.partial" : "parse.timeline.rdps.exact");
@@ -981,7 +982,7 @@ type PlottedTimelineParticipant = {
 
 export interface TimelineLaneEvent {
   key: string;
-  kind: "death" | "loadout" | "skill" | "hostile";
+  kind: "death" | "loadout" | "skill" | "hostile" | "status";
   laneKey: string;
   laneLabel: string;
   participantIndex?: number;
@@ -1034,6 +1035,32 @@ export function normalizeTimelineLaneEvents(
       ...(iconAssetPath ? { iconAssetPath } : {}),
     });
   });
+  (timeline.status_spans ?? []).forEach((span, spanIndex) => {
+    const targetMatches = plotted.flatMap(({ actor }, participantIndex) =>
+      actor.actor_id === span.target_actor_id ? [{ actor, participantIndex }] : []);
+    const target = targetMatches.length === 1 ? targetMatches[0] : undefined;
+    if (!target) return;
+    const player = target.actor.display_name ?? messages.message("parse.timeline.player", { id: span.target_actor_id });
+    const sourceMatches = span.source_actor_id === undefined ? [] : plotted.flatMap(({ actor }) =>
+      actor.actor_id === span.source_actor_id ? [actor] : []);
+    const source = sourceMatches.length === 1
+      ? sourceMatches[0].display_name ?? messages.message("parse.timeline.player", { id: sourceMatches[0].actor_id })
+      : undefined;
+    const effect = localizedEffectName(presentation, span.effect_id, null);
+    const label = messages.message(source ? "parse.timeline.event.status_span_sourced" : "parse.timeline.event.status_span", {
+      ...(source ? { source } : {}), effect, player,
+      start: formatDuration(span.start_micros), end: formatDuration(span.end_micros),
+    });
+    events.push({
+      key: `status-${spanIndex}`, kind: "status",
+      laneKey: `participant-${target.participantIndex}`, laneLabel: player,
+      participantIndex: target.participantIndex,
+      atMicros: span.start_micros, endMicros: span.end_micros,
+      boundary: timelineMarkerBoundary(span.start_micros, timeline.duration_micros, "exact_microsecond"),
+      label, sourceIndex: (timeline.hostile_casts?.length ?? 0) + spanIndex,
+    });
+  });
+  const statusOffset = (timeline.hostile_casts?.length ?? 0) + (timeline.status_spans?.length ?? 0);
   timeline.death_markers.forEach((marker, markerIndex) => {
     const matches = plotted.flatMap(({ actor, color }, participantIndex) =>
       actor.actor_id === marker.actor_id ? [{ actor, color, participantIndex }] : []);
@@ -1053,7 +1080,7 @@ export function normalizeTimelineLaneEvents(
       ...(match ? { participantIndex: match.participantIndex } : {}),
       atMicros: marker.at_micros, ...(endMicros === undefined ? {} : { endMicros }),
       boundary: timelineMarkerBoundary(marker.at_micros, timeline.duration_micros, marker.precision),
-      label, sourceIndex: (timeline.hostile_casts?.length ?? 0) + markerIndex, deathSummaryId: timelineDeathSummaryId(timeline, markerIndex),
+      label, sourceIndex: statusOffset + markerIndex, deathSummaryId: timelineDeathSummaryId(timeline, markerIndex),
     });
   });
   timeline.loadout_markers.forEach((marker, markerIndex) => {
@@ -1076,7 +1103,7 @@ export function normalizeTimelineLaneEvents(
       ...(match ? { participantIndex: match.participantIndex } : {}),
       atMicros: marker.at_micros,
       boundary: timelineMarkerBoundary(marker.at_micros, timeline.duration_micros, "exact_microsecond"),
-      label, sourceIndex: (timeline.hostile_casts?.length ?? 0) + timeline.death_markers.length + markerIndex,
+      label, sourceIndex: statusOffset + timeline.death_markers.length + markerIndex,
     });
   });
   (timeline.skill_uses ?? []).forEach((skill, skillIndex) => {
@@ -1098,7 +1125,7 @@ export function normalizeTimelineLaneEvents(
       ...(match ? { participantIndex: match.participantIndex } : {}),
       atMicros: skill.at_micros,
       boundary: timelineMarkerBoundary(skill.at_micros, timeline.duration_micros, "exact_microsecond"),
-      label, sourceIndex: (timeline.hostile_casts?.length ?? 0) + timeline.death_markers.length + timeline.loadout_markers.length + skillIndex,
+      label, sourceIndex: statusOffset + timeline.death_markers.length + timeline.loadout_markers.length + skillIndex,
       ...(iconAssetPath ? { iconAssetPath } : {}),
     });
   });
@@ -1226,6 +1253,11 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
   }).join("");
   const markers = lanes.flatMap((lane, laneIndex) => lane.events.map((event) => {
     const x = left + Math.min(1, event.atMicros / Math.max(1, timeline.duration_micros)) * plotWidth;
+    const intervalWidth = event.endMicros === undefined ? 0 : Math.max(
+      2,
+      (Math.min(timeline.duration_micros, event.endMicros) - event.atMicros) /
+        Math.max(1, timeline.duration_micros) * plotWidth,
+    );
     const y = 4 + laneIndex * laneHeight + laneHeight / 2;
     const scope = event.participantIndex === undefined ? "" : ` data-timeline-marker-participant="${event.participantIndex}"`;
     const targetScope = event.targetParticipantIndex === undefined ? "" : ` data-timeline-target-participant="${event.targetParticipantIndex}"`;
@@ -1238,6 +1270,8 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
     const label = death ? messages.message("parse.timeline.death.trigger", { death: event.label }) : event.label;
     const glyph = death
       ? `<path class="timeline-death-bones" d="M-7-6L7 7M7-6L-7 7"/><path class="timeline-death-skull" d="M-5-3A5 5 0 1 1 5-3C5 0 3 2 2 2V6H-2V2C-3 2-5 0-5-3Z"/>`
+      : event.kind === "status"
+        ? `<rect class="timeline-lane-status-span" x="0" y="-6" width="${intervalWidth.toFixed(1)}" height="12" rx="6"/>`
       : event.kind === "skill" || event.kind === "hostile"
         ? event.iconAssetPath
           ? `<circle class="timeline-lane-skill-icon-ring" cx="0" cy="0" r="10"/><image class="timeline-lane-skill-icon" href="${escapeHtml(event.iconAssetPath)}" x="-8" y="-8" width="16" height="16" preserveAspectRatio="xMidYMid slice"/>`
@@ -1246,7 +1280,9 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
     const clusterBadge = event.kind === "skill" || event.kind === "hostile"
       ? `<g class="timeline-skill-cluster-badge" data-timeline-skill-cluster-badge hidden><rect x="1" y="-17" width="14" height="14" rx="7"/><text x="8" y="-7" text-anchor="middle" data-timeline-skill-cluster-count></text></g>` : "";
     const hitboxClass = death ? "timeline-death-hitbox" : "timeline-lane-marker-hitbox";
-    return `<g class="timeline-marker ${event.kind}" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(lane.color)}" data-timeline-marker-boundary="${event.boundary}" data-timeline-marker-at-micros="${event.atMicros}"${interval} data-timeline-marker-label="${escapeHtml(event.label)}" data-timeline-marker-kind="${event.kind}" data-timeline-marker-lane="${escapeHtml(event.laneKey)}" data-timeline-marker-source-index="${event.sourceIndex}" aria-label="${escapeHtml(label)}" aria-expanded="false" role="button" tabindex="0"${controls}${scope}${targetScope}><g data-timeline-marker-symbol data-timeline-marker-y="${y}" transform="translate(0 ${y})"><rect class="${hitboxClass}" x="-12" y="-12" width="24" height="24"/>${glyph}${clusterBadge}</g><title>${escapeHtml(event.label)}</title></g>`;
+    const hitboxX = event.kind === "status" ? -4 : -12;
+    const hitboxWidth = event.kind === "status" ? Math.max(24, intervalWidth + 8) : 24;
+    return `<g class="timeline-marker ${event.kind}" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(lane.color)}" data-timeline-marker-boundary="${event.boundary}" data-timeline-marker-at-micros="${event.atMicros}"${interval} data-timeline-marker-label="${escapeHtml(event.label)}" data-timeline-marker-kind="${event.kind}" data-timeline-marker-lane="${escapeHtml(event.laneKey)}" data-timeline-marker-source-index="${event.sourceIndex}" aria-label="${escapeHtml(label)}" aria-expanded="false" role="button" tabindex="0"${controls}${scope}${targetScope}><g data-timeline-marker-symbol data-timeline-marker-y="${y}" transform="translate(0 ${y})"><rect class="${hitboxClass}" x="${hitboxX}" y="-12" width="${hitboxWidth.toFixed(1)}" height="24"/>${glyph}${clusterBadge}</g><title>${escapeHtml(event.label)}</title></g>`;
   })).join("");
   return `<svg class="timeline-marker-lanes-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.lanes.aria"))}" data-duration-micros="${timeline.duration_micros}"><defs><clipPath id="${clipId}"><rect x="${left}" y="0" width="${plotWidth}" height="${height}"/></clipPath></defs>${chrome}<g data-timeline-viewport-elapsed-geometry clip-path="url(#${clipId})">${markers}</g><line class="timeline-lane-playhead" data-timeline-lane-playhead x1="${left}" x2="${left}" y1="0" y2="${height}"/></svg>`;
 }
@@ -2124,7 +2160,8 @@ function applyTimelineViewport(timeline: HTMLElement, changed: "start" | "end" =
   });
   timeline.querySelectorAll<SVGGElement>("[data-timeline-marker-symbol]").forEach((symbol) => {
     const markerY = Number(symbol.dataset.timelineMarkerY);
-    symbol.setAttribute("transform", `translate(0 ${Number.isFinite(markerY) ? markerY : top + 12}) scale(${(1 / elapsedScale).toFixed(9)} 1)`);
+    const inverseScale = symbol.closest(".timeline-marker.status") ? "" : ` scale(${(1 / elapsedScale).toFixed(9)} 1)`;
+    symbol.setAttribute("transform", `translate(0 ${Number.isFinite(markerY) ? markerY : top + 12})${inverseScale}`);
   });
   let shouldCloseLanePreview = false;
   timeline.querySelectorAll<SVGGraphicsElement>("[data-timeline-marker-lane]").forEach((marker) => {
@@ -2349,12 +2386,13 @@ function visibleTimelineEventGroups(timeline: HTMLElement): TimelineEventGroup[]
     const endMicrosValue = marker.dataset.timelineMarkerEndMicros;
     const endMicros = endMicrosValue === undefined ? undefined : Number(endMicrosValue);
     const label = marker.dataset.timelineMarkerLabel;
-    const isVisiblePoint = endMicros === undefined && Number.isFinite(atMicros) &&
+    const isZeroLengthInterval = endMicros !== undefined && endMicros === atMicros;
+    const isVisiblePoint = (endMicros === undefined || isZeroLengthInterval) && Number.isFinite(atMicros) &&
       atMicros >= viewportStartMicros && atMicros <= viewportEndMicros;
     // A one-second legacy bucket is a half-open interval [start, end). It remains
     // indexed whenever some portion intersects the visible time range, but not
     // when its end merely touches the viewport start.
-    const isVisibleInterval = endMicros !== undefined && Number.isFinite(atMicros) && Number.isFinite(endMicros) &&
+    const isVisibleInterval = endMicros !== undefined && !isZeroLengthInterval && Number.isFinite(atMicros) && Number.isFinite(endMicros) &&
       atMicros <= viewportEndMicros && endMicros > viewportStartMicros;
     if (marker.hasAttribute("hidden") || !Number.isInteger(boundary) || !label ||
         (!isVisiblePoint && !isVisibleInterval)) return;
@@ -2390,9 +2428,10 @@ function markerIntersectsViewport(marker: SVGGraphicsElement, startMicros: numbe
   const atMicros = Number(marker.dataset.timelineMarkerAtMicros);
   const intervalEnd = marker.dataset.timelineMarkerEndMicros;
   if (!Number.isFinite(atMicros)) return false;
-  return intervalEnd === undefined
+  const parsedIntervalEnd = intervalEnd === undefined ? undefined : Number(intervalEnd);
+  return intervalEnd === undefined || parsedIntervalEnd === atMicros
     ? atMicros >= startMicros && atMicros <= endMicros
-    : Number.isFinite(Number(intervalEnd)) && atMicros <= endMicros && Number(intervalEnd) > startMicros;
+    : Number.isFinite(parsedIntervalEnd) && atMicros <= endMicros && parsedIntervalEnd! > startMicros;
 }
 
 const timelineLanePreviewClosers = new WeakMap<HTMLElement, () => void>();

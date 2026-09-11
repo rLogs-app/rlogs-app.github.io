@@ -201,18 +201,29 @@ describe("combat timeline DOM interactions", () => {
     expect(next.disabled).toBe(true);
   });
 
-  it("uses one participant toggle for the DPS trace, skill uses, deaths, and lane", () => {
+  it("uses one participant toggle for the DPS trace, skill uses, exact status spans, deaths, and lane", () => {
     const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
     const timeline = report.runs[0]!.timeline!;
     const actorId = timeline.participant_tracks[0]!.actor_id;
     timeline.death_markers[0]!.actor_id = actorId;
-    timeline.schema_version = 6;
+    timeline.schema_version = 8;
     timeline.skill_uses = [{
       actor_id: actorId, at_micros: 1_250_000, action_id: "2203291", state: "started",
       evidence: [{ source_report_id: timeline.canonical_report_id, event_sequence: 7,
         game_time_millis: 2_250, kind: "exact_wire_cast_start" }], omitted_evidence: 0,
     }];
     timeline.omitted.skill_uses = 0;
+    timeline.hostile_source_actor_ids = [];
+    timeline.hostile_casts = [];
+    timeline.omitted.hostile_casts = 0;
+    timeline.status_spans = [{
+      target_actor_id: actorId, source_actor_id: actorId, effect_id: "3003052", instance_id: "91",
+      start_micros: 1_000_000, end_micros: 2_000_000, terminal_state: "removed",
+      evidence: [{ source_report_id: timeline.canonical_report_id, applied_event_sequence: 8,
+        terminal_event_sequence: 9, applied_game_time_millis: 2_000, terminal_game_time_millis: 3_000 }],
+      omitted_evidence: 0,
+    }];
+    timeline.omitted.status_spans = 0;
     timeline.participant_tracks.forEach((track) => { track.omitted_skill_uses = 0; });
     const root = window.document.createElement("main") as unknown as HTMLElement;
     root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
@@ -222,21 +233,62 @@ describe("combat timeline DOM interactions", () => {
     const toggle = root.querySelector<HTMLButtonElement>('[data-participant-toggle="0"]')!;
     const trace = root.querySelector<SVGPolylineElement>('[data-participant="0"]')!;
     const skill = root.querySelector<SVGGraphicsElement>('.timeline-marker.skill[data-timeline-marker-participant="0"]')!;
+    const statusSpan = root.querySelector<SVGGraphicsElement>('.timeline-marker.status[data-timeline-marker-participant="0"]')!;
     const death = root.querySelector<SVGGraphicsElement>('.timeline-marker.death[data-timeline-marker-participant="0"]')!;
     const lane = root.querySelector<SVGGElement>('[data-timeline-lane-participant="0"]')!;
     expect(skill).not.toBeNull();
+    expect(statusSpan).not.toBeNull();
+    expect(statusSpan.dataset.timelineMarkerEndMicros).toBe("2000000");
+    expect(statusSpan.getAttribute("aria-label")).toContain("Unlocalized combat effect #3003052");
     expect(death).not.toBeNull();
     toggle.click();
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(trace.hasAttribute("hidden")).toBe(true);
     expect(skill.hasAttribute("hidden")).toBe(true);
+    expect(statusSpan.hasAttribute("hidden")).toBe(true);
     expect(death.hasAttribute("hidden")).toBe(true);
     expect(lane.hasAttribute("hidden")).toBe(true);
     root.querySelector<HTMLButtonElement>("[data-participant-show-all]")!.click();
     expect(trace.hasAttribute("hidden")).toBe(false);
     expect(skill.hasAttribute("hidden")).toBe(false);
+    expect(statusSpan.hasAttribute("hidden")).toBe(false);
     expect(death.hasAttribute("hidden")).toBe(false);
     expect(lane.hasAttribute("hidden")).toBe(false);
+  });
+
+  it("keeps an exact zero-length status lifecycle navigable as a point", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    const timeline = report.runs[0]!.timeline!;
+    const actorId = timeline.participant_tracks[0]!.actor_id;
+    timeline.schema_version = 8;
+    timeline.skill_uses = [];
+    timeline.hostile_source_actor_ids = [];
+    timeline.hostile_casts = [];
+    timeline.death_markers = [];
+    timeline.loadout_markers = [];
+    timeline.status_spans = [{
+      target_actor_id: actorId, effect_id: "3003052", instance_id: "91",
+      start_micros: 2_000_000, end_micros: 2_000_000, terminal_state: "removed",
+      evidence: [{ source_report_id: timeline.canonical_report_id, applied_event_sequence: 8,
+        terminal_event_sequence: 9, applied_game_time_millis: 3_000, terminal_game_time_millis: 3_000 }],
+      omitted_evidence: 0,
+    }];
+    timeline.omitted.skill_uses = 0;
+    timeline.omitted.hostile_casts = 0;
+    timeline.omitted.status_spans = 0;
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!));
+    window.document.body.append(root as never);
+    bindParseReportInteractions(root)();
+
+    const status = root.querySelector<HTMLOutputElement>("[data-timeline-event-status]")!;
+    const marker = root.querySelector<SVGGraphicsElement>(".timeline-marker.status")!;
+    expect(marker).not.toBeNull();
+    expect(status.textContent).toBe("1 event point in the visible range");
+    const start = root.querySelector<HTMLInputElement>("input[data-timeline-viewport-start]")!;
+    start.value = "3";
+    start.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(status.textContent).toBe("No events in the visible range");
   });
 
   it("keeps hostile-source cast lanes visible when player visibility is cleared", () => {
