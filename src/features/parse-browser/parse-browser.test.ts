@@ -28,6 +28,7 @@ import {
   renderPartyLoadouts,
   renderTimeline,
   rollingBucketSeries,
+  rollingTimelineRateClockSamples,
   rollingTimelineSamples,
   selectCanonicalGraph,
   timelineCumulativeRateLabel,
@@ -1750,6 +1751,52 @@ describe("timeline rolling windows", () => {
     )!;
     expect(tenPointOne.edps).toEqual({ one: 100, five: null, ten: null, cumulative: 100 });
     expect(tenPointOne.adps).toEqual(tenPointOne.edps);
+  });
+
+  it("withholds exact rDPS 5s and 10s tails at a 10.2s terminal boundary", () => {
+    const durationMicros = 10_200_000;
+    const maximumBoundary = timelineMaximumBoundary(durationMicros);
+    const buckets = Array.from(
+      { length: maximumBoundary },
+      (_, index) => [index + 1, index + 1 === maximumBoundary ? 20 : 100] as [number, number],
+    );
+    const rateClock = Array.from({ length: maximumBoundary }, (_, second) => ({
+      second,
+      edps_elapsed_micros: Math.min((second + 1) * 500_000, durationMicros / 2),
+      adps_elapsed_micros: Math.min((second + 1) * 500_000, durationMicros / 2),
+    }));
+
+    expect(timelineRdpsRateVariantsAtSecond(
+      buckets, rateClock, maximumBoundary, durationMicros,
+    )).toEqual({ one: 200, five: null, ten: null, cumulative: 200 });
+
+    const five = rollingTimelineRateClockSamples(
+      buckets, maximumBoundary, 5, durationMicros, rateClock,
+    );
+    const ten = rollingTimelineRateClockSamples(
+      buckets, maximumBoundary, 10, durationMicros, rateClock,
+    );
+    expect(five.some(([boundary]) => boundary === maximumBoundary)).toBe(false);
+    expect(ten.some(([boundary]) => boundary === maximumBoundary)).toBe(false);
+    expect(ten.find(([boundary]) => boundary === 10)?.[1]).toBe(200);
+  });
+
+  it("keeps an rDPS window that covers the full fractional run", () => {
+    const durationMicros = 5_200_000;
+    const maximumBoundary = timelineMaximumBoundary(durationMicros);
+    const buckets = Array.from(
+      { length: maximumBoundary },
+      (_, index) => [index + 1, index + 1 === maximumBoundary ? 20 : 100] as [number, number],
+    );
+    const rateClock = Array.from({ length: maximumBoundary }, (_, second) => ({
+      second,
+      edps_elapsed_micros: Math.min((second + 1) * 1_000_000, durationMicros),
+      adps_elapsed_micros: Math.min((second + 1) * 1_000_000, durationMicros),
+    }));
+
+    expect(timelineRdpsRateVariantsAtSecond(
+      buckets, rateClock, maximumBoundary, durationMicros,
+    )).toEqual({ one: 100, five: null, ten: 100, cumulative: 100 });
   });
 
   it("uses the reviewed Game-time clock for cumulative and windowed rDPS", () => {

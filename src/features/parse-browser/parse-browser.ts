@@ -1519,11 +1519,24 @@ function timelineRateClockWindowDenominatorMicros(
   durationMicros: number,
 ): number | null {
   if (!rateClock?.length || boundary <= 0) return null;
+  if (timelineFractionalTerminalSplitsWindow(durationMicros, boundary, maximumBoundary, window)) return null;
   const startBoundary = Math.max(0, boundary - window);
   const ended = timelineRateClockElapsedMicros(rateClock, boundary);
   const started = timelineRateClockElapsedMicros(rateClock, startBoundary);
   if (ended == null || started == null || ended <= started) return null;
   return ended - started;
+}
+
+function timelineFractionalTerminalSplitsWindow(
+  durationMicros: number,
+  boundary: number,
+  maximumBoundary: number,
+  window: number,
+): boolean {
+  return window !== 1 &&
+    boundary === maximumBoundary &&
+    durationMicros % 1_000_000 !== 0 &&
+    durationMicros > window * 1_000_000;
 }
 
 function timelineRateClockElapsedMicros(
@@ -1618,8 +1631,9 @@ export function timelineDamageRateVariantsAtSecond(
     field: "edps_elapsed_micros" | "adps_elapsed_micros",
     window: 1 | 5 | 10 | "cumulative",
   ): number | null => {
-    const fractionalTerminal = boundary === maximumBoundary && durationMicros % 1_000_000 !== 0;
-    if (window !== "cumulative" && window !== 1 && fractionalTerminal && durationMicros > window * 1_000_000) {
+    if (window !== "cumulative" && timelineFractionalTerminalSplitsWindow(
+      durationMicros, boundary, maximumBoundary, window,
+    )) {
       // Starting an N-second window at this fractional endpoint would split an
       // earlier aggregate bucket. The public timeline has no sub-second
       // numerator for that cut, so only the terminal 1s bucket and the full
