@@ -92,7 +92,7 @@ describe("public profile routes", () => {
     )).resolves.toEqual(catalog);
   });
 
-  it("keeps observed labels within their build authority and search uses the same presentation", () => {
+  it("shows catalog labels across identities while keeping difficulty semantics exact", () => {
     const character: ObservedCharacterEntry = {
       observed_character_key: `obs_${"a".repeat(32)}`,
       identity_kind: "legacy_name_observation",
@@ -102,9 +102,9 @@ describe("public profile routes", () => {
       deployment: "global",
       region: "north-america",
       class_id: 4,
-      class_name: "Attached Wind Knight",
+      class_name: "Wind Knight",
       specialization_id: 107,
-      specialization_name: "Attached Vanguard",
+      specialization_name: "Vanguard Spec",
       first_seen_unix_millis: 1,
       last_seen_unix_millis: 1,
       report_count: 1,
@@ -114,7 +114,7 @@ describe("public profile routes", () => {
         run_index: 0,
         created_unix_millis: 1,
         scene_id: 6515,
-        scene_name: "Attached Cursed Tomb",
+        scene_name: "Cursed Radiant Tomb",
         terminal_state: "completed",
         deployment_id: "global",
         client_build: "24687926",
@@ -139,27 +139,19 @@ describe("public profile routes", () => {
       presentation_authority: null,
       reports: [{ ...character.reports[0]!, deployment_id: null, client_build: null, protocol_pack_digest: null }],
     };
-    expect(observedClassLabel(wrong, presentation, 2)).toBe("Attached Wind Knight / Attached Vanguard");
-    expect(observedReportSceneLabel(wrong.reports[0]!, presentation, 2)).toBe("Attached Cursed Tomb");
-    expect(observedReportDifficultyLabel(wrong.reports[0]!, presentation, 2)).toBe("Tier 5");
-    const wrongSearch = searchableDirectoryEntry({ kind: "observed", character: wrong }, presentation, 2);
-    expect(wrongSearch).toContain("attached wind knight");
-    expect(wrongSearch).not.toContain("vanguard spec");
-
-    for (const [candidate, schema] of [[unavailable, 2], [character, 1]] as const) {
-      expect(observedClassLabel(candidate, presentation, schema)).toBe("Class #4 / Specialization #107");
-      expect(observedReportSceneLabel(candidate.reports[0]!, presentation, schema)).toBe("Scene #6515");
+    for (const [candidate, schema] of [[wrong, 2], [unavailable, 2], [character, 1]] as const) {
+      expect(observedClassLabel(candidate, presentation, schema)).toBe("Wind Knight / Vanguard Spec");
+      expect(observedReportSceneLabel(candidate.reports[0]!, presentation, schema)).toBe("Cursed Radiant Tomb");
       expect(observedReportDifficultyLabel(candidate.reports[0]!, presentation, schema)).toBe("Tier 5");
       const searchable = searchableDirectoryEntry({ kind: "observed", character: candidate }, presentation, schema);
       expect(searchable).toContain("captured player");
       expect(searchable).toContain("4 107 global north-america");
-      expect(searchable).toContain("class #4");
-      expect(searchable).toContain("specialization #107");
-      expect(searchable).not.toContain("wind knight");
-      expect(searchable).not.toContain("vanguard spec");
+      expect(searchable).toContain("wind knight");
+      expect(searchable).toContain("vanguard spec");
     }
 
     expect(observedClassLabel({ ...character, reports: wrong.reports }, presentation, 2)).toBe("Wind Knight / Vanguard Spec");
+    expect(observedReportSceneLabel(wrong.reports[0]!, presentation, 2)).toBe("Cursed Radiant Tomb");
     expect(observedReportDifficultyLabel({ ...character.reports[0]!, difficulty_tier: null }, presentation, 2))
       .toBe("Master (tier unresolved)");
     expect(observedReportDifficultyLabel({

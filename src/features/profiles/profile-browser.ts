@@ -204,7 +204,8 @@ export function searchableDirectoryEntry(
     ? [entry.profile.display_name, entry.profile.character_id, entry.profile.deployment, entry.profile.region, entry.profile.realm, entry.profile.world]
     : [
       entry.character.display_name,
-      ...observedClassNames(entry.character, presentation, observedSchemaVersion),
+      localizedClassName(presentation, entry.character.class_id),
+      localizedSpecializationName(presentation, entry.character.specialization_id),
       entry.character.class_id == null ? undefined : String(entry.character.class_id),
       entry.character.specialization_id == null ? undefined : String(entry.character.specialization_id),
       entry.character.deployment,
@@ -290,8 +291,11 @@ export function observedClassLabel(
   presentation?: ParsePresentationCatalog,
   schemaVersion: 1 | 2 = 1,
 ): string {
-  return observedClassNames(character, presentation, schemaVersion)
-    .filter(Boolean).join(" / ") || "Class not observed";
+  void schemaVersion;
+  return [
+    localizedClassName(presentation, character.class_id),
+    localizedSpecializationName(presentation, character.specialization_id),
+  ].filter(Boolean).join(" / ") || "Class not observed";
 }
 
 export function observedReportSceneLabel(
@@ -304,12 +308,8 @@ export function observedReportSceneLabel(
     client_build: report.client_build ?? null,
     protocol_pack_digest: report.protocol_pack_digest ?? null,
   } : null;
-  const resolved = semanticPresentationForIdentity(presentation, identity);
-  if (resolved) return localizedSceneName(resolved, report.scene_id);
-  if (completeIdentity(identity)) {
-    return attachedLabel(report.scene_name) ?? localizedSceneName(undefined, report.scene_id);
-  }
-  return localizedSceneName(undefined, report.scene_id);
+  void identity;
+  return localizedSceneName(presentation, report.scene_id);
 }
 
 export function observedReportDifficultyLabel(
@@ -337,46 +337,6 @@ function presentationForObservedReport(
     client_build: report.client_build ?? null,
     protocol_pack_digest: report.protocol_pack_digest ?? null,
   }) : undefined;
-}
-
-function observedClassNames(
-  character: ObservedCharacterEntry,
-  presentation: ParsePresentationCatalog | undefined,
-  schemaVersion: 1 | 2,
-): Array<string | undefined> {
-  const identity = schemaVersion === 2 ? character.presentation_authority ?? null : null;
-  const resolved = semanticPresentationForIdentity(presentation, identity);
-  if (resolved) {
-    return [
-      localizedClassName(resolved, character.class_id),
-      localizedSpecializationName(resolved, character.specialization_id),
-    ];
-  }
-  if (completeIdentity(identity)) {
-    return [
-      character.class_id == null ? undefined : attachedLabel(character.class_name) ?? localizedClassName(undefined, character.class_id),
-      character.specialization_id == null ? undefined : attachedLabel(character.specialization_name) ?? localizedSpecializationName(undefined, character.specialization_id),
-    ];
-  }
-  return [
-    localizedClassName(undefined, character.class_id),
-    localizedSpecializationName(undefined, character.specialization_id),
-  ];
-}
-
-function completeIdentity(identity: {
-  deployment_id?: string | null;
-  client_build?: string | null;
-  protocol_pack_digest?: string | null;
-} | null | undefined): boolean {
-  return typeof identity?.deployment_id === "string" && identity.deployment_id.length > 0
-    && typeof identity.client_build === "string" && identity.client_build.length > 0
-    && typeof identity.protocol_pack_digest === "string" && /^sha256:[0-9a-f]{64}$/u.test(identity.protocol_pack_digest);
-}
-
-function attachedLabel(value: string | null | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
 }
 
 function humanize(value: string): string {
