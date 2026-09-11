@@ -34,6 +34,13 @@ describe("website message resolver", () => {
       .toBe("1 event point in the visible range");
   });
 
+  it("localizes exact hostile-cast target context", () => {
+    const messages = createMessageResolver("en-US");
+    expect(messages.message("parse.timeline.event.hostile_cast_targeted", {
+      enemy: "Enemy actor 9", action: "Strike", time: "0:01.250", target: "Player",
+    })).toBe("Enemy actor 9 used Strike at 0:01.250, targeting Player");
+  });
+
   it("localizes the timeline overview navigator", () => {
     const messages = createMessageResolver("en-US");
     expect(messages.message("parse.timeline.overview.label")).toBe("Run overview");

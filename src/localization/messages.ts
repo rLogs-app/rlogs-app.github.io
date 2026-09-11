@@ -131,6 +131,7 @@ const enUsMessages: MessageCatalog = {
   "parse.timeline.event.loadout_generic": "{player} loadout changed at {time}",
   "parse.timeline.event.skill": "{player} used {action} at {time}",
   "parse.timeline.event.hostile_cast": "{enemy} used {action} at {time}",
+  "parse.timeline.event.hostile_cast_targeted": "{enemy} used {action} at {time}, targeting {target}",
   "parse.timeline.participants": "Visible participants",
   "parse.timeline.participants_show_all": "Show all",
   "parse.timeline.participants_clear": "Clear",

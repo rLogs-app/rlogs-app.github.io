@@ -985,6 +985,7 @@ export interface TimelineLaneEvent {
   laneKey: string;
   laneLabel: string;
   participantIndex?: number;
+  targetParticipantIndex?: number;
   atMicros: number;
   endMicros?: number;
   boundary: number;
@@ -1015,12 +1016,19 @@ export function normalizeTimelineLaneEvents(
     const enemy = messages.message("parse.timeline.enemy_actor", { id: cast.source_actor_id });
     const action = localizedActionName(presentation, cast.action_id, null);
     const iconAssetPath = trustedTimelineActionIconPath(presentation, cast.action_id);
+    const targetMatches = cast.target_actor_id === undefined ? [] : plotted.flatMap(({ actor }, participantIndex) =>
+      actor.actor_id === cast.target_actor_id ? [{ actor, participantIndex }] : []);
+    const targetMatch = targetMatches.length === 1 ? targetMatches[0] : undefined;
+    const target = targetMatch
+      ? targetMatch.actor.display_name ?? messages.message("parse.timeline.player", { id: targetMatch.actor.actor_id })
+      : undefined;
     events.push({
       key: `hostile-${castIndex}`, kind: "hostile", laneKey: `hostile-${cast.source_actor_id}`,
       laneLabel: enemy, atMicros: cast.at_micros,
+      ...(targetMatch ? { targetParticipantIndex: targetMatch.participantIndex } : {}),
       boundary: timelineMarkerBoundary(cast.at_micros, timeline.duration_micros, "exact_microsecond"),
-      label: messages.message("parse.timeline.event.hostile_cast", {
-        enemy, action, time: formatDuration(cast.at_micros),
+      label: messages.message(target ? "parse.timeline.event.hostile_cast_targeted" : "parse.timeline.event.hostile_cast", {
+        enemy, action, time: formatDuration(cast.at_micros), ...(target ? { target } : {}),
       }),
       sourceIndex: castIndex,
       ...(iconAssetPath ? { iconAssetPath } : {}),
@@ -1220,6 +1228,7 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
     const x = left + Math.min(1, event.atMicros / Math.max(1, timeline.duration_micros)) * plotWidth;
     const y = 4 + laneIndex * laneHeight + laneHeight / 2;
     const scope = event.participantIndex === undefined ? "" : ` data-timeline-marker-participant="${event.participantIndex}"`;
+    const targetScope = event.targetParticipantIndex === undefined ? "" : ` data-timeline-target-participant="${event.targetParticipantIndex}"`;
     const interval = event.endMicros === undefined ? "" : ` data-timeline-marker-end-micros="${event.endMicros}"`;
     const death = event.kind === "death";
     const summary = event.deathSummaryId;
@@ -1237,7 +1246,7 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
     const clusterBadge = event.kind === "skill" || event.kind === "hostile"
       ? `<g class="timeline-skill-cluster-badge" data-timeline-skill-cluster-badge hidden><rect x="1" y="-17" width="14" height="14" rx="7"/><text x="8" y="-7" text-anchor="middle" data-timeline-skill-cluster-count></text></g>` : "";
     const hitboxClass = death ? "timeline-death-hitbox" : "timeline-lane-marker-hitbox";
-    return `<g class="timeline-marker ${event.kind}" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(lane.color)}" data-timeline-marker-boundary="${event.boundary}" data-timeline-marker-at-micros="${event.atMicros}"${interval} data-timeline-marker-label="${escapeHtml(event.label)}" data-timeline-marker-kind="${event.kind}" data-timeline-marker-lane="${escapeHtml(event.laneKey)}" data-timeline-marker-source-index="${event.sourceIndex}" aria-label="${escapeHtml(label)}" aria-expanded="false" role="button" tabindex="0"${controls}${scope}><g data-timeline-marker-symbol data-timeline-marker-y="${y}" transform="translate(0 ${y})"><rect class="${hitboxClass}" x="-12" y="-12" width="24" height="24"/>${glyph}${clusterBadge}</g><title>${escapeHtml(event.label)}</title></g>`;
+    return `<g class="timeline-marker ${event.kind}" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(lane.color)}" data-timeline-marker-boundary="${event.boundary}" data-timeline-marker-at-micros="${event.atMicros}"${interval} data-timeline-marker-label="${escapeHtml(event.label)}" data-timeline-marker-kind="${event.kind}" data-timeline-marker-lane="${escapeHtml(event.laneKey)}" data-timeline-marker-source-index="${event.sourceIndex}" aria-label="${escapeHtml(label)}" aria-expanded="false" role="button" tabindex="0"${controls}${scope}${targetScope}><g data-timeline-marker-symbol data-timeline-marker-y="${y}" transform="translate(0 ${y})"><rect class="${hitboxClass}" x="-12" y="-12" width="24" height="24"/>${glyph}${clusterBadge}</g><title>${escapeHtml(event.label)}</title></g>`;
   })).join("");
   return `<svg class="timeline-marker-lanes-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.lanes.aria"))}" data-duration-micros="${timeline.duration_micros}"><defs><clipPath id="${clipId}"><rect x="${left}" y="0" width="${plotWidth}" height="${height}"/></clipPath></defs>${chrome}<g data-timeline-viewport-elapsed-geometry clip-path="url(#${clipId})">${markers}</g><line class="timeline-lane-playhead" data-timeline-lane-playhead x1="${left}" x2="${left}" y1="0" y2="${height}"/></svg>`;
 }
@@ -2209,6 +2218,21 @@ function showTimelineDeathSummary(timeline: HTMLElement, trigger: SVGGraphicsEle
   trigger.setAttribute("aria-expanded", "true");
 }
 
+function setTimelineParticipantFocus(timeline: HTMLElement, participant: string | null): void {
+  timeline.querySelectorAll<SVGPolylineElement>(".timeline-trace").forEach((track) => {
+    track.classList.toggle("is-focused", participant !== null && track.dataset.participant === participant);
+    track.classList.toggle("is-dimmed", participant !== null && track.dataset.participant !== participant);
+  });
+  timeline.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]").forEach((button) => {
+    button.classList.toggle("is-focused", participant !== null && button.dataset.participantToggle === participant);
+    button.classList.toggle("is-dimmed", participant !== null && button.dataset.participantToggle !== participant);
+  });
+  timeline.querySelectorAll<SVGGElement>("[data-timeline-lane-participant]").forEach((lane) => {
+    lane.classList.toggle("is-focused", participant !== null && lane.dataset.timelineLaneParticipant === participant);
+    lane.classList.toggle("is-dimmed", participant !== null && lane.dataset.timelineLaneParticipant !== participant);
+  });
+}
+
 function setTimelineParticipantVisibility(timeline: HTMLElement, participant: string, visible: boolean): void {
   timeline.querySelector<HTMLButtonElement>(`[data-participant-toggle="${participant}"]`)
     ?.setAttribute("aria-pressed", String(visible));
@@ -2392,6 +2416,7 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
     });
     active = null;
     pinned = false;
+    setTimelineParticipantFocus(timeline, null);
   };
   timelineLanePreviewClosers.set(timeline, close);
   const open = (marker: SVGGraphicsElement, pin: boolean) => {
@@ -2410,7 +2435,8 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
       .map((candidate) => ({
         candidate,
         kind: candidate.dataset.timelineMarkerKind === "death" ? "death" as const
-          : candidate.dataset.timelineMarkerKind === "skill" ? "skill" as const : "loadout" as const,
+          : candidate.dataset.timelineMarkerKind === "skill" ? "skill" as const
+            : candidate.dataset.timelineMarkerKind === "hostile" ? "hostile" as const : "loadout" as const,
         atMicros: Number(candidate.dataset.timelineMarkerAtMicros),
         ...(candidate.dataset.timelineMarkerEndMicros === undefined ? {} : { endMicros: Number(candidate.dataset.timelineMarkerEndMicros) }),
         label: candidate.dataset.timelineMarkerLabel ?? "",
@@ -2418,7 +2444,8 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
       }));
     const clusteredSkillSources = new Set((marker.dataset.timelineSkillClusterMembers ?? "").split(",").filter(Boolean).map(Number));
     const result = clusteredSkillSources.size
-      ? { events: candidates.filter((candidate) => candidate.kind === "skill" && clusteredSkillSources.has(candidate.sourceIndex))
+      ? { events: candidates.filter((candidate) =>
+        (candidate.kind === "skill" || candidate.kind === "hostile") && clusteredSkillSources.has(candidate.sourceIndex))
         .sort((left, right) => left.atMicros - right.atMicros || left.sourceIndex - right.sourceIndex), omitted: 0 }
       : timelineLaneHoverEvents(candidates, targetMicros, endMicros - startMicros);
     const messages = createMessageResolver(timeline.dataset.locale);
@@ -2437,6 +2464,7 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
     marker.setAttribute("aria-describedby", [...new Set([
       ...(marker.getAttribute("aria-describedby") ?? "").split(/\s+/u).filter(Boolean), preview.id,
     ])].join(" "));
+    setTimelineParticipantFocus(timeline, marker.dataset.timelineTargetParticipant ?? null);
     if (pin) {
       outsideHandler = (event) => {
         if (event.target && (marker.contains(event.target as Node) || preview.contains(event.target as Node))) return;
@@ -2603,10 +2631,7 @@ function wireTimelineControls(root: HTMLElement): void {
       const timeline = button.closest<HTMLElement>("[data-timeline-metric]");
       const participant = button.dataset.participantToggle;
       if (!timeline || participant == null) return;
-      timeline.querySelectorAll<SVGPolylineElement>(".timeline-trace").forEach((track) => {
-        track.classList.toggle("is-focused", focused && track.dataset.participant === participant);
-        track.classList.toggle("is-dimmed", focused && track.dataset.participant !== participant);
-      });
+      setTimelineParticipantFocus(timeline, focused ? participant : null);
     };
     button.addEventListener("pointerenter", () => setFocus(true));
     button.addEventListener("pointerleave", () => setFocus(false));

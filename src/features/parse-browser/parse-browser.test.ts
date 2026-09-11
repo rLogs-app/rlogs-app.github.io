@@ -16,6 +16,7 @@ import {
   filterSearch,
   humanizeAttributionComponent,
   niceTimelineScaleMaximum,
+  normalizeTimelineLaneEvents,
   otherSkillDetailsHtml,
   ownedSkillParticipants,
   renderReport,
@@ -1505,13 +1506,37 @@ describe("timeline rolling windows", () => {
     expect(html).toContain('class="timeline-marker hostile"');
     expect(html).toContain('data-timeline-lane-key="hostile-enemy-44"');
     expect(html).toContain('data-timeline-lane-hostile');
-    expect(html).toContain("Enemy actor enemy-44 used Powerdraw at 0:00.750");
+    expect(html).toContain(`Enemy actor enemy-44 used Powerdraw at 0:00.750, targeting ${graph.participants[0]!.display_name}`);
     expect(html).toContain('href="/assets/bpsr/profile/skills/weapon_gj-01_kx05.png"');
     expect(html).not.toMatch(/boss[^-]/iu);
     expect(html.indexOf('data-timeline-lane-key="hostile-enemy-44"'))
       .toBeLessThan(html.indexOf('data-timeline-lane-key="participant-'));
     const hostileMarker = html.match(/<g[^>]+class="timeline-marker hostile"[^>]*>/u)?.[0] ?? "";
     expect(hostileMarker).not.toContain("data-timeline-marker-participant");
+    expect(hostileMarker).toContain('data-timeline-target-participant="0"');
+
+    const reconciledWithheldTarget = renderTimeline({
+      ...graph, reconciled: true, trustKind: "reconciled", contributingReportCount: 2,
+      timeline: { ...timeline, hostile_casts: timeline.hostile_casts.map(({ target_actor_id: _target, ...cast }) => cast) },
+    }, createMessageResolver(), presentation);
+    expect(reconciledWithheldTarget).toContain("2 POVs / conserved replay");
+    expect(reconciledWithheldTarget).toContain("Enemy actor enemy-44 used Powerdraw at 0:00.750");
+    expect(reconciledWithheldTarget).not.toContain("targeting");
+    expect(reconciledWithheldTarget).not.toContain("data-timeline-target-participant");
+
+    const unknownTarget = renderTimeline({
+      ...graph,
+      timeline: { ...timeline, hostile_casts: timeline.hostile_casts.map((cast) => ({ ...cast, target_actor_id: "unpublished-target" })) },
+    }, createMessageResolver(), presentation);
+    expect(unknownTarget).not.toContain("targeting");
+    expect(unknownTarget).not.toContain("unpublished-target");
+
+    const duplicatedTarget = normalizeTimelineLaneEvents(timeline, [
+      { actor: graph.participants[0]!, track: timeline.participant_tracks[0]!, color: "#fff", pattern: "solid" },
+      { actor: graph.participants[0]!, track: timeline.participant_tracks[0]!, color: "#000", pattern: "long" },
+    ], [], createMessageResolver(), presentation);
+    expect(duplicatedTarget[0]!.events[0]!.label).not.toContain("targeting");
+    expect(duplicatedTarget[0]!.events[0]!.targetParticipantIndex).toBeUndefined();
   });
 
   it("discloses omitted death/loadout/skill facts without changing legacy timelines", () => {

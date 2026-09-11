@@ -262,14 +262,38 @@ describe("combat timeline DOM interactions", () => {
 
     const hostileLane = root.querySelector<SVGGElement>("[data-timeline-lane-hostile]")!;
     const hostileMarker = root.querySelector<SVGGraphicsElement>(".timeline-marker.hostile")!;
+    const targetTrace = root.querySelector<SVGPolylineElement>('[data-participant="0"]')!;
+    const otherTrace = root.querySelector<SVGPolylineElement>('[data-participant="1"]')!;
+    const targetToggle = root.querySelector<HTMLButtonElement>('[data-participant-toggle="0"]')!;
+    const targetLane = root.querySelector<SVGGElement>('[data-timeline-lane-participant="0"]')!;
     expect(hostileLane).not.toBeNull();
     expect(hostileMarker).not.toBeNull();
     expect(hostileMarker.hasAttribute("data-timeline-marker-participant")).toBe(false);
+    expect(hostileMarker.dataset.timelineTargetParticipant).toBe("0");
+    expect(hostileMarker.getAttribute("aria-label")).toContain("targeting");
+    const visibilityBeforeFocus = [...root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]")]
+      .map((button) => button.getAttribute("aria-pressed"));
+    hostileMarker.dispatchEvent(new window.PointerEvent("pointerenter", { pointerType: "mouse" }) as unknown as Event);
+    expect(root.querySelector<HTMLElement>("[data-timeline-lane-preview]")!.textContent).toContain("targeting");
+    expect(targetTrace.classList.contains("is-focused")).toBe(true);
+    expect(otherTrace.classList.contains("is-dimmed")).toBe(true);
+    expect(targetToggle.classList.contains("is-focused")).toBe(true);
+    expect(targetLane.classList.contains("is-focused")).toBe(true);
+    expect([...root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]")]
+      .map((button) => button.getAttribute("aria-pressed"))).toEqual(visibilityBeforeFocus);
+    hostileMarker.dispatchEvent(new window.PointerEvent("pointerleave", { pointerType: "mouse" }) as unknown as Event);
+    expect(targetTrace.classList.contains("is-focused")).toBe(false);
+    expect(otherTrace.classList.contains("is-dimmed")).toBe(false);
     root.querySelector<HTMLButtonElement>("[data-participant-clear]")!.click();
     expect(hostileLane.hasAttribute("hidden")).toBe(false);
     expect(hostileMarker.hasAttribute("hidden")).toBe(false);
     expect([...root.querySelectorAll<SVGPolylineElement>("[data-participant]")]
       .every((track) => track.hasAttribute("hidden"))).toBe(true);
+    hostileMarker.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);
+    expect(targetTrace.hasAttribute("hidden")).toBe(true);
+    expect(targetLane.hasAttribute("hidden")).toBe(true);
+    expect(hostileMarker.hasAttribute("hidden")).toBe(false);
+    expect(targetToggle.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("maps a real API game-assets skill icon to its trusted site-owned asset", () => {

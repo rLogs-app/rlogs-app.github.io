@@ -2220,6 +2220,19 @@ summary.party-loadout-title {
   stroke: color-mix(in srgb, var(--track) 45%, var(--line));
 }
 
+.timeline-lane-row[data-timeline-lane-participant] {
+  transition: opacity 100ms ease;
+}
+
+.timeline-lane-row[data-timeline-lane-participant].is-dimmed {
+  opacity: 0.22;
+}
+
+.timeline-lane-row[data-timeline-lane-participant].is-focused text {
+  fill: var(--track);
+  font-weight: 800;
+}
+
 .timeline-lane-row[hidden],
 .timeline-marker[data-timeline-marker-lane][hidden] {
   display: none;
@@ -2819,6 +2832,15 @@ summary.party-loadout-title {
 .timeline-legend button[aria-pressed="false"] {
   opacity: 0.5;
   text-decoration: line-through;
+}
+
+.timeline-legend button.is-dimmed {
+  opacity: 0.22;
+}
+
+.timeline-legend button.is-focused {
+  color: var(--text);
+  border-color: var(--track);
 }
 
 .timeline-legend button i {
