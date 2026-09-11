@@ -1412,15 +1412,50 @@ describe("timeline rolling windows", () => {
     expect(html).toContain("Character unmatched-character loadout changed");
   });
 
-  it("discloses omitted death/loadout facts without changing the public timeline contract", () => {
+  it("renders exact skill uses in participant lanes with trusted names and safe icons", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const actor = graph.participants[0]!;
+    actor.abilities = [{
+      ability_id: "2203291", presentation_name: "Untrusted server label", presentation_kind: "skill",
+      icon_asset_path: "/assets/bpsr/profile/skills/falcon_skill_01.png", casts: 1, hits: 1,
+      critical_hits: 0, damage: 1, effective_damage: 1, healing: 0, effective_healing: 0, shielding: 0,
+    }];
+    const presentation = {
+      schema_version: 5, locale: "en-US", deployment_id: "global", game_build: "24687926",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`, source: "test", actions: { "2203291": "Powerdraw" },
+      effects: {}, imagines: {}, modules: {}, module_effects: {}, scenes: {}, classes: {}, specializations: {},
+    } satisfies ParsePresentationCatalog;
+    const timeline = {
+      ...graph.timeline!, schema_version: 6 as const,
+      skill_uses: [
+        { actor_id: actor.actor_id, at_micros: 1_250_000, action_id: "2203291", state: "started" as const,
+          evidence: [{ source_report_id: graph.timeline!.canonical_report_id, event_sequence: 3,
+            game_time_millis: 2_250, kind: "exact_wire_cast_start" as const }], omitted_evidence: 0 },
+        { actor_id: actor.actor_id, at_micros: 1_500_000, action_id: "9999999", state: "started" as const,
+          evidence: [{ source_report_id: graph.timeline!.canonical_report_id, event_sequence: 4,
+            kind: "exact_wire_cast_start" as const }], omitted_evidence: 0 },
+      ],
+      omitted: { ...graph.timeline!.omitted, skill_uses: 0 },
+    };
+    const html = renderTimeline({ ...graph, timeline }, createMessageResolver(), presentation);
+    expect(html).toContain('class="timeline-marker skill"');
+    expect(html).toContain("used Powerdraw at 0:01.250");
+    expect(html).toContain("Unlocalized combat action #9999999");
+    expect(html).not.toContain("Untrusted server label");
+    expect(html).toContain('href="/assets/bpsr/profile/skills/falcon_skill_01.png"');
+    expect(html).toContain("data-timeline-lane-playhead");
+  });
+
+  it("discloses omitted death/loadout/skill facts without changing legacy timelines", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const graph = selectCanonicalGraph(report.runs[0]);
     const html = renderTimeline({
       ...graph,
-      timeline: { ...graph.timeline!, omitted: { ...graph.timeline!.omitted, death_markers: 2, loadout_markers: 3 } },
+      timeline: { ...graph.timeline!, omitted: { ...graph.timeline!.omitted, death_markers: 2, loadout_markers: 3, skill_uses: 4 } },
     });
-    expect(html).toContain("5 events were omitted from publication");
-    expect(html).toContain("deaths and loadout changes from the public timeline only");
+    expect(html).toContain("9 events were omitted from publication");
+    expect(html).toContain("exact skill uses, deaths, and loadout changes from the public timeline only");
     const fullyOmitted = renderTimeline({
       ...graph,
       timeline: {

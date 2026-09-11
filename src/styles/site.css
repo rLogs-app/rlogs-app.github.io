@@ -2239,6 +2239,42 @@ summary.party-loadout-title {
   filter: drop-shadow(0 0 2px rgb(3 16 20 / 82%));
 }
 
+.timeline-lane-skill-icon {
+  clip-path: circle(50%);
+  filter: drop-shadow(0 0 3px rgb(3 16 20 / 92%));
+  pointer-events: none;
+}
+
+.timeline-lane-skill-icon-ring {
+  fill: var(--surface-raised);
+  stroke: currentColor;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-lane-skill-glyph {
+  fill: color-mix(in srgb, currentColor 24%, var(--surface-raised));
+  stroke: currentColor;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-lane-skill-bolt {
+  fill: currentColor;
+  stroke: var(--surface-raised);
+  stroke-width: .7;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-lane-playhead {
+  stroke: #f7fbff;
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px rgb(0 0 0 / 90%));
+}
+
 .timeline-marker[data-timeline-marker-lane] .timeline-death-skull {
   fill: currentColor;
   stroke: var(--surface-raised);
@@ -2298,6 +2334,12 @@ summary.party-loadout-title {
 .timeline-lane-preview i.death {
   background: #ff5e82;
   border-radius: 50%;
+  transform: none;
+}
+
+.timeline-lane-preview i.skill {
+  background: #52cfff;
+  border-radius: 2px;
   transform: none;
 }
 

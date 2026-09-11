@@ -82,18 +82,27 @@ export interface PublicRdpsInfluence {
   attributed_rdps: string | null; damage_context_complete: boolean;
 }
 export interface PublicCombatTimeline {
-  schema_version: 1 | 2 | 3 | 4 | 5; source: "single_report" | "reconciled_canonical_spine";
+  schema_version: 1 | 2 | 3 | 4 | 5 | 6; source: "single_report" | "reconciled_canonical_spine";
   canonical_report_id: string; canonical_run_index: number; contributing_report_ids: string[]; duration_micros: number;
   time_basis: "run_elapsed" | "capture_observed"; series_bucket_micros: number;
   coverage: { authoritative_start: boolean; authoritative_completion: boolean; data_gap_count: number; gap_timing: "no_known_gaps" | "count_only" };
+  clock_anchor?: { at_micros: number; game_time_millis: number; source_report_id: string; event_sequence: number };
   rate_clock?: PublicTimelineRateClockPoint[]; rate_clock_complete?: boolean;
   participant_tracks: Array<{ actor_id: string; character_id: string | null; observed_character_key: string | null;
-    display_name: string | null; canonical_participant_index: number; series_point_count: number }>;
+    display_name: string | null; canonical_participant_index: number; series_point_count: number; omitted_skill_uses?: number }>;
   death_markers: Array<{ actor_id: string; at_micros: number; precision: "exact_microsecond" | "one_second_bucket"; cause?: PublicTimelineDeathCause | null }>;
   loadout_markers: Array<{ character_id: string; at_micros: number; phase_index: number; source_report_id: string }>;
+  skill_uses?: PublicTimelineSkillUse[];
   rdps_influence_spans: Array<{ influence_index: number; time_basis: "run_elapsed" | "capture_observed";
     start_micros: number; end_micros: number; complete_lifecycle: boolean }>;
-  omitted: { participant_tracks: number; series_points: number; death_markers: number; loadout_markers: number; rdps_influence_spans: number; rate_clock_points?: number };
+  omitted: { participant_tracks: number; series_points: number; death_markers: number; loadout_markers: number; skill_uses?: number; rdps_influence_spans: number; rate_clock_points?: number };
+}
+export interface PublicTimelineSkillUse {
+  actor_id: string; at_micros: number; action_id: string; action_instance_id?: string;
+  state: "started"; action_kind?: string; evidence: PublicTimelineSkillUseEvidence[]; omitted_evidence: number;
+}
+export interface PublicTimelineSkillUseEvidence {
+  source_report_id: string; event_sequence: number; game_time_millis?: number; kind: "exact_wire_cast_start";
 }
 export interface PublicTimelineRateClockPoint {
   second: number; edps_elapsed_micros: number; adps_elapsed_micros: number;
@@ -213,7 +222,8 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
     : value.schema_version === 14 && value.projection_revision === 5 ? 2
     : value.schema_version === 15 && (value.projection_revision === 6 || value.projection_revision === 7) ? 3
     : value.schema_version === 16 && value.projection_revision === 8 ? 4
-    : value.schema_version === 17 && value.projection_revision === 9 ? 5 : null;
+    : value.schema_version === 17 && value.projection_revision === 9 ? 5
+    : value.schema_version === 17 && value.projection_revision === 10 ? 6 : null;
   if (timelineSchema == null) return false;
   const requireProtocolIdentity = (value.schema_version === 15 && value.projection_revision === 7) ||
     (value.schema_version === 16 && value.projection_revision === 8) ||
@@ -250,7 +260,7 @@ export function isPublicRunReconciliation(value: unknown): value is PublicRunRec
   if (!((value.schema_version === 15 && (timelineSchema === 1 || timelineSchema === 2)) ||
       ((value.schema_version === 16 || value.schema_version === 17 || value.schema_version === 18) && timelineSchema === 3) ||
       (value.schema_version === 19 && timelineSchema === 4) ||
-      (value.schema_version === 20 && timelineSchema === 5))) return false;
+      (value.schema_version === 20 && (timelineSchema === 5 || timelineSchema === 6)))) return false;
   const requireRuntimeIdentity = value.schema_version === 17 || value.schema_version === 18 || value.schema_version === 19 || value.schema_version === 20;
   const replayRdpsStatusValid = (value.schema_version !== 18 && value.schema_version !== 19 && value.schema_version !== 20) || value.rdps_status === null ||
     (typeof value.rdps_status === "string" && value.rdps_status.length > 0);
@@ -299,7 +309,7 @@ function isVerification(value: unknown): boolean {
   return isRecord(value) && ["replayed", "corroborated", "ranked"].includes(String(value.tier)) &&
     typeof value.artifact_sha256 === "string" && isNonNegativeInteger(value.event_count);
 }
-function isPublicRun(value: unknown, reportId: string, timelineSchema: 1 | 2 | 3 | 4 | 5): boolean {
+function isPublicRun(value: unknown, reportId: string, timelineSchema: 1 | 2 | 3 | 4 | 5 | 6): boolean {
   return isRecord(value) && isNonNegativeInteger(value.run_index) && typeof value.run_group_id === "string" &&
     groupIdPattern.test(value.run_group_id) && isRecord(value.timeline) && value.timeline.schema_version === timelineSchema &&
     (timelineSchema < 3 ? value.combat_loadout_phases === undefined || isLoadoutPhases(value.combat_loadout_phases, value.timeline.duration_micros)
@@ -308,14 +318,14 @@ function isPublicRun(value: unknown, reportId: string, timelineSchema: 1 | 2 | 3
     isTimeline(value.timeline, value.participants, true) && value.timeline.canonical_report_id === reportId &&
     value.timeline.canonical_run_index === value.run_index;
 }
-function isParticipant(value: unknown, timelineSchema: 1 | 2 | 3 | 4 | 5): boolean {
+function isParticipant(value: unknown, timelineSchema: 1 | 2 | 3 | 4 | 5 | 6): boolean {
   return isRecord(value) && typeof value.actor_id === "string" && value.actor_id.length > 0 && isFiniteNumber(value.damage) && isFiniteNumber(value.dps) &&
     (timelineSchema === 1 ? value.rdps_incomplete === undefined || typeof value.rdps_incomplete === "boolean" : typeof value.rdps_incomplete === "boolean") &&
     Array.isArray(value.series) && value.series.length <= 604_800 && value.series.every((point) => isSeriesPoint(point, timelineSchema)) &&
     strictlyAscending(value.series.map((point) => point.second));
 }
 function isTimeline(value: unknown, participants: readonly unknown[], requireResolvedTracks: boolean): value is PublicCombatTimeline {
-  return isRecord(value) && (value.schema_version === 1 || value.schema_version === 2 || value.schema_version === 3 || value.schema_version === 4 || value.schema_version === 5) && (value.source === "single_report" || value.source === "reconciled_canonical_spine") &&
+  return isRecord(value) && (value.schema_version === 1 || value.schema_version === 2 || value.schema_version === 3 || value.schema_version === 4 || value.schema_version === 5 || value.schema_version === 6) && (value.source === "single_report" || value.source === "reconciled_canonical_spine") &&
     typeof value.canonical_report_id === "string" && reportIdPattern.test(value.canonical_report_id) &&
     isNonNegativeInteger(value.canonical_run_index) && Array.isArray(value.contributing_report_ids) &&
     value.contributing_report_ids.length > 0 && value.contributing_report_ids.every((id) => typeof id === "string" && reportIdPattern.test(id)) &&
@@ -329,10 +339,11 @@ function isTimeline(value: unknown, participants: readonly unknown[], requireRes
     value.death_markers.every((marker) => value.participant_tracks.some((track: unknown) => isRecord(track) && track.actor_id === marker.actor_id)) &&
     Array.isArray(value.loadout_markers) && value.loadout_markers.length <= 4_096 && value.loadout_markers.every((marker) => isLoadoutMarker(marker, value.duration_micros)) &&
     value.loadout_markers.every((marker) => value.contributing_report_ids.includes(marker.source_report_id)) &&
+    isTimelineSkillUses(value, value.duration_micros) &&
     Array.isArray(value.rdps_influence_spans) && value.rdps_influence_spans.length <= 65_536 && value.rdps_influence_spans.every((span) => isRdpsSpan(span, value.duration_micros)) &&
     isCoverage(value.coverage) && isOmitted(value.omitted);
 }
-function isSeriesPoint(value: unknown, timelineSchema: 1 | 2 | 3 | 4 | 5): boolean {
+function isSeriesPoint(value: unknown, timelineSchema: 1 | 2 | 3 | 4 | 5 | 6): boolean {
   if (!isRecord(value) || !isNonNegativeInteger(value.second) || !isNonNegativeInteger(value.damage) ||
       !isNonNegativeInteger(value.effective_healing) || !isNonNegativeInteger(value.damage_taken)) return false;
   const attribution = [value.rdps_damage, value.rdps_contribution_given, value.rdps_contribution_received];
@@ -341,7 +352,7 @@ function isSeriesPoint(value: unknown, timelineSchema: 1 | 2 | 3 | 4 | 5): boole
   return present === 0 || (present === attribution.length && attribution.every(isNonNegativeInteger));
 }
 function isRateClock(value: Record<string, any>, durationMicros: number): boolean {
-  if (value.schema_version !== 3 && value.schema_version !== 4 && value.schema_version !== 5) {
+  if (value.schema_version !== 3 && value.schema_version !== 4 && value.schema_version !== 5 && value.schema_version !== 6) {
     return value.rate_clock === undefined && value.rate_clock_complete === undefined &&
       (!isRecord(value.omitted) || value.omitted.rate_clock_points === undefined);
   }
@@ -619,7 +630,8 @@ function isSwiftVortexMagnitude(value: unknown): value is SwiftVortexAppliedMagn
 }
 function isTimelineTrack(value: unknown, participants: readonly unknown[], durationMicros: number, requireResolved: boolean): boolean {
   if (!isRecord(value) || typeof value.actor_id !== "string" || !isNonNegativeInteger(value.canonical_participant_index) ||
-      value.canonical_participant_index >= 256 || !isNonNegativeInteger(value.series_point_count) || value.series_point_count > 262_144) return false;
+      value.canonical_participant_index >= 256 || !isNonNegativeInteger(value.series_point_count) || value.series_point_count > 262_144 ||
+      (value.omitted_skill_uses !== undefined && !isNonNegativeInteger(value.omitted_skill_uses))) return false;
   const participant = participants[value.canonical_participant_index];
   if (!requireResolved && participant == null) return true;
   if (!isRecord(participant) || participant.actor_id !== value.actor_id || !Array.isArray(participant.series) ||
@@ -680,6 +692,31 @@ function isLoadoutMarker(value: unknown, durationMicros: number): boolean {
     value.at_micros <= durationMicros && isNonNegativeInteger(value.phase_index) &&
     typeof value.source_report_id === "string" && reportIdPattern.test(value.source_report_id);
 }
+function isTimelineSkillUses(value: Record<string, any>, durationMicros: number): boolean {
+  if (value.schema_version < 6) return value.skill_uses === undefined && value.clock_anchor === undefined;
+  if (!Array.isArray(value.skill_uses) || value.skill_uses.length > 65_536 ||
+      !value.skill_uses.every((skill: unknown) => isTimelineSkillUse(skill, durationMicros, value.contributing_report_ids)) ||
+      !value.skill_uses.every((skill: PublicTimelineSkillUse) => value.participant_tracks.some((track: unknown) =>
+        isRecord(track) && track.actor_id === skill.actor_id))) return false;
+  if (value.clock_anchor !== undefined && (!isRecord(value.clock_anchor) ||
+      !isNonNegativeInteger(value.clock_anchor.at_micros) || value.clock_anchor.at_micros > durationMicros ||
+      !Number.isSafeInteger(value.clock_anchor.game_time_millis) ||
+      typeof value.clock_anchor.source_report_id !== "string" || !value.contributing_report_ids.includes(value.clock_anchor.source_report_id) ||
+      !isNonNegativeInteger(value.clock_anchor.event_sequence))) return false;
+  return isRecord(value.omitted) && isNonNegativeInteger(value.omitted.skill_uses) &&
+    value.participant_tracks.every((track: unknown) => isRecord(track) && isNonNegativeInteger(track.omitted_skill_uses));
+}
+function isTimelineSkillUse(value: unknown, durationMicros: number, reports: readonly unknown[]): value is PublicTimelineSkillUse {
+  return isRecord(value) && isBoundedIdentifierText(value.actor_id) && isNonNegativeInteger(value.at_micros) &&
+    value.at_micros <= durationMicros && isBoundedIdentifierText(value.action_id) &&
+    (value.action_instance_id === undefined || isBoundedIdentifierText(value.action_instance_id)) &&
+    value.state === "started" && (value.action_kind === undefined || isBoundedIdentifierText(value.action_kind)) &&
+    Array.isArray(value.evidence) && value.evidence.length <= 8 && value.evidence.every((evidence: unknown) =>
+      isRecord(evidence) && typeof evidence.source_report_id === "string" && reports.includes(evidence.source_report_id) &&
+      isNonNegativeInteger(evidence.event_sequence) &&
+      (evidence.game_time_millis === undefined || Number.isSafeInteger(evidence.game_time_millis)) &&
+      evidence.kind === "exact_wire_cast_start") && isNonNegativeInteger(value.omitted_evidence);
+}
 function isRdpsSpan(value: unknown, durationMicros: number): boolean {
   return isRecord(value) && isNonNegativeInteger(value.influence_index) &&
     (value.time_basis === "run_elapsed" || value.time_basis === "capture_observed") &&
@@ -696,7 +733,8 @@ function isCoverage(value: unknown): boolean {
 }
 function isOmitted(value: unknown): boolean {
   return isRecord(value) && ["participant_tracks", "series_points", "death_markers", "loadout_markers", "rdps_influence_spans"]
-    .every((key) => isNonNegativeInteger(value[key]));
+    .every((key) => isNonNegativeInteger(value[key])) &&
+    (value.skill_uses === undefined || isNonNegativeInteger(value.skill_uses));
 }
 function isReconciliationStatus(value: unknown): value is ReconciliationStatus {
   return typeof value === "string" && reconciliationStatuses.has(value as ReconciliationStatus);
