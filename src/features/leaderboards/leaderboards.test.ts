@@ -1,12 +1,52 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ParsePresentationCatalog } from "../parse-browser/parse-presentation";
+import * as parsePresentation from "../parse-browser/parse-presentation";
 import {
   competitionRank,
   formatClearTime,
   isProfileLeaderboard,
   isTrainingDummyLeaderboard,
+  mountLeaderboards,
   seasonThreeActivities,
   trainingClassFilters,
 } from "./leaderboards";
+
+const presentation: ParsePresentationCatalog = {
+  schema_version: 5,
+  locale: "en-US",
+  deployment_id: "global",
+  game_build: "24687926",
+  protocol_pack_digest: "sha256:test",
+  source: "test",
+  actions: {},
+  effects: {},
+  imagines: {},
+  modules: {},
+  module_effects: {},
+  scenes: {
+    "1150": "Chaotic - Towering Ruin",
+    "1633": "Chaotic - Tina's Mindrealm",
+    "6515": "Cursed Radiant Tomb",
+    "6525": "Chaotic - Mech Facility",
+    "6545": "Chaotic - Mistveil Hunting Ground",
+    "6565": "Chaotic - Sea-Ringed Reef",
+  },
+  classes: { "1": "Stormblade", "11": "Marksman" },
+  specializations: {
+    "101": "Iaido Slash Spec",
+    "102": "Moonstrike Spec",
+    "116": "Wildpack Spec",
+    "117": "Falconry Spec",
+  },
+};
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  document.body.replaceChildren();
+});
 
 describe("profile leaderboards", () => {
   it("uses all six packet-proven Season 3 Master activities", () => {
@@ -16,6 +56,47 @@ describe("profile leaderboards", () => {
   it("defines all playable classes and their two specializations", () => {
     expect(trainingClassFilters).toHaveLength(9);
     expect(trainingClassFilters.every((entry) => entry.specializations.length === 2)).toBe(true);
+  });
+
+  it("uses the trusted presentation catalog for filter labels without changing filter ids", async () => {
+    installLeaderboardDom();
+    vi.spyOn(parsePresentation, "loadParsePresentation").mockResolvedValue(presentation);
+
+    await mountLeaderboards();
+
+    expect(optionLabels("leaderboard-activity")).toContainEqual(["1633", "Chaotic - Tina's Mindrealm"]);
+    expect(optionLabels("leaderboard-activity").map(([value]) => Number(value))).toEqual(
+      seasonThreeActivities.map(([id]) => id),
+    );
+    expect(optionLabels("training-dummy-class")).toContainEqual(["11", "Marksman"]);
+    expect(optionLabels("training-dummy-class").slice(1).map(([value]) => Number(value))).toEqual(
+      trainingClassFilters.map(({ id }) => id),
+    );
+    const trainingClass = document.querySelector<HTMLSelectElement>("#training-dummy-class")!;
+    trainingClass.value = "";
+    trainingClass.dispatchEvent(new Event("change"));
+    expect(optionLabels("training-dummy-specialization")).toContainEqual([
+      "101",
+      "Stormblade · Iaido Slash Spec",
+    ]);
+    expect(optionLabels("training-dummy-specialization").slice(1).map(([value]) => Number(value))).toEqual(
+      trainingClassFilters.flatMap(({ specializations }) => specializations.map(([id]) => id)),
+    );
+
+    trainingClass.value = "11";
+    trainingClass.dispatchEvent(new Event("change"));
+    expect(optionLabels("training-dummy-specialization")).toContainEqual(["116", "Wildpack Spec"]);
+  });
+
+  it("keeps the existing labels when the trusted presentation catalog cannot load", async () => {
+    installLeaderboardDom();
+    vi.spyOn(parsePresentation, "loadParsePresentation").mockRejectedValue(new Error("offline"));
+
+    await mountLeaderboards();
+
+    expect(optionLabels("leaderboard-activity")).toContainEqual(["1633", "Void - Tina's Mindrealm"]);
+    expect(optionLabels("training-dummy-class")).toContainEqual(["11", "Marksman"]);
+    expect(optionLabels("training-dummy-specialization")).toContainEqual(["101", "Iaido Slash"]);
   });
 
   it("formats the game's recorded pass time in minutes and seconds", () => {
@@ -111,3 +192,32 @@ describe("profile leaderboards", () => {
     })).toBe(false);
   });
 });
+
+function installLeaderboardDom(): void {
+  vi.stubGlobal("Option", function optionConstructor(text = "", value = "") {
+    const option = document.createElement("option");
+    option.text = text;
+    option.value = value;
+    return option;
+  });
+  document.body.innerHTML = `
+    <select id="leaderboard-season"><option value="3">Season 3</option></select>
+    <select id="leaderboard-region"><option value="">All regions</option></select>
+    <select id="leaderboard-activity"></select>
+    <select id="leaderboard-tier"></select>
+    <select id="training-dummy-season"><option value="3">Season 3</option></select>
+    <select id="training-dummy-region"><option value="">All regions</option></select>
+    <select id="training-dummy-class"><option value="">All classes</option></select>
+    <select id="training-dummy-specialization"></select>
+    <div id="leaderboard-status"></div>
+    <ol id="master-score-ranking"></ol>
+    <ol id="master-time-ranking"></ol>
+    <div id="training-dummy-status"></div>
+    <ol id="training-dummy-ranking"></ol>
+  `;
+}
+
+function optionLabels(id: string): Array<[string, string]> {
+  const select = document.querySelector<HTMLSelectElement>(`#${id}`)!;
+  return [...select.options].map((option) => [option.value, option.text]);
+}

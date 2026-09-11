@@ -1,4 +1,11 @@
 import { fetchPublicRead } from "../../public-api";
+import {
+  localizedClassName,
+  localizedSceneName,
+  localizedSpecializationName,
+  loadParsePresentation,
+  type ParsePresentationCatalog,
+} from "../parse-browser/parse-presentation";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
 
@@ -96,14 +103,20 @@ export async function mountLeaderboards(): Promise<void> {
   const trainingRegion = requiredSelect("training-dummy-region");
   const trainingClass = requiredSelect("training-dummy-class");
   const trainingSpecialization = requiredSelect("training-dummy-specialization");
-  for (const [id, name] of seasonThreeActivities) activity.add(new Option(name, String(id)));
+  const presentation = await loadParsePresentation().catch(() => undefined);
+  for (const [id, name] of seasonThreeActivities) {
+    activity.add(new Option(presentation ? localizedSceneName(presentation, id) : name, String(id)));
+  }
   activity.value = "1633";
   for (let value = 20; value >= 1; value -= 1) tier.add(new Option(`M${value}`, String(value)));
   tier.value = "20";
   for (const entry of trainingClassFilters) {
-    trainingClass.add(new Option(entry.name, String(entry.id)));
+    trainingClass.add(new Option(
+      presentation ? localizedClassName(presentation, entry.id) ?? entry.name : entry.name,
+      String(entry.id),
+    ));
   }
-  populateTrainingSpecializations(trainingSpecialization, trainingClass.value);
+  populateTrainingSpecializations(trainingSpecialization, trainingClass.value, presentation);
 
   const refresh = async (): Promise<void> => {
     setLoading();
@@ -139,13 +152,13 @@ export async function mountLeaderboards(): Promise<void> {
       if (!response.ok || !isTrainingDummyLeaderboard(value)) {
         throw new Error("invalid training-dummy leaderboard response");
       }
-      renderTrainingDummyLeaderboard(value);
+      renderTrainingDummyLeaderboard(value, presentation);
     } catch {
       setTrainingFailure("Target-dummy rankings are temporarily unavailable.");
     }
   };
   trainingClass.addEventListener("change", () => {
-    populateTrainingSpecializations(trainingSpecialization, trainingClass.value);
+    populateTrainingSpecializations(trainingSpecialization, trainingClass.value, presentation);
     void refreshTraining();
   });
   for (const control of [trainingSeason, trainingRegion, trainingSpecialization]) {
@@ -186,14 +199,24 @@ export function isTrainingDummyLeaderboard(value: unknown): value is TrainingDum
     positiveInteger(entry.verified_unix_millis));
 }
 
-function populateTrainingSpecializations(select: HTMLSelectElement, classValue: string): void {
+function populateTrainingSpecializations(
+  select: HTMLSelectElement,
+  classValue: string,
+  presentation: ParsePresentationCatalog | undefined,
+): void {
   const selected = select.value;
   select.replaceChildren(new Option("All specializations", ""));
   const requestedClass = Number.parseInt(classValue, 10);
   for (const entry of trainingClassFilters) {
     if (Number.isSafeInteger(requestedClass) && entry.id !== requestedClass) continue;
     for (const [id, name] of entry.specializations) {
-      const label = Number.isSafeInteger(requestedClass) ? name : `${entry.name} · ${name}`;
+      const className = presentation ? localizedClassName(presentation, entry.id) ?? entry.name : entry.name;
+      const specializationName = presentation
+        ? localizedSpecializationName(presentation, id) ?? name
+        : name;
+      const label = Number.isSafeInteger(requestedClass)
+        ? specializationName
+        : `${className} · ${specializationName}`;
       select.add(new Option(label, String(id)));
     }
   }
@@ -225,13 +248,20 @@ function renderLeaderboard(value: ProfileLeaderboard): void {
   status.className = "status-chip success";
 }
 
-function renderTrainingDummyLeaderboard(value: TrainingDummyLeaderboard): void {
+function renderTrainingDummyLeaderboard(
+  value: TrainingDummyLeaderboard,
+  presentation: ParsePresentationCatalog | undefined,
+): void {
   const list = required("training-dummy-ranking");
   list.replaceChildren(...value.results.map((entry, index, entries) => rankingRow(
     entry,
     competitionRank(entries.map((candidate) => candidate.dps), index),
     `${formatDps(entry.dps)} DPS`,
-    `${entry.total_damage.toLocaleString()} damage · ${trainingSpecializationName(entry.class_id, entry.specialization_id)}`,
+    `${entry.total_damage.toLocaleString()} damage · ${trainingSpecializationName(
+      entry.class_id,
+      entry.specialization_id,
+      presentation,
+    )}`,
   )));
   if (value.results.length === 0) {
     list.append(emptyRow("No verified solo target-dummy tests match these filters yet."));
@@ -312,9 +342,18 @@ function setTrainingFailure(message: string): void {
   required("training-dummy-ranking").replaceChildren(emptyRow(message));
 }
 
-function trainingSpecializationName(classId: number, specializationId: number): string {
+function trainingSpecializationName(
+  classId: number,
+  specializationId: number,
+  presentation: ParsePresentationCatalog | undefined,
+): string {
   const classEntry = trainingClassFilters.find((entry) => entry.id === classId);
   const specialization = classEntry?.specializations.find(([id]) => id === specializationId);
+  if (presentation) {
+    return `${localizedClassName(presentation, classId) ?? `Class ${classId}`} · ${
+      localizedSpecializationName(presentation, specializationId) ?? `Spec ${specializationId}`
+    }`;
+  }
   if (!classEntry) return `Class ${classId} · Spec ${specializationId}`;
   return `${classEntry.name} · ${specialization?.[1] ?? `Spec ${specializationId}`}`;
 }
