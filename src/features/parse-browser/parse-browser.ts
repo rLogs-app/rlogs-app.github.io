@@ -326,13 +326,13 @@ export function renderCatalogEntry(
   entry: PublicParseCatalogEntry,
   presentation?: ParsePresentationCatalog,
   schemaVersion: 6 | 7 = 6,
+  messages = createMessageResolver(),
 ): string {
   const semanticAuthorized = Boolean(semanticPresentationForCatalogEntry(presentation, schemaVersion, entry));
-  const difficulty = semanticAuthorized
-    ? [title(entry.difficulty_family), entry.difficulty_tier == null ? "" : ` ${entry.difficulty_tier}`].join("").trim()
-    : entry.difficulty_tier == null ? "Difficulty unresolved" : `Tier ${entry.difficulty_tier}`;
+  const scene = localizedSceneName(presentationForCatalogEntry(presentation, schemaVersion, entry), entry.scene_id);
+  const difficulty = supplementalDifficultyLabel(entry, scene, semanticAuthorized, messages);
   return `<button class="parse-row" type="button" data-report-id="${escapeHtml(entry.report_id)}" data-run-index="${entry.run_index}">
-    <span><strong>${escapeHtml(localizedSceneName(presentationForCatalogEntry(presentation, schemaVersion, entry), entry.scene_id))}</strong>
+    <span><strong>${escapeHtml(scene)}</strong>
       <small>${escapeHtml([difficulty, title(entry.terminal_state)].filter(Boolean).join(" / "))}</small></span>
     <span><small>Region</small><strong>${escapeHtml(title(entry.region_id))}</strong></span>
     <span><small>Party</small><strong>${entry.participant_count}</strong></span>
@@ -401,7 +401,7 @@ export function renderReport(
   return `<article class="parse-report">
     <div class="parse-report-heading"><div><p class="eyebrow">${escapeHtml(report.region_id)} / ${escapeHtml(report.verification.tier)}</p>
       <h3>${escapeHtml(sceneHeading)}</h3>
-      <p>${escapeHtml(formatDifficulty(run, Boolean(viewedSemanticPresentation)))} / ${escapeHtml(title(run.terminal_state))}</p></div>
+      <p>${escapeHtml([supplementalDifficultyLabel(run, sceneHeading, Boolean(viewedSemanticPresentation), messages), title(run.terminal_state)].filter(Boolean).join(" / "))}</p></div>
       ${renderReplayStatus(associatedReconciliation, reconciled, messages)}</div>
     <div class="parse-run-identity" aria-label="Run identifiers">
       <span><small>Run ID</small><code>${escapeHtml(run.run_group_id ?? `${report.report_id}:${run.run_index}`)}</code></span>
@@ -4180,14 +4180,57 @@ export function populateSceneFacet(
   ]));
 }
 
-function formatDifficulty(run: PublicRun, presentationAuthorized = true): string {
+type DifficultyIdentity = Pick<
+  PublicRun,
+  "activity_family_id" | "difficulty_family" | "difficulty_tier"
+> | Pick<
+  PublicParseCatalogEntry,
+  "activity_family_id" | "difficulty_family" | "difficulty_tier"
+>;
+
+const difficultyLessActivityFamilies = new Set(["stimen-vaults"]);
+
+function supplementalDifficultyLabel(
+  identity: DifficultyIdentity,
+  sceneLabel: string,
+  presentationAuthorized: boolean,
+  messages: MessageResolver,
+): string | null {
   if (!presentationAuthorized) {
-    return run.difficulty_tier == null ? "Difficulty unresolved" : `Tier ${run.difficulty_tier}`;
+    return identity.difficulty_tier == null
+      ? messages.message("parse.report.difficulty_unresolved")
+      : messages.message("parse.report.difficulty_tier", { tier: identity.difficulty_tier });
   }
-  return (
-    [title(run.difficulty_family), run.difficulty_tier == null ? "" : ` ${run.difficulty_tier}`].join("").trim() ||
-    "Difficulty unresolved"
-  );
+  if (
+    identity.difficulty_family == null &&
+    identity.difficulty_tier == null &&
+    identity.activity_family_id != null &&
+    difficultyLessActivityFamilies.has(identity.activity_family_id)
+  ) {
+    return null;
+  }
+  const difficulty = identity.difficulty_family === "master"
+    ? identity.difficulty_tier == null
+      ? messages.message("parse.report.difficulty_master_tier_unresolved")
+      : messages.message("parse.report.difficulty_master_tier", { tier: identity.difficulty_tier })
+    : identity.difficulty_family
+      ? [title(identity.difficulty_family), identity.difficulty_tier == null ? "" : ` ${identity.difficulty_tier}`].join("")
+      : identity.difficulty_tier == null
+        ? messages.message("parse.report.difficulty_unresolved")
+        : messages.message("parse.report.difficulty_tier", { tier: identity.difficulty_tier });
+  const normalizedScene = normalizedPresentationLabel(sceneLabel);
+  const normalizedDifficulty = normalizedPresentationLabel(difficulty);
+  return normalizedScene && normalizedDifficulty && ` ${normalizedScene} `.includes(` ${normalizedDifficulty} `)
+    ? null
+    : difficulty;
+}
+
+function normalizedPresentationLabel(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
 }
 
 function formatDuration(micros: number | null | undefined): string {

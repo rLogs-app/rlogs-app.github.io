@@ -296,6 +296,75 @@ describe("parse search", () => {
     expect(renderReport(report, 0, null, null, catalogPresentation)).toContain("Hard / Completed");
   });
 
+  it("localizes an authorized unresolved Master tier on catalog and report surfaces", () => {
+    const messages = createMessageResolver("fr", {
+      ...bundledMessageCatalogs,
+      fr: {
+        "parse.report.difficulty_master_tier_unresolved": "Maître (niveau non résolu)",
+      },
+    });
+    const masterEntry = { ...parse, difficulty_family: "master", difficulty_tier: undefined };
+    expect(renderCatalogEntry(masterEntry, catalogPresentation, 7, messages))
+      .toContain("Maître (niveau non résolu) / Completed");
+
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    report.deployment_id = catalogPresentation.deployment_id;
+    report.client_build = catalogPresentation.game_build;
+    report.protocol_pack_digest = catalogPresentation.protocol_pack_digest;
+    report.runs[0]!.difficulty_family = "master";
+    report.runs[0]!.difficulty_tier = null;
+    expect(renderReport(report, 0, null, messages, catalogPresentation))
+      .toContain("Maître (niveau non résolu) / Completed");
+
+    report.runs[0]!.difficulty_tier = 17;
+    expect(renderCatalogEntry(
+      { ...masterEntry, difficulty_tier: 17 }, catalogPresentation, 7, messages,
+    )).toContain("Master 17 / Completed");
+    expect(renderReport(report, 0, null, messages, catalogPresentation)).toContain("Master 17 / Completed");
+  });
+
+  it("suppresses duplicate scene difficulty and difficulty-less Stimen labels on catalog and report surfaces", () => {
+    const presentation = {
+      ...catalogPresentation,
+      scenes: { ...catalogPresentation.scenes, "1633": "Guild Hunt - Hard" },
+    };
+    const duplicateEntry = {
+      ...parse,
+      activity_family_id: "guild-hunt",
+      scene_id: 1633,
+      difficulty_family: "hard",
+      difficulty_tier: undefined,
+    };
+    expect(renderCatalogEntry(duplicateEntry, presentation, 7)).toContain("<small>Completed</small>");
+
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    report.deployment_id = presentation.deployment_id;
+    report.client_build = presentation.game_build;
+    report.protocol_pack_digest = presentation.protocol_pack_digest;
+    Object.assign(report.runs[0]!, {
+      activity_family_id: "guild-hunt",
+      scene_id: 1633,
+      difficulty_family: "hard",
+      difficulty_tier: null,
+    });
+    expect(renderReport(report, 0, null, null, presentation)).toContain("<p>Completed</p>");
+
+    const stimenEntry = {
+      ...parse,
+      activity_family_id: "stimen-vaults",
+      difficulty_family: undefined,
+      difficulty_tier: undefined,
+    };
+    expect(renderCatalogEntry(stimenEntry, catalogPresentation, 7)).toContain("<small>Completed</small>");
+    Object.assign(report.runs[0]!, {
+      activity_family_id: "stimen-vaults",
+      scene_id: 30120,
+      difficulty_family: null,
+      difficulty_tier: null,
+    });
+    expect(renderReport(report, 0, null, null, catalogPresentation)).toContain("<p>Completed</p>");
+  });
+
   it("preserves an observed tier zero on catalog and detail surfaces", () => {
     const tierZero = { ...parse, difficulty_family: "master", difficulty_tier: 0 };
     expect(renderCatalogEntry(tierZero, catalogPresentation, 7)).toContain("Master 0 / Completed");
