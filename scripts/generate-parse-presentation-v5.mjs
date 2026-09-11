@@ -114,8 +114,9 @@ const output = {
   coverage: {
     ...parse.coverage,
     scope: "captured-public-api-action-ids-with-trusted-root-label-reconciliation",
-    saved_history_observed_action_count: parse.coverage.observed_action_count,
-    saved_history_localized_observed_action_count: parse.coverage.localized_observed_action_count,
+    saved_history_observed_action_count: parse.coverage.saved_history_observed_action_count,
+    saved_history_localized_observed_action_count: parse.coverage.saved_history_observed_action_count,
+    captured_public_promotion_count: parse.coverage.captured_public_promotion_count,
     observed_action_count: observation.action_ids.length,
     localized_observed_action_count: observation.action_ids.length - uncoveredActionIds.length,
     uncovered_action_ids: uncoveredActionIds,

@@ -211,6 +211,8 @@ const output = {
     scope: observedCoverage.scope,
     observed_action_count: observedIds.size,
     localized_observed_action_count: observedIds.size - uncoveredActionIds.length,
+    saved_history_observed_action_count: observedCoverage.summary.saved_history_observed_action_count,
+    captured_public_promotion_count: observedCoverage.summary.captured_public_promotion_count,
     uncovered_action_ids: uncoveredActionIds,
     reviewed_action_count: Object.keys(actions).length,
     rdps_effect_count: rdpsEffects.effects.length,

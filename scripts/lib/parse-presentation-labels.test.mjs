@@ -37,8 +37,10 @@ describe("parse presentation label gate", () => {
       protocol_pack_digest: "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
     });
     expect(catalog.coverage).toMatchObject({
-      observed_action_count: 187,
-      localized_observed_action_count: 187,
+      observed_action_count: 195,
+      localized_observed_action_count: 195,
+      saved_history_observed_action_count: 187,
+      captured_public_promotion_count: 8,
       uncovered_action_ids: [],
       rdps_effect_count: 29,
       localized_rdps_effect_count: 29,
@@ -89,7 +91,10 @@ describe("parse presentation label gate", () => {
     expect(catalog.coverage).toMatchObject({
       scope: "captured-public-api-action-ids-with-trusted-root-label-reconciliation",
       observed_action_count: observation.action_ids.length,
-      localized_observed_action_count: 248,
+      localized_observed_action_count: 256,
+      saved_history_observed_action_count: 187,
+      saved_history_localized_observed_action_count: 187,
+      captured_public_promotion_count: 8,
       trusted_enrichment_count: 18,
       conflicting_action_ids: [],
       public_action_observation: {
@@ -99,7 +104,7 @@ describe("parse presentation label gate", () => {
         report_count: observation.report_count,
       },
     });
-    expect(catalog.coverage.uncovered_action_ids).toHaveLength(14);
+    expect(catalog.coverage.uncovered_action_ids).toHaveLength(6);
     expect(catalog.coverage.uncovered_action_ids).toContain("700009");
     expect(catalog.actions["122330103"]).toBe("Powerdraw");
     expect(catalog.actions["2220329107"]).toBe("Falcon Strike");
@@ -125,7 +130,17 @@ describe("parse presentation label gate", () => {
     expect(catalog.actions["2332"]).toBe("Passion Fury");
     expect(catalog.actions["2406"]).toBe("Vanguard Strike");
     expect(catalog.actions["2453"]).toBe("Sacred Blade");
-    expect(catalog.actions["700009"]).toBeUndefined();
+    expect(catalog.actions["2202"]).toBe("Bullseye");
+    expect(catalog.actions["2203"]).toBe("Bullseye");
+    expect(catalog.actions["2204"]).toBe("Bullseye");
+    expect(catalog.actions["21404"]).toBe("HP Recovery");
+    expect(catalog.actions["31901"]).toBe("Valor Cyclone");
+    expect(catalog.actions["2202112"]).toBe("Overhealing");
+    expect(catalog.actions["3003260"]).toBe("Judgment - Heal");
+    expect(catalog.actions["3057111"]).toBe("Overhealing");
+    for (const unresolved of ["2212", "700009", "873204", "873205", "1009702", "3054412"]) {
+      expect(catalog.actions[unresolved]).toBeUndefined();
+    }
     expect(catalog.actions["9999999"]).toBeUndefined();
     expect(Object.values(catalog.actions).every(
       (label) => !containsUnsupportedEnglishPresentation(label),

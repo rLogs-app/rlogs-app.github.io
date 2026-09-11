@@ -13,6 +13,7 @@ export interface ParsePresentationCatalog {
     reviewed_action_count: number;
     saved_history_observed_action_count?: number;
     saved_history_localized_observed_action_count?: number;
+    captured_public_promotion_count?: number;
     trusted_enrichment_count?: number;
     trusted_enrichment_action_ids?: readonly string[];
     conflicting_action_ids?: readonly string[];
