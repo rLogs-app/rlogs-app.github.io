@@ -318,11 +318,22 @@ describe("combat timeline DOM interactions", () => {
     const otherTrace = root.querySelector<SVGPolylineElement>('[data-participant="1"]')!;
     const targetToggle = root.querySelector<HTMLButtonElement>('[data-participant-toggle="0"]')!;
     const targetLane = root.querySelector<SVGGElement>('[data-timeline-lane-participant="0"]')!;
+    const hostileToggle = root.querySelector<HTMLButtonElement>("[data-hostile-mechanics-toggle]")!;
     expect(hostileLane).not.toBeNull();
     expect(hostileMarker).not.toBeNull();
     expect(hostileMarker.hasAttribute("data-timeline-marker-participant")).toBe(false);
     expect(hostileMarker.dataset.timelineTargetParticipant).toBe("0");
     expect(hostileMarker.getAttribute("aria-label")).toContain("targeting");
+    expect(hostileToggle.textContent).toContain("Hostile mechanics");
+    hostileToggle.click();
+    expect(hostileToggle.getAttribute("aria-pressed")).toBe("false");
+    expect(hostileLane.hasAttribute("hidden")).toBe(true);
+    expect(hostileMarker.hasAttribute("hidden")).toBe(true);
+    expect(targetTrace.hasAttribute("hidden")).toBe(false);
+    hostileToggle.click();
+    expect(hostileToggle.getAttribute("aria-pressed")).toBe("true");
+    expect(hostileLane.hasAttribute("hidden")).toBe(false);
+    expect(hostileMarker.hasAttribute("hidden")).toBe(false);
     const visibilityBeforeFocus = [...root.querySelectorAll<HTMLButtonElement>("[data-participant-toggle]")]
       .map((button) => button.getAttribute("aria-pressed"));
     hostileMarker.dispatchEvent(new window.PointerEvent("pointerenter", { pointerType: "mouse" }) as unknown as Event);
@@ -354,6 +365,7 @@ describe("combat timeline DOM interactions", () => {
     root.querySelector<HTMLButtonElement>("[data-participant-clear]")!.click();
     expect(hostileLane.hasAttribute("hidden")).toBe(false);
     expect(hostileMarker.hasAttribute("hidden")).toBe(false);
+    expect(hostileToggle.getAttribute("aria-pressed")).toBe("true");
     expect([...root.querySelectorAll<SVGPolylineElement>("[data-participant]")]
       .every((track) => track.hasAttribute("hidden"))).toBe(true);
     hostileMarker.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);

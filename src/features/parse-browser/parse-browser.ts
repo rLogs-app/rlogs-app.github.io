@@ -878,6 +878,7 @@ export function renderTimeline(
     : [];
   const exactCumulativeRdpsTracks = rdpsTracks.filter(({ actor }) => actor.rdps_incomplete === false);
   const markerLanes = normalizeTimelineLaneEvents(timeline, plotted, graph.loadoutPhaseSources, messages, presentation);
+  const hasHostileMechanics = markerLanes.some((lane) => lane.hostileSource);
   const omittedMarkerCount = timeline.omitted.death_markers + timeline.omitted.loadout_markers +
     (timeline.omitted.skill_uses ?? 0) + (timeline.omitted.hostile_casts ?? 0) +
     (timeline.omitted.status_spans ?? 0);
@@ -960,7 +961,7 @@ export function renderTimeline(
       <button type="button" data-participant-show-all>${escapeHtml(messages.message("parse.timeline.participants_show_all"))}</button>
       <button type="button" data-participant-clear>${escapeHtml(messages.message("parse.timeline.participants_clear"))}</button>
     </div>
-    <div class="timeline-legend" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">${plotted.map(({ actor, color, pattern }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i class="line-pattern-${pattern}"></i><span>${escapeHtml(actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id }))}</span></button>`).join("")}</div>
+    <div class="timeline-legend" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">${plotted.map(({ actor, color, pattern }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i class="line-pattern-${pattern}"></i><span>${escapeHtml(actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id }))}</span></button>`).join("")}${hasHostileMechanics ? `<button type="button" data-hostile-mechanics-toggle aria-pressed="true" style="--track:${palette[5]}"><i class="line-pattern-dash-dot"></i><span>${escapeHtml(messages.message("parse.timeline.hostile_mechanics"))}</span></button>` : ""}</div>
     ${notes ? `<p class="timeline-note">${escapeHtml(notes)}</p>` : ""}
     ${markerLanes.length || omittedMarkerCount > 0 ? `<p class="timeline-note timeline-lane-coverage">${escapeHtml(messages.message(
       omittedMarkerCount === 1 ? "parse.timeline.lanes.coverage.one"
@@ -2295,6 +2296,23 @@ function setTimelineParticipantVisibility(timeline: HTMLElement, participant: st
   }
 }
 
+function setTimelineHostileVisibility(timeline: HTMLElement, visible: boolean): void {
+  timeline.querySelector<HTMLButtonElement>("[data-hostile-mechanics-toggle]")
+    ?.setAttribute("aria-pressed", String(visible));
+  timeline.querySelectorAll<SVGGraphicsElement>(".timeline-marker.hostile").forEach((marker) => {
+    if (visible) marker.removeAttribute("hidden");
+    else {
+      marker.setAttribute("hidden", "");
+      marker.classList.remove("is-current", "is-focused", "is-dimmed");
+    }
+  });
+  timeline.querySelectorAll<SVGGElement>("[data-timeline-lane-hostile]").forEach((lane) => {
+    if (visible) lane.removeAttribute("hidden");
+    else lane.setAttribute("hidden", "");
+  });
+  if (!visible) timelineLanePreviewClosers.get(timeline)?.();
+}
+
 function refreshTimelineVisibility(timeline: HTMLElement): void {
   const durationMicros = Number(timeline.querySelector<SVGSVGElement>(".timeline-svg")?.dataset.durationMicros);
   const viewport = timelineViewportFor(timeline, durationMicros);
@@ -2692,6 +2710,14 @@ function wireTimelineControls(root: HTMLElement): void {
       if (!timeline || participant == null) return;
       const visible = button.getAttribute("aria-pressed") !== "true";
       setTimelineParticipantVisibility(timeline, participant, visible);
+      refreshTimelineVisibility(timeline);
+    });
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-hostile-mechanics-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const timeline = button.closest<HTMLElement>("[data-timeline-metric]");
+      if (!timeline) return;
+      setTimelineHostileVisibility(timeline, button.getAttribute("aria-pressed") !== "true");
       refreshTimelineVisibility(timeline);
     });
   });

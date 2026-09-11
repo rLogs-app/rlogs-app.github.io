@@ -88,6 +88,7 @@ describe("My Parses", () => {
       "[data-window]",
       "[data-timeline-death-trigger]",
       "[data-participant-toggle]",
+      "[data-hostile-mechanics-toggle]",
       "[data-participant-show-all], [data-participant-clear]",
       "[data-timeline-inspector]",
     ]);

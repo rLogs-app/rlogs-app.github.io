@@ -137,6 +137,7 @@ const enUsMessages: MessageCatalog = {
   "parse.timeline.participants": "Visible participants",
   "parse.timeline.participants_show_all": "Show all",
   "parse.timeline.participants_clear": "Clear",
+  "parse.timeline.hostile_mechanics": "Hostile mechanics",
   "parse.timeline.graph_aria": "Sparse one-second combat rates over {duration}; recorded event lanes use run elapsed time",
   "parse.timeline.marker.death": "Death",
   "parse.timeline.marker.loadout": "Loadout change",

@@ -53,6 +53,7 @@ describe("website message resolver", () => {
   it("localizes recorded lane coverage and aggregate previews", () => {
     const messages = createMessageResolver("en-US");
     expect(messages.message("parse.timeline.lanes.aria")).toBe("Recorded event lanes");
+    expect(messages.message("parse.timeline.hostile_mechanics")).toBe("Hostile mechanics");
     expect(messages.message("parse.timeline.lanes.preview.other", { count: 4 })).toBe("4 nearby events");
     expect(messages.message("parse.timeline.lanes.coverage.other", { omitted: 3 })).toContain("3 events were omitted");
     expect(messages.message("parse.timeline.lanes.coverage.one")).toContain("1 event was omitted");
