@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PublicParseCatalogEntry } from "../../contracts/public-parse";
 import type { PublicCommunityMilestone } from "../../contracts/public-activity";
+import { bundledMessageCatalogs, createMessageResolver } from "../../localization/messages";
 import type { ParsePresentationCatalog } from "../parse-browser/parse-presentation";
 import { buildSceneRankings, catalogEntryDifficultyLabel, catalogEntrySceneLabel, milestonePresentationCopy, parseFeedRow } from "./home";
 import { regionalSeason } from "./regional-seasons";
@@ -130,6 +131,51 @@ describe("home rankings", () => {
     expect(parseFeedRow(wrongDigest, presentation, 7)).toContain("Tier 17");
     expect(parseFeedRow(wrongDigest, presentation, 7)).not.toContain("Master 17");
     expect(parseFeedRow(exact, presentation, 6)).toContain("Chaotic - Tina's Mindrealm");
+  });
+
+  it("localizes unresolved Master tiers in recent parses without losing known tiers", () => {
+    const messages = createMessageResolver("fr", {
+      ...bundledMessageCatalogs,
+      fr: {
+        "parse.report.difficulty_master_tier_unresolved": "Maître (niveau non résolu)",
+      },
+    });
+    const unresolved = {
+      ...entry(1633, "Chaotic - Tina's Mindrealm", 10),
+      difficulty_family: "master",
+      difficulty_tier: undefined,
+    };
+    expect(catalogEntryDifficultyLabel(unresolved, presentation, 7, messages))
+      .toBe("Maître (niveau non résolu)");
+    expect(parseFeedRow(unresolved, presentation, 7, messages))
+      .toContain("Maître (niveau non résolu) · Submitted by Unknown submitter");
+    expect(parseFeedRow({ ...unresolved, difficulty_tier: 20 }, presentation, 7, messages))
+      .toContain("Master 20 · Submitted by Unknown submitter");
+  });
+
+  it("suppresses duplicate and difficulty-less Stimen labels in recent parses", () => {
+    const duplicatePresentation = {
+      ...presentation,
+      scenes: { ...presentation.scenes, "12023": "Guild Hunt - Hard" },
+    };
+    const duplicate = {
+      ...entry(12023, "Guild Hunt - Hard", 10),
+      activity_family_id: "guild-hunt",
+      difficulty_family: "hard",
+      difficulty_tier: undefined,
+    };
+    expect(catalogEntryDifficultyLabel(duplicate, duplicatePresentation, 7)).toBeUndefined();
+    expect(parseFeedRow(duplicate, duplicatePresentation, 7)).toContain("Submitted by Unknown submitter · 5 players");
+    expect(parseFeedRow(duplicate, duplicatePresentation, 7)).not.toContain("Hard · Submitted");
+
+    const stimen = {
+      ...entry(30120, "Stimen Remains - Floor 20", 10),
+      activity_family_id: "stimen-vaults",
+      difficulty_family: undefined,
+      difficulty_tier: undefined,
+    };
+    expect(catalogEntryDifficultyLabel(stimen, presentation, 7)).toBeUndefined();
+    expect(parseFeedRow(stimen, presentation, 7)).not.toContain("Difficulty unresolved");
   });
 
   it("omits difficulty from a recent parse when no trusted tier or family exists", () => {

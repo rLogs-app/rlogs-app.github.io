@@ -26,6 +26,8 @@ import {
   renderCoreWithOptionalPresentation,
   type ParsePresentationCatalog,
 } from "../parse-browser/parse-presentation";
+import { supplementalDifficultyLabel } from "../parse-browser/difficulty-presentation";
+import { createMessageResolver, type MessageResolver } from "../../localization/messages";
 import { regionalSeason } from "./regional-seasons";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
@@ -111,6 +113,7 @@ export function buildSceneRankings(
   entries: PublicParseCatalogEntry[],
   presentation?: ParsePresentationCatalog,
   schemaVersion: 6 | 7 = 6,
+  messages = createMessageResolver(),
 ): SceneRanking[] {
   const ranked = entries.filter(
     (entry) => entry.terminal_state === "completed" && entry.total_run_time_micros != null,
@@ -159,7 +162,7 @@ export function buildSceneRankings(
     const floor = stimenFloor(entry, hasPresentation);
     const highestTier = highestTierByScope.get(rankingScope(entry));
     if (highestTier !== undefined && entry.difficulty_tier !== highestTier) continue;
-    const difficultyLabel = catalogEntryDifficultyLabel(entry, presentation, schemaVersion);
+    const difficultyLabel = catalogEntryDifficultyLabel(entry, presentation, schemaVersion, messages);
     const difficultyKey = hasPresentation
       ? `${entry.difficulty_family ?? "unknown"}:${entry.difficulty_tier ?? "unknown"}`
       : `raw:${entry.difficulty_tier ?? "unknown"}`;
@@ -250,9 +253,10 @@ export function parseFeedRow(
   entry: PublicParseCatalogEntry,
   presentation?: ParsePresentationCatalog,
   schemaVersion: 6 | 7 = 6,
+  messages = createMessageResolver(),
 ): string {
   const name = catalogEntrySceneLabel(entry, presentation, schemaVersion);
-  const difficulty = catalogEntryDifficultyLabel(entry, presentation, schemaVersion);
+  const difficulty = catalogEntryDifficultyLabel(entry, presentation, schemaVersion, messages);
   const context = [difficulty, `Submitted by ${entry.submitter_name ?? "Unknown submitter"}`, `${entry.participant_count} players`].filter(Boolean).join(" · ");
   return `<a class="home-feed-row" href="/parses/?parse=${encodeURIComponent(entry.report_id)}&run=${entry.run_index}"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(context)}</small></span><span><strong>${formatDuration(entry.total_run_time_micros)}</strong></span></a>`;
 }
@@ -261,13 +265,11 @@ export function catalogEntryDifficultyLabel(
   entry: PublicParseCatalogEntry,
   presentation?: ParsePresentationCatalog,
   schemaVersion: 6 | 7 = 6,
+  messages: MessageResolver = createMessageResolver(),
 ): string | undefined {
   const authorized = semanticPresentationForCatalogEntry(presentation, schemaVersion, entry) != null;
-  const family = authorized && entry.difficulty_family ? humanizeIdentifier(entry.difficulty_family) : undefined;
-  const tier = entry.difficulty_tier == null ? undefined : entry.difficulty_tier;
-  if (family && tier !== undefined) return `${family} ${tier}`;
-  if (family) return family;
-  return tier === undefined ? undefined : `Tier ${tier}`;
+  const scene = catalogEntrySceneLabel(entry, presentation, schemaVersion);
+  return supplementalDifficultyLabel(entry, scene, authorized, messages, false) ?? undefined;
 }
 
 function humanizeIdentifier(value: string): string {

@@ -36,6 +36,7 @@ import {
 } from "./parse-presentation";
 import { fetchPublicRead } from "../../public-api";
 import { createMessageResolver, type MessageResolver } from "../../localization/messages";
+import { supplementalDifficultyLabel } from "./difficulty-presentation";
 
 const baseUrl = import.meta.env.BASE_URL;
 const configuredApi = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -4178,59 +4179,6 @@ export function populateSceneFacet(
     String(item.id),
     `${localizedSceneName(presentation, item.id)} (${item.count})`,
   ]));
-}
-
-type DifficultyIdentity = Pick<
-  PublicRun,
-  "activity_family_id" | "difficulty_family" | "difficulty_tier"
-> | Pick<
-  PublicParseCatalogEntry,
-  "activity_family_id" | "difficulty_family" | "difficulty_tier"
->;
-
-const difficultyLessActivityFamilies = new Set(["stimen-vaults"]);
-
-function supplementalDifficultyLabel(
-  identity: DifficultyIdentity,
-  sceneLabel: string,
-  presentationAuthorized: boolean,
-  messages: MessageResolver,
-): string | null {
-  if (!presentationAuthorized) {
-    return identity.difficulty_tier == null
-      ? messages.message("parse.report.difficulty_unresolved")
-      : messages.message("parse.report.difficulty_tier", { tier: identity.difficulty_tier });
-  }
-  if (
-    identity.difficulty_family == null &&
-    identity.difficulty_tier == null &&
-    identity.activity_family_id != null &&
-    difficultyLessActivityFamilies.has(identity.activity_family_id)
-  ) {
-    return null;
-  }
-  const difficulty = identity.difficulty_family === "master"
-    ? identity.difficulty_tier == null
-      ? messages.message("parse.report.difficulty_master_tier_unresolved")
-      : messages.message("parse.report.difficulty_master_tier", { tier: identity.difficulty_tier })
-    : identity.difficulty_family
-      ? [title(identity.difficulty_family), identity.difficulty_tier == null ? "" : ` ${identity.difficulty_tier}`].join("")
-      : identity.difficulty_tier == null
-        ? messages.message("parse.report.difficulty_unresolved")
-        : messages.message("parse.report.difficulty_tier", { tier: identity.difficulty_tier });
-  const normalizedScene = normalizedPresentationLabel(sceneLabel);
-  const normalizedDifficulty = normalizedPresentationLabel(difficulty);
-  return normalizedScene && normalizedDifficulty && ` ${normalizedScene} `.includes(` ${normalizedDifficulty} `)
-    ? null
-    : difficulty;
-}
-
-function normalizedPresentationLabel(value: string): string {
-  return value
-    .normalize("NFKC")
-    .toLocaleLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
 }
 
 function formatDuration(micros: number | null | undefined): string {
