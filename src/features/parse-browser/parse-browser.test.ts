@@ -1017,7 +1017,9 @@ describe("canonical timeline selection", () => {
 
   it("uses the canonical timeline Game-time clock for reconciled totals regardless of viewed POV duration", () => {
     const viewed = structuredClone(report);
-    viewed.runs[0].game_time_micros = 5_000_000;
+    viewed.runs[0].total_run_time_micros = 101_000_000;
+    viewed.runs[0].game_time_micros = 102_000_000;
+    viewed.runs[0].active_combat_micros = 103_000_000;
     viewed.runs[0].rdps_status = "viewed_pov_status_must_not_leak";
     const reconciled = conservedReconciliation();
     expect(reconciled.timeline!.duration_micros % reconciled.timeline!.series_bucket_micros).not.toBe(0);
@@ -1034,9 +1036,15 @@ describe("canonical timeline selection", () => {
     expect(selection.reconciled).toBe(true);
     expect(selection.rdpsGameTimeMicros).toBe(finalGameTime);
     expect(selection.rdpsStatus).toBe("complete");
+    expect(html).toContain("<small>Run</small><strong>1:48.053</strong>");
+    expect(html).toContain("<small>Game</small><strong>0:53.029</strong>");
+    expect(html).toContain("<small>Active</small><strong>0:30.687</strong>");
+    expect(html).not.toContain("<small>Run</small><strong>1:41.000</strong>");
+    expect(html).not.toContain("<small>Game</small><strong>1:42.000</strong>");
+    expect(html).not.toContain("<small>Active</small><strong>1:43.000</strong>");
     expect(html).toContain(`<small>Team rDPS</small><strong>${expectedTeam.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong>`);
     expect(html).toContain(`data-sort-rdps="${expectedFirst}"`);
-    expect(html).not.toContain(String(first.rdps_damage! * 1_000_000 / 5_000_000));
+    expect(html).not.toContain(String(first.rdps_damage! * 1_000_000 / 102_000_000));
     expect(html).not.toContain("viewed_pov_status_must_not_leak");
     expect(html).toContain('data-timeline-rdps-label="rDPS"');
   });
@@ -1090,15 +1098,48 @@ describe("canonical timeline selection", () => {
   });
 
   it("withholds reconciled aggregate rDPS when the canonical timeline clock is incomplete", () => {
+    const viewed = structuredClone(report);
+    viewed.runs[0].total_run_time_micros = 101_000_000;
+    viewed.runs[0].game_time_micros = 102_000_000;
+    viewed.runs[0].active_combat_micros = 103_000_000;
     const reconciled = conservedReconciliation();
     reconciled.timeline = { ...reconciled.timeline!, rate_clock_complete: false, rate_clock: [] };
-    const selection = selectCanonicalGraph(report.runs[0], reconciled);
-    const html = renderReport(report, 0, reconciled);
+    const selection = selectCanonicalGraph(viewed.runs[0], reconciled);
+    const html = renderReport(viewed, 0, reconciled);
 
     expect(selection.reconciled).toBe(true);
     expect(selection.rdpsGameTimeMicros).toBeNull();
+    expect(selection.rdpsRateClock).toBeNull();
+    expect(html).toContain("<small>Run</small><strong>1:41.000</strong>");
+    expect(html).toContain("<small>Game</small><strong>1:42.000</strong>");
+    expect(html).toContain("<small>Active</small><strong>1:43.000</strong>");
+    expect(html).not.toContain("<small>Run</small><strong>1:48.053</strong>");
+    expect(html).not.toContain("<small>Game</small><strong>0:53.029</strong>");
+    expect(html).not.toContain("<small>Active</small><strong>0:30.687</strong>");
     expect(html).toContain("<small>Team rDPS</small><strong>Unavailable</strong>");
     expect(html).toContain('data-sort-rdps="-1"');
+    expect(html).not.toContain('data-metric="rdps_damage"');
+  });
+
+  it("rejects malformed canonical clocks without mixing canonical summary times with source-POV rates", () => {
+    const viewed = structuredClone(report);
+    viewed.runs[0].total_run_time_micros = 101_000_000;
+    viewed.runs[0].game_time_micros = 102_000_000;
+    viewed.runs[0].active_combat_micros = 103_000_000;
+    const reconciled = conservedReconciliation();
+    const malformed = reconciled.timeline!.rate_clock![1]!;
+    malformed.edps_elapsed_micros = reconciled.timeline!.rate_clock![0]!.edps_elapsed_micros - 1;
+
+    const selection = selectCanonicalGraph(viewed.runs[0], reconciled);
+    const html = renderReport(viewed, 0, reconciled);
+
+    expect(selection.reconciled).toBe(true);
+    expect(selection.rdpsGameTimeMicros).toBeNull();
+    expect(selection.rdpsRateClock).toBeNull();
+    expect(html).toContain("<small>Run</small><strong>1:41.000</strong>");
+    expect(html).toContain("<small>Game</small><strong>1:42.000</strong>");
+    expect(html).toContain("<small>Active</small><strong>1:43.000</strong>");
+    expect(html).toContain("<small>Team rDPS</small><strong>Unavailable</strong>");
     expect(html).not.toContain('data-metric="rdps_damage"');
   });
 

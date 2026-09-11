@@ -401,6 +401,12 @@ export function renderReport(
   const teamRdps = reconciled
     ? (graph.rdpsGameTimeMicros == null ? null : damageRate(selectedReconciliation!.conservation!.rdps_damage, graph.rdpsGameTimeMicros))
     : null;
+  const canonicalSummaryClock = reconciled && graph.timeline && graph.rdpsRateClock
+    ? graph.rdpsRateClock.at(-1) ?? null
+    : null;
+  const summaryRunTimeMicros = canonicalSummaryClock ? graph.timeline!.duration_micros : run.total_run_time_micros;
+  const summaryGameTimeMicros = canonicalSummaryClock ? canonicalSummaryClock.edps_elapsed_micros : run.game_time_micros;
+  const summaryActiveCombatMicros = canonicalSummaryClock ? canonicalSummaryClock.adps_elapsed_micros : run.active_combat_micros;
   const eventCount = messages.number(report.verification.event_count, { maximumFractionDigits: 0 });
   const gapCount = messages.number(run.data_gap_count, { maximumFractionDigits: 0 });
   const proof = messages.message("parse.report.proof", {
@@ -420,9 +426,9 @@ export function renderReport(
       <span><small>Report ID</small><code>${escapeHtml(report.report_id)}</code></span>
     </div>
     <div class="parse-metrics">
-      ${metric(messages.message("parse.report.metric.run"), formatDuration(run.total_run_time_micros))}
-      ${metric(messages.message("parse.report.metric.game"), formatDuration(run.game_time_micros))}
-      ${metric(messages.message("parse.report.metric.active"), formatDuration(run.active_combat_micros))}
+      ${metric(messages.message("parse.report.metric.run"), formatDuration(summaryRunTimeMicros))}
+      ${metric(messages.message("parse.report.metric.game"), formatDuration(summaryGameTimeMicros))}
+      ${metric(messages.message("parse.report.metric.active"), formatDuration(summaryActiveCombatMicros))}
       ${metric(messages.message("parse.report.metric.team_edps"), formatNumber(teamDps, messages))}
       ${metric(messages.message("parse.report.metric.team_adps"), formatNumber(teamEdps, messages))}
       ${reconciled ? metric("Team rDPS", teamRdps == null ? "Unavailable" : formatNumber(teamRdps, messages)) : ""}
@@ -842,7 +848,8 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
   if (usable && reconciliation && reconciliationTimeline) {
     const replayAuthority = reconciliation.schema_version >= 18 &&
       typeof reconciliation.rdps_status === "string" && reconciliation.rdps_status.length > 0;
-    const replayGameTimeMicros = replayAuthority ? completeTimelineGameTimeMicros(reconciliationTimeline) : null;
+    const replayRateClock = replayAuthority ? completeTimelineRateClock(reconciliationTimeline) : null;
+    const replayGameTimeMicros = replayRateClock?.at(-1)?.edps_elapsed_micros ?? null;
     return { participants: reconciliation.reconciled_participants, timeline: reconciliationTimeline, reconciled: true,
       loadoutPhaseSources: reconciliation.characters.flatMap((character) => character.selected_report_id == null ? []
         : (character.selected_combat_loadout_phases ?? []).map((phase, phaseIndex) => ({
@@ -851,8 +858,7 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
       trustKind: "reconciled", contributingReportCount: reconciliation.reports.length,
       rdpsStatus: replayAuthority ? reconciliation.rdps_status! : null,
       rdpsGameTimeMicros: replayGameTimeMicros,
-      rdpsRateClock: replayGameTimeMicros != null
-        ? reconciliationTimeline.rate_clock ?? null : null };
+      rdpsRateClock: replayRateClock };
   }
   return { participants: run.participants, timeline: run.timeline, reconciled: false,
     loadoutPhaseSources: run.timeline
@@ -862,14 +868,31 @@ export function selectCanonicalGraph(run: PublicRun, reconciliation?: PublicRunR
     rdpsRateClock: run.timeline?.rate_clock_complete ? run.timeline.rate_clock ?? null : null };
 }
 
-function completeTimelineGameTimeMicros(timeline: NonNullable<PublicRun["timeline"]>): number | null {
+function completeTimelineRateClock(
+  timeline: NonNullable<PublicRun["timeline"]>,
+): PublicTimelineRateClockPoint[] | null {
   const terminalPoints = Math.ceil(timeline.duration_micros / timeline.series_bucket_micros);
   const rateClock = timeline.rate_clock ?? [];
-  if (!timeline.rate_clock_complete || timeline.omitted.rate_clock_points !== 0 || terminalPoints <= 0 ||
+  if (!Number.isSafeInteger(timeline.duration_micros) || timeline.duration_micros <= 0 ||
+      !Number.isSafeInteger(timeline.series_bucket_micros) || timeline.series_bucket_micros <= 0 ||
+      !timeline.rate_clock_complete || timeline.omitted.rate_clock_points !== 0 || terminalPoints <= 0 ||
       rateClock.length !== terminalPoints) return null;
-  const final = rateClock.at(-1);
-  return final?.second === terminalPoints - 1 && final.edps_elapsed_micros > 0
-    ? final.edps_elapsed_micros : null;
+  let priorEdps = 0;
+  let priorAdps = 0;
+  for (let index = 0; index < rateClock.length; index += 1) {
+    const point = rateClock[index]!;
+    const bucketEndMicros = Math.min(
+      timeline.duration_micros,
+      (index + 1) * timeline.series_bucket_micros,
+    );
+    if (point.second !== index || !Number.isSafeInteger(point.edps_elapsed_micros) ||
+        !Number.isSafeInteger(point.adps_elapsed_micros) || point.edps_elapsed_micros < priorEdps ||
+        point.adps_elapsed_micros < priorAdps || point.adps_elapsed_micros > point.edps_elapsed_micros ||
+        point.edps_elapsed_micros > bucketEndMicros) return null;
+    priorEdps = point.edps_elapsed_micros;
+    priorAdps = point.adps_elapsed_micros;
+  }
+  return priorEdps > 0 ? rateClock : null;
 }
 
 type TimelineMetric = "damage" | "effective_healing" | "damage_taken" | "rdps_damage" |
