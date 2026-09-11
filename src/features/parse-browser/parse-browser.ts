@@ -1063,8 +1063,9 @@ export function normalizeTimelineLaneEvents(
     const label = messages.message("parse.timeline.event.skill", {
       player, action, time: formatDuration(skill.at_micros),
     });
-    const iconAssetPath = match?.actor.abilities?.find((ability) => ability.ability_id === skill.action_id)
+    const publishedIconPath = match?.actor.abilities?.find((ability) => ability.ability_id === skill.action_id)
       ?.icon_asset_path ?? undefined;
+    const iconAssetPath = timelineSkillIconPath(presentation, skill.action_id, publishedIconPath);
     events.push({
       key: `skill-${skillIndex}`, kind: "skill",
       laneKey: match ? `participant-${match.participantIndex}` : "unscoped",
@@ -1073,7 +1074,7 @@ export function normalizeTimelineLaneEvents(
       atMicros: skill.at_micros,
       boundary: timelineMarkerBoundary(skill.at_micros, timeline.duration_micros, "exact_microsecond"),
       label, sourceIndex: timeline.death_markers.length + timeline.loadout_markers.length + skillIndex,
-      ...(safeTimelineIconPath(iconAssetPath) ? { iconAssetPath } : {}),
+      ...(iconAssetPath ? { iconAssetPath } : {}),
     });
   });
   const lanes: TimelineLane[] = plotted.flatMap(({ actor, color }, participantIndex) => {
@@ -1214,8 +1215,26 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
   return `<svg class="timeline-marker-lanes-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.lanes.aria"))}" data-duration-micros="${timeline.duration_micros}"><defs><clipPath id="${clipId}"><rect x="${left}" y="0" width="${plotWidth}" height="${height}"/></clipPath></defs>${chrome}<g data-timeline-viewport-elapsed-geometry clip-path="url(#${clipId})">${markers}</g><line class="timeline-lane-playhead" data-timeline-lane-playhead x1="${left}" x2="${left}" y1="0" y2="${height}"/></svg>`;
 }
 
-function safeTimelineIconPath(value: string | null | undefined): value is string {
+function safeTimelineIconPath(value: string | null | undefined): boolean {
   return typeof value === "string" && /^\/assets\/[A-Za-z0-9._/-]+$/u.test(value) && !value.includes("../");
+}
+
+function timelineSkillIconPath(
+  presentation: ParsePresentationCatalog | undefined,
+  actionId: string,
+  publishedPath: string | null | undefined,
+): string | undefined {
+  if (typeof publishedPath === "string" && safeTimelineIconPath(publishedPath)) return publishedPath;
+  const trustedPath = presentation?.action_icons?.[actionId];
+  if (typeof trustedPath !== "string" || !safeTimelineIconPath(trustedPath) ||
+      typeof publishedPath !== "string" || publishedPath.includes("../")) {
+    return undefined;
+  }
+  const published = publishedPath.match(/^\/game-assets\/blue-protocol-star-resonance\/shared\/icons\/combat\/[A-Za-z0-9._/-]+$/u);
+  if (!published) return undefined;
+  const publishedFilename = publishedPath.split("/").at(-1);
+  const trustedFilename = trustedPath.split("/").at(-1);
+  return publishedFilename && publishedFilename === trustedFilename ? trustedPath : undefined;
 }
 
 function renderTimelineSvg(timeline: CombatTimeline, plotted: PlottedTimelineParticipant[], rdpsRateClock: PublicTimelineRateClockPoint[] | null, rdpsLabel: string, partialRdps: boolean, messages: MessageResolver): string {

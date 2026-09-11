@@ -36,6 +36,8 @@ export interface ParsePresentationCatalog {
     uncovered_module_effect_ids: readonly string[];
   };
   actions: Readonly<Record<string, string>>;
+  /** Site-owned icon paths keyed by exact-build action ID. */
+  action_icons?: Readonly<Record<string, string>>;
   effects: Readonly<Record<string, string>>;
   imagines: Readonly<Record<string, string>>;
   modules: Readonly<Record<string, string>>;
@@ -247,6 +249,7 @@ function isCatalog(value: unknown): value is ParsePresentationCatalog {
     /^sha256:[a-f0-9]{64}$/u.test(value.protocol_pack_digest) &&
     typeof value.source === "string" &&
     isStringRecord(value.actions) &&
+    (value.action_icons === undefined || isStringRecord(value.action_icons)) &&
     isStringRecord(value.effects) &&
     isStringRecord(value.imagines) &&
     isStringRecord(value.modules) &&

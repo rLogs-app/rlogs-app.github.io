@@ -27,6 +27,7 @@ const scenes = readJson(resolve(runtimeRoot, "localization/en-US/scene-names.v1.
 const auxiliaryActions = readJson(resolve(runtimeRoot, "localization/en-US/auxiliary-action-names.v1.json"));
 const observation = readJson(resolve(siteRoot, "scripts/data/public-parse-action-observation.v1.json"));
 const currentRecount = readJson(resolve(catalogRoot, "combat-actions/current-build-recount.v1.json"));
+const profilePresentation = readJson(resolve(publicRoot, "profile-presentation.en-US.v1.json"));
 
 if (
   observation.schema_version !== 1 ||
@@ -102,6 +103,9 @@ for (const id of observation.action_ids) {
   }
 }
 const uncoveredActionIds = observation.action_ids.filter((id) => !actions[id]);
+const actionIcons = Object.fromEntries(Object.entries(profilePresentation.skills ?? {}).flatMap(([id, skill]) =>
+  typeof skill?.icon === "string" && /^\/assets\/bpsr\/profile\/skills\/[A-Za-z0-9._-]+$/u.test(skill.icon)
+    ? [[id, skill.icon]] : []));
 
 const output = {
   ...parse,
@@ -127,6 +131,7 @@ const output = {
     },
   },
   actions,
+  action_icons: actionIcons,
   scenes: Object.fromEntries(scenes.scenes.map(([id, name]) => [String(id), name])),
   classes: Object.fromEntries(classes.classes.map((entry) => [String(entry.class_id), entry.names["en-US"]])),
   specializations: specializations.locales["en-US"],

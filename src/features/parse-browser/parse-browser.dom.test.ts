@@ -3,6 +3,7 @@ import { Window } from "happy-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PublicParseReport, PublicRunReconciliation } from "../../contracts/public-parse";
+import type { ParsePresentationCatalog } from "./parse-presentation";
 import {
   bindParseReportInteractions,
   renderReport,
@@ -236,6 +237,39 @@ describe("combat timeline DOM interactions", () => {
     expect(skill.hasAttribute("hidden")).toBe(false);
     expect(death.hasAttribute("hidden")).toBe(false);
     expect(lane.hasAttribute("hidden")).toBe(false);
+  });
+
+  it("maps a real API game-assets skill icon to its trusted site-owned asset", () => {
+    const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
+    const timeline = report.runs[0]!.timeline!;
+    const actor = report.runs[0]!.participants[0]!;
+    timeline.schema_version = 6;
+    timeline.skill_uses = [{
+      actor_id: actor.actor_id, at_micros: 1_250_000, action_id: "2233", state: "started",
+      evidence: [{ source_report_id: timeline.canonical_report_id, event_sequence: 7,
+        kind: "exact_wire_cast_start" }], omitted_evidence: 0,
+    }];
+    timeline.omitted.skill_uses = 0;
+    timeline.participant_tracks.forEach((track) => { track.omitted_skill_uses = 0; });
+    actor.abilities = [{
+      ability_id: "2233", presentation_name: "untrusted", presentation_kind: "skill",
+      icon_asset_path: "/game-assets/blue-protocol-star-resonance/shared/icons/combat/textures/skill_weapon_gj/weapon_gj-01_kx05.png",
+      casts: 1, hits: 0, critical_hits: 0, damage: 0, effective_damage: 0,
+      healing: 0, effective_healing: 0, shielding: 0,
+    }];
+    const presentation = {
+      schema_version: 5, locale: "en-US", deployment_id: "global", game_build: "24687926",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`, source: "test",
+      actions: { "2233": "Powerdraw" },
+      action_icons: { "2233": "/assets/bpsr/profile/skills/weapon_gj-01_kx05.png" },
+      effects: {}, imagines: {}, modules: {}, module_effects: {}, scenes: {}, classes: {}, specializations: {},
+    } satisfies ParsePresentationCatalog;
+    const root = window.document.createElement("main") as unknown as HTMLElement;
+    root.innerHTML = renderTimeline(selectCanonicalGraph(report.runs[0]!), undefined, presentation);
+
+    const icon = root.querySelector<SVGImageElement>(".timeline-lane-skill-icon");
+    expect(icon?.getAttribute("href")).toBe("/assets/bpsr/profile/skills/weapon_gj-01_kx05.png");
+    expect(root.innerHTML).not.toContain("/game-assets/");
   });
 
   it("renders accessible skill stacks at full range and separates them when zoomed", () => {
