@@ -40,7 +40,10 @@ describe("combat timeline DOM interactions", () => {
     });
   });
 
-  afterEach(() => window.close());
+  afterEach(() => {
+    vi.useRealTimers();
+    window.close();
+  });
 
   function mountedTimeline(): HTMLElement {
     const report = load<PublicParseReport>("parse-report.v1.json");
@@ -236,6 +239,7 @@ describe("combat timeline DOM interactions", () => {
   });
 
   it("renders accessible skill stacks at full range and separates them when zoomed", () => {
+    vi.useFakeTimers();
     const report = structuredClone(load<PublicParseReport>("parse-report.v1.json"));
     const timeline = report.runs[0]!.timeline!;
     const actorId = timeline.participant_tracks[0]!.actor_id;
@@ -282,6 +286,18 @@ describe("combat timeline DOM interactions", () => {
     expect(skills.some((marker) => marker.classList.contains("is-skill-cluster-anchor"))).toBe(false);
     expect(skills.every((marker) => !marker.classList.contains("is-skill-cluster-member"))).toBe(true);
     expect(skills.every((marker) => marker.getAttribute("aria-hidden") !== "true")).toBe(true);
+    const singleEventLabel = anchor.dataset.timelineMarkerBaseAriaLabel!;
+    expect(anchor.getAttribute("aria-label")).toBe(singleEventLabel);
+    expect(anchor.getAttribute("aria-label")).not.toContain("2 skill uses:");
+    anchor.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);
+    anchor.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }) as unknown as Event);
+    expect(anchor.getAttribute("aria-label")).toBe(singleEventLabel);
+    expect(anchor.dataset.timelineMarkerOwnAriaLabel).toBe(singleEventLabel);
+    anchor.dispatchEvent(new window.FocusEvent("focus") as unknown as Event);
+    anchor.dispatchEvent(new window.FocusEvent("blur") as unknown as Event);
+    vi.advanceTimersByTime(1_200);
+    expect(anchor.getAttribute("aria-label")).toBe(singleEventLabel);
+    expect(anchor.getAttribute("aria-label")).not.toContain("2 skill uses:");
   });
 
   it("excludes an exact 2.1-second marker from a viewport starting at 3 seconds", () => {

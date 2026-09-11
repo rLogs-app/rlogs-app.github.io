@@ -2201,6 +2201,7 @@ function refreshTimelineSkillClusters(timeline: HTMLElement, viewport: TimelineV
   markers.forEach((marker) => {
     marker.dataset.timelineMarkerBaseAriaLabel ??= marker.getAttribute("aria-label") ?? "";
     marker.setAttribute("aria-label", marker.dataset.timelineMarkerBaseAriaLabel);
+    delete marker.dataset.timelineMarkerOwnAriaLabel;
     marker.classList.remove("is-skill-cluster-anchor", "is-skill-cluster-member");
     marker.removeAttribute("aria-hidden");
     marker.removeAttribute("data-timeline-skill-cluster-size");
