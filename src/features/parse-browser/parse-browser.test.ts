@@ -1490,8 +1490,10 @@ describe("timeline rolling windows", () => {
     } satisfies ParsePresentationCatalog;
     const timeline = {
       ...graph.timeline!, schema_version: 7 as const,
+      hostile_source_actor_ids: ["enemy-44"],
       hostile_casts: [{
-        source_actor_id: "enemy-44", target_actor_id: graph.participants[0]!.actor_id,
+        source_actor_id: "enemy-44", hostility_evidence: "participant_outgoing_target" as const,
+        target_actor_id: graph.participants[0]!.actor_id,
         at_micros: 750_000, action_id: "2233", state: "started" as const,
         evidence: [{ source_report_id: graph.timeline!.canonical_report_id, event_sequence: 5,
           kind: "exact_wire_cast_start" as const }], omitted_evidence: 0,

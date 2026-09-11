@@ -100,8 +100,10 @@ function reportWithTimelineV7(): any {
   report.projection_revision = 11;
   const timeline = report.runs[0].timeline;
   timeline.schema_version = 7;
+  timeline.hostile_source_actor_ids = ["enemy-44"];
   timeline.hostile_casts = [{
-    source_actor_id: "enemy-44", target_actor_id: timeline.participant_tracks[0].actor_id,
+    source_actor_id: "enemy-44", hostility_evidence: "participant_outgoing_target",
+    target_actor_id: timeline.participant_tracks[0].actor_id,
     at_micros: 1_750_000, action_id: "2203291", action_instance_id: "hostile-7", state: "started",
     evidence: [{ source_report_id: report.report_id, event_sequence: 10,
       game_time_millis: 2_750, kind: "exact_wire_cast_start" }], omitted_evidence: 0,
@@ -203,8 +205,19 @@ describe("public parse contract", () => {
   it("accepts only exact schema-v7 hostile cast evidence for non-player sources", () => {
     const report = reportWithTimelineV7();
     expect(isPublicParseReport(report)).toBe(true);
+    const targetVariant = structuredClone(report);
+    targetVariant.runs[0].timeline.hostile_casts.push({
+      ...targetVariant.runs[0].timeline.hostile_casts[0],
+      target_actor_id: "different-target",
+    });
+    expect(isPublicParseReport(targetVariant)).toBe(true);
     for (const mutate of [
       (value: any) => { value.runs[0].timeline.hostile_casts[0].source_actor_id = value.runs[0].timeline.participant_tracks[0].actor_id; },
+      (value: any) => { delete value.runs[0].timeline.hostile_source_actor_ids; },
+      (value: any) => { value.runs[0].timeline.hostile_source_actor_ids.push("enemy-44"); },
+      (value: any) => { value.runs[0].timeline.hostile_source_actor_ids[0] = value.runs[0].timeline.participant_tracks[0].actor_id; },
+      (value: any) => { value.runs[0].timeline.hostile_casts[0].source_actor_id = "uncommitted-enemy"; },
+      (value: any) => { value.runs[0].timeline.hostile_casts[0].hostility_evidence = "inferred_boss"; },
       (value: any) => { value.runs[0].timeline.hostile_casts[0].at_micros = value.runs[0].timeline.duration_micros + 1; },
       (value: any) => { value.runs[0].timeline.hostile_casts[0].evidence = []; },
       (value: any) => { value.runs[0].timeline.hostile_casts[0].evidence[0].kind = "derived_damage_bucket"; },
@@ -240,6 +253,12 @@ describe("public parse contract", () => {
         source_report_id: reconciliation.canonical_spine.report_id, event_sequence: 1 },
     };
     expect(isPublicRunReconciliation(reconciliation)).toBe(true);
+    const targetConflict = structuredClone(reconciliation);
+    targetConflict.timeline.hostile_casts.push({
+      ...targetConflict.timeline.hostile_casts[0],
+      target_actor_id: "different-target",
+    });
+    expect(isPublicRunReconciliation(targetConflict)).toBe(false);
   });
   it("keeps catalog 6 and My Parses 1 raw-readable while requiring identity on catalog 7 and My Parses 2", () => {
     const legacy = fixture("parse-catalog.v1.json") as any;

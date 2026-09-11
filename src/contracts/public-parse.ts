@@ -93,6 +93,7 @@ export interface PublicCombatTimeline {
   death_markers: Array<{ actor_id: string; at_micros: number; precision: "exact_microsecond" | "one_second_bucket"; cause?: PublicTimelineDeathCause | null }>;
   loadout_markers: Array<{ character_id: string; at_micros: number; phase_index: number; source_report_id: string }>;
   skill_uses?: PublicTimelineSkillUse[];
+  hostile_source_actor_ids?: string[];
   hostile_casts?: PublicTimelineHostileCast[];
   rdps_influence_spans: Array<{ influence_index: number; time_basis: "run_elapsed" | "capture_observed";
     start_micros: number; end_micros: number; complete_lifecycle: boolean }>;
@@ -103,7 +104,7 @@ export interface PublicTimelineSkillUse {
   state: "started"; action_kind?: string; evidence: PublicTimelineSkillUseEvidence[]; omitted_evidence: number;
 }
 export interface PublicTimelineHostileCast {
-  source_actor_id: string; target_actor_id?: string; at_micros: number; action_id: string;
+  source_actor_id: string; hostility_evidence: "participant_outgoing_target"; target_actor_id?: string; at_micros: number; action_id: string;
   action_instance_id?: string; state: "started"; evidence: PublicTimelineSkillUseEvidence[]; omitted_evidence: number;
 }
 export interface PublicTimelineSkillUseEvidence {
@@ -729,16 +730,22 @@ function isTimelineSkillUse(value: unknown, durationMicros: number, reports: rea
 }
 function isTimelineHostileCasts(value: Record<string, any>, durationMicros: number): boolean {
   if (value.schema_version < 7) {
-    return value.hostile_casts === undefined && (!isRecord(value.omitted) || value.omitted.hostile_casts === undefined);
+    return value.hostile_source_actor_ids === undefined && value.hostile_casts === undefined &&
+      (!isRecord(value.omitted) || value.omitted.hostile_casts === undefined);
   }
-  if (!Array.isArray(value.hostile_casts) || value.hostile_casts.length > 65_536 ||
+  if (!Array.isArray(value.hostile_source_actor_ids) || value.hostile_source_actor_ids.length > 4_096 ||
+      !value.hostile_source_actor_ids.every(isBoundedIdentifierText) || !unique(value.hostile_source_actor_ids) ||
+      !Array.isArray(value.hostile_casts) || value.hostile_casts.length > 65_536 ||
       !isRecord(value.omitted) || !isNonNegativeInteger(value.omitted.hostile_casts)) return false;
   const participantActors = new Set(value.participant_tracks.map((track: unknown) =>
     isRecord(track) ? track.actor_id : undefined));
+  if (value.hostile_source_actor_ids.some((actorId: string) => participantActors.has(actorId))) return false;
+  const hostileSources = new Set(value.hostile_source_actor_ids);
   const perSource = new Map<string, number>();
   const castKeys = new Set<string>();
   for (const cast of value.hostile_casts) {
-    if (!isRecord(cast) || !isBoundedIdentifierText(cast.source_actor_id) || participantActors.has(cast.source_actor_id) ||
+    if (!isRecord(cast) || !isBoundedIdentifierText(cast.source_actor_id) || !hostileSources.has(cast.source_actor_id) ||
+        cast.hostility_evidence !== "participant_outgoing_target" ||
         (cast.target_actor_id !== undefined && !isBoundedIdentifierText(cast.target_actor_id)) ||
         !isNonNegativeInteger(cast.at_micros) || cast.at_micros > durationMicros ||
         !isBoundedIdentifierText(cast.action_id) ||
@@ -749,7 +756,9 @@ function isTimelineHostileCasts(value: Record<string, any>, durationMicros: numb
     const count = (perSource.get(cast.source_actor_id) ?? 0) + 1;
     if (count > 16_384) return false;
     perSource.set(cast.source_actor_id, count);
-    const key = JSON.stringify([cast.at_micros, cast.source_actor_id, cast.action_id, cast.action_instance_id ?? null]);
+    const key = JSON.stringify([cast.at_micros, cast.source_actor_id,
+      value.source === "single_report" ? cast.target_actor_id ?? null : null,
+      cast.action_id, cast.action_instance_id ?? null]);
     if (castKeys.has(key)) return false;
     castKeys.add(key);
     const evidenceKeys = cast.evidence.map((evidence: PublicTimelineSkillUseEvidence) =>

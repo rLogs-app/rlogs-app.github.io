@@ -244,8 +244,10 @@ describe("combat timeline DOM interactions", () => {
     const timeline = report.runs[0]!.timeline!;
     timeline.schema_version = 7;
     timeline.skill_uses = [];
+    timeline.hostile_source_actor_ids = ["enemy-44"];
     timeline.hostile_casts = [{
-      source_actor_id: "enemy-44", target_actor_id: timeline.participant_tracks[0]!.actor_id,
+      source_actor_id: "enemy-44", hostility_evidence: "participant_outgoing_target",
+      target_actor_id: timeline.participant_tracks[0]!.actor_id,
       at_micros: 1_250_000, action_id: "2203291", state: "started",
       evidence: [{ source_report_id: timeline.canonical_report_id, event_sequence: 8,
         game_time_millis: 2_250, kind: "exact_wire_cast_start" }], omitted_evidence: 0,
