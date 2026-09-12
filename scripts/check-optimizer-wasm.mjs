@@ -5,7 +5,8 @@ import initOptimizer, {
   optimize_json as optimizeJson,
 } from "../public/wasm/rlogs_bpsr_module_optimizer_wasm.js";
 
-const expectedCatalogRevision = "steam-24252055-reviewed-catalog-v5";
+const expectedCatalogRevision = "steam-24252055-24687926-reviewed-catalog-v6";
+const expectedClientBuilds = ["24252055", "24687926"];
 const wasmBytes = await readFile(new URL(
   "../public/wasm/rlogs_bpsr_module_optimizer_wasm_bg.wasm",
   import.meta.url,
@@ -16,6 +17,11 @@ const catalog = JSON.parse(optimizerCatalogJson());
 if (catalog.catalog_revision !== expectedCatalogRevision) {
   throw new Error(
     `Optimizer WASM embeds ${catalog.catalog_revision}; expected ${expectedCatalogRevision}.`,
+  );
+}
+if (JSON.stringify(catalog.client_builds) !== JSON.stringify(expectedClientBuilds)) {
+  throw new Error(
+    `Optimizer WASM embeds builds ${JSON.stringify(catalog.client_builds)}; expected ${JSON.stringify(expectedClientBuilds)}.`,
   );
 }
 

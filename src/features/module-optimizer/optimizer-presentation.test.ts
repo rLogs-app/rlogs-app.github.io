@@ -37,12 +37,12 @@ describe("module optimizer presentation", () => {
     })).toBe("Score 12,345 · Priority 23,456");
   });
 
-  it("describes reviewed scoring as ordinary-build carry-forward", () => {
+  it("describes reviewed scoring with source and exact-equivalent current builds", () => {
     expect(optimizerScoringStatus({
       scoring_revision: "global-reviewed-v5",
-      client_builds: ["24252055"],
+      client_builds: ["24252055", "24687926"],
     })).toBe(
-      "Reviewed scoring global-reviewed-v5 · catalog build 24,252,055 · ordinary builds carry forward unless a seasonal update is declared",
+      "Reviewed scoring global-reviewed-v5 · catalog build 24,252,055, 24,687,926 · ordinary builds carry forward unless a seasonal update is declared",
     );
   });
 

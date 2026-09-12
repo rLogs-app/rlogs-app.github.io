@@ -7,7 +7,8 @@ RLogs/plugins/games/blue-protocol-star-resonance/features/module-optimizer/wasm
 ```
 
 They contain the same Rust search/scoring engine used by the native Plugin Lab
-plus the reviewed module catalog for Global Steam client build `24252055`.
+plus the reviewed module catalog for Global Steam client builds `24252055` and
+`24687926`. The latter is admitted by an exact scoring-equivalence receipt.
 The browser calls the engine in a Web Worker, so full-inventory searches do not
 block page interaction.
 
