@@ -73,7 +73,11 @@ const catalogPresentation: ParsePresentationCatalog = {
   imagines: { "3948": "Battle Imagine - Rorola" },
   modules: { "5500104": "Excellent Attack Module - Premium" },
   module_effects: { "1110": "Strength Boost" },
-  scenes: { "30120": "Stimen Remains - Floor 20" },
+  scenes: {
+    "30120": "Stimen Remains - Floor 20",
+    "14001": "Winged Whale Investigation Area I",
+    "14002": "Winged Whale Investigation Area II",
+  },
   classes: {},
   specializations: {},
 };
@@ -314,6 +318,32 @@ describe("parse search", () => {
     report.runs[0]!.difficulty_family = "hard";
     report.runs[0]!.difficulty_tier = null;
     expect(renderReport(report, 0, null, null, catalogPresentation)).toContain("Hard / Completed");
+  });
+
+  it("composes exact Winged Whale labels with captured difficulty and preserves its absence", () => {
+    const captured = {
+      ...parse,
+      scene_id: 14001,
+      scene_name: undefined,
+      difficulty_family: "captured-family",
+      difficulty_tier: 7,
+    };
+    const capturedHtml = renderCatalogEntry(captured, catalogPresentation, 7);
+    expect(capturedHtml).toContain("Winged Whale Investigation Area I");
+    expect(capturedHtml).toContain("Captured Family 7 / Completed");
+
+    const absent = {
+      ...parse,
+      scene_id: 14002,
+      scene_name: undefined,
+      difficulty_family: undefined,
+      difficulty_tier: undefined,
+    };
+    const absentHtml = renderCatalogEntry(absent, catalogPresentation, 7);
+    expect(absentHtml).toContain("Winged Whale Investigation Area II");
+    expect(absentHtml).toContain("Difficulty unresolved / Completed");
+    expect(absentHtml).not.toContain("Master");
+    expect(absentHtml).not.toContain("Hard");
   });
 
   it("localizes an authorized unresolved Master tier on catalog and report surfaces", () => {

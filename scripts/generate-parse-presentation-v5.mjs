@@ -106,6 +106,15 @@ const uncoveredActionIds = observation.action_ids.filter((id) => !actions[id]);
 const actionIcons = Object.fromEntries(Object.entries(profilePresentation.skills ?? {}).flatMap(([id, skill]) =>
   typeof skill?.icon === "string" && /^\/assets\/bpsr\/profile\/skills\/[A-Za-z0-9._-]+$/u.test(skill.icon)
     ? [[id, skill.icon]] : []));
+const sceneNames = Object.fromEntries(scenes.scenes.map(([id, name]) => [String(id), name]));
+for (const sceneId of ["14001", "14002"]) {
+  if (sceneNames[sceneId] !== profilePresentation.dungeons?.[sceneId]?.name) {
+    throw new Error(`Shared runtime and exact-build website label differ for scene ${sceneId}.`);
+  }
+}
+if (sceneNames["6615"] !== undefined) {
+  throw new Error("Scene 6615 must remain unresolved until authoritative name evidence exists.");
+}
 
 const output = {
   ...parse,
@@ -133,7 +142,7 @@ const output = {
   },
   actions,
   action_icons: actionIcons,
-  scenes: Object.fromEntries(scenes.scenes.map(([id, name]) => [String(id), name])),
+  scenes: sceneNames,
   classes: Object.fromEntries(classes.classes.map((entry) => [String(entry.class_id), entry.names["en-US"]])),
   specializations: specializations.locales["en-US"],
 };

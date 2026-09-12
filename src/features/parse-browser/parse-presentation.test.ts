@@ -38,7 +38,11 @@ const catalog: ParsePresentationCatalog = {
   imagines: { "3948": "Battle Imagine - Rorola" },
   modules: { "5500104": "Excellent Attack Module - Premium" },
   module_effects: { "1110": "Strength Boost" },
-  scenes: { "13021": "Clash! Field of Forgotten Illusions" },
+  scenes: {
+    "13021": "Clash! Field of Forgotten Illusions",
+    "14001": "Winged Whale Investigation Area I",
+    "14002": "Winged Whale Investigation Area II",
+  },
   classes: { "1": "Stormblade" },
   specializations: { "101": "Iaido Slash Spec" },
 };
@@ -181,6 +185,12 @@ describe("parse presentation", () => {
     expect(localizedSceneNameWithAuthority(catalog, 99991, "博伊斯ATK_02", identity)).toBe("Scene #99991");
     expect(localizedSceneNameWithAuthority(catalog, 13021, "Wrong attached name", identity))
       .toBe("Clash! Field of Forgotten Illusions");
+  });
+
+  it("resolves exact current Winged Whale labels while scene 6615 stays numeric", () => {
+    expect(localizedSceneName(catalog, 14001)).toBe("Winged Whale Investigation Area I");
+    expect(localizedSceneName(catalog, 14002)).toBe("Winged Whale Investigation Area II");
+    expect(localizedSceneName(catalog, 6615)).toBe("Scene #6615");
   });
 
   it("falls back to authority-backed attached class labels without overriding the current catalog", () => {
