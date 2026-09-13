@@ -444,8 +444,23 @@ describe("parse search", () => {
     const wrong = { ...parse, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
     expect(catalogSemanticFacetsAuthorized([parse], 1, catalogPresentation, 7)).toBe(true);
     expect(catalogSemanticFacetsAuthorized([parse], 2, catalogPresentation, 7)).toBe(false);
-    expect(catalogSemanticFacetsAuthorized([parse, wrong], 2, catalogPresentation, 7)).toBe(false);
+    expect(catalogSemanticFacetsAuthorized([parse, wrong], 2, catalogPresentation, 7)).toBe(true);
     expect(catalogSemanticFacetsAuthorized([parse], 1, catalogPresentation, 6)).toBe(false);
+  });
+
+  it("retains current-build semantic facets and search when the display catalog trails", () => {
+    const current = {
+      ...parse,
+      client_build: "25247556",
+      protocol_pack_digest: `sha256:${"f".repeat(64)}`,
+      activity_id: "mech-facility.master",
+      activity_family_id: "mech-facility",
+      activity_category_id: "dungeons",
+      difficulty_family: "master",
+    };
+    expect(catalogSemanticFacetsAuthorized([current], 1, catalogPresentation, 7)).toBe(true);
+    expect(filterSearch([current], "master mech facility", catalogPresentation, 7)).toEqual([current]);
+    expect(filterSearch([current], "dungeons", catalogPresentation, 7)).toEqual([current]);
   });
 
   it("can search exact report IDs", () => {

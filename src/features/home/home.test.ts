@@ -68,6 +68,18 @@ describe("home rankings", () => {
     expect(rankings.find((value) => value.regionLabel === "China")?.seasonLabel).toBe("Season 4");
   });
 
+  it("shows only the highest current-build Stimen floor when the display catalog trails", () => {
+    const current = (floor: 20 | 21, duration: number) => ({
+      ...entry(30100 + floor, `Stimen Remains - Floor ${floor}`, duration),
+      client_build: "25247556",
+      protocol_pack_digest: `sha256:${"f".repeat(64)}`,
+    });
+    const rankings = buildSceneRankings([current(20, 10), current(21, 8)], presentation, 7);
+    expect(rankings).toHaveLength(1);
+    expect(rankings[0]?.floor).toBe(21);
+    expect(rankings[0]?.entries).toEqual([current(21, 8)]);
+  });
+
   it("groups exact and newer catalog identities and keeps only the highest submitted tier", () => {
     const master17 = { ...entry(1633, "Tina's Mindrealm", 10), difficulty_family: "master", difficulty_tier: 17 };
     const master20 = {

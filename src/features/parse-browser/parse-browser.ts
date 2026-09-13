@@ -31,7 +31,6 @@ import {
   localizedSceneNameWithAuthority,
   localizedSpecializationNameWithAuthority,
   presentationForReport,
-  semanticPresentationForCatalogEntry,
   semanticPresentationForIdentity,
   type NullablePresentationIdentity,
   type ParsePresentationCatalog,
@@ -4232,7 +4231,10 @@ export function filterSearch(
   const terms = search.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
   if (!terms.length) return entries;
   return entries.filter((entry) => {
-    const authorized = Boolean(semanticPresentationForCatalogEntry(presentation, schemaVersion, entry));
+    // Schema 7 semantic fields were retained from a backend-validated run. They
+    // remain authoritative when the bundled display catalog trails the client
+    // build, just like retained difficulty presentation.
+    const authorized = catalogDifficultyPresentationAuthorized(schemaVersion);
     const searchable = [
       catalogSceneLabel(entry, presentation, schemaVersion),
       authorized ? entry.activity_id : undefined,
@@ -4259,8 +4261,10 @@ export function catalogSemanticFacetsAuthorized(
   presentation?: ParsePresentationCatalog,
   schemaVersion: 6 | 7 = 6,
 ): boolean {
-  return entries.length > 0 && entries.length === totalEntries && entries.every((entry) =>
-    semanticPresentationForCatalogEntry(presentation, schemaVersion, entry) != null);
+  void presentation;
+  return entries.length > 0
+    && entries.length === totalEntries
+    && catalogDifficultyPresentationAuthorized(schemaVersion);
 }
 
 function catalogSceneLabel(

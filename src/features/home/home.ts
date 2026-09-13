@@ -21,7 +21,6 @@ import { fetchPublicRead } from "../../public-api";
 import {
   localizedSceneNameWithAuthority,
   loadParsePresentation,
-  semanticPresentationForCatalogEntry,
   semanticPresentationForIdentity,
   renderCoreWithOptionalPresentation,
   type ParsePresentationCatalog,
@@ -122,8 +121,10 @@ export function buildSceneRankings(
     (entry) => entry.terminal_state === "completed" && entry.total_run_time_micros != null,
   );
   const groups = new Map<string, SceneRanking>();
-  const authorized = (entry: PublicParseCatalogEntry): boolean =>
-    semanticPresentationForCatalogEntry(presentation, schemaVersion, entry) != null;
+  // Schema 7 catalog semantics are backend-retained authority. Do not regress
+  // Stimen floor grouping merely because the bundled catalog trails the build.
+  const authorized = (_entry: PublicParseCatalogEntry): boolean =>
+    catalogDifficultyPresentationAuthorized(schemaVersion);
   const difficultyPresentationAuthorized = catalogDifficultyPresentationAuthorized(schemaVersion);
   const stimen = ranked.filter((entry) => isStimenRun(entry, authorized(entry)));
   const highestStimenFloorBySeason = new Map<string, number>();
