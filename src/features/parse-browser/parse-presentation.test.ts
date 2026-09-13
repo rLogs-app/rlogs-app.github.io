@@ -6,6 +6,7 @@ import {
   localizedClassName,
   localizedClassNameWithAuthority,
   localizedEffectName,
+  localizedEffectNameWithAuthority,
   localizedImagineName,
   localizedModuleEffectName,
   localizedModuleName,
@@ -94,6 +95,22 @@ describe("parse presentation", () => {
       client_build: "24699999",
       protocol_pack_digest: `sha256:${"a".repeat(64)}`,
     })).toBe("Unlocalized combat action #9999999");
+  });
+
+  it("carries verifier-published effect labels into the current build without authorizing semantics", () => {
+    const currentIdentity = {
+      deployment_id: "global",
+      client_build: "25247556",
+      protocol_pack_digest: `sha256:${"b".repeat(64)}`,
+    };
+    expect(localizedEffectNameWithAuthority(catalog, "9999999", "Future Stable Effect", currentIdentity))
+      .toBe("Future Stable Effect");
+    expect(localizedEffectNameWithAuthority(catalog, "3003052", "Conflicting Published Effect", currentIdentity))
+      .toBe("Harmony Grace");
+    expect(localizedEffectNameWithAuthority(catalog, "9999999", "Future Stable Effect", {
+      ...currentIdentity,
+      protocol_pack_digest: null,
+    })).toBe("Unlocalized combat effect #9999999");
   });
 
   it("presents trusted high-ID damage-row labels without accepting report labels", () => {

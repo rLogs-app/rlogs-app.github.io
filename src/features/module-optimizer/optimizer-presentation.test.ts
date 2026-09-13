@@ -124,7 +124,7 @@ describe("module optimizer presentation", () => {
   it.each([
     ["older source build", { deployment: "global", source_client_build: "24252055", source_protocol_pack_digest: `sha256:${"b".repeat(64)}` }],
     ["equal build with another digest", { deployment: "global", source_client_build: "24687926", source_protocol_pack_digest: `sha256:${"b".repeat(64)}` }],
-    ["newer source build", { deployment: "global", source_client_build: "24699999", source_protocol_pack_digest: `sha256:${"b".repeat(64)}` }],
+    ["current source build", { deployment: "global", source_client_build: "25247556", source_protocol_pack_digest: `sha256:${"b".repeat(64)}` }],
     ["missing source identity", { deployment: "" }],
     ["another deployment", { deployment: "cn", source_client_build: "24699999", source_protocol_pack_digest: `sha256:${"b".repeat(64)}` }],
   ])("resolves every known trusted catalog ID for %s", (_case, identity) => {
@@ -166,8 +166,8 @@ describe("module optimizer presentation", () => {
       parts: [{ part_id: 9_999, initial_link_points: 7 }],
     }, resolved);
 
-    expect(model.name).toBe("Module 9999999 (unresolved)");
-    expect(model.effects[0]?.name).toBe("Effect 9999 (unresolved)");
+    expect(model.name).toBe("Unlocalized combat module #9999999");
+    expect(model.effects[0]?.name).toBe("Unlocalized combat module effect #9999");
   });
 
   it("keeps a selected loadout identity whole instead of filling from the entry", () => {

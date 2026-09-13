@@ -488,7 +488,7 @@ function attributeRow(attribute: AttributeCatalogEntry): HTMLElement {
   const row = element("div", "optimizer-attribute-row");
   row.dataset.attributeId = String(attribute.id);
   const localized = presentation?.module_effects[String(attribute.id)];
-  const displayName = localized?.name ?? `Effect ${attribute.id} (unresolved)`;
+  const displayName = localized?.name ?? `Unlocalized combat module effect #${attribute.id}`;
 
   const identity = element("div", "optimizer-attribute-name");
   appendOptimizerIcon(identity, localized?.icon ?? attribute.icon, displayName, "optimizer-attribute-icon");

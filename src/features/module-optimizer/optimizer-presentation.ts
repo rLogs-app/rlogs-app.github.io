@@ -92,12 +92,12 @@ export function moduleCardModel(
     const effect = catalog.module_effects[String(part.part_id)];
     return {
       id: part.part_id,
-      name: effect?.name ?? `Effect ${part.part_id} (unresolved)`,
+      name: effect?.name ?? `Unlocalized combat module effect #${part.part_id}`,
       icon: effect?.icon,
       link: Math.max(0, part.initial_link_points),
     };
   });
-  const name = localized?.name ?? `Module ${module.config_id} (unresolved)`;
+  const name = localized?.name ?? `Unlocalized combat module #${module.config_id}`;
   const quality = moduleQualityName(module, localized, catalog);
   const totalLink = effects.reduce((sum, effect) => sum + effect.link, 0);
   const copyLabel = `Copy ${shortInstanceId(module.instance_id)}`;

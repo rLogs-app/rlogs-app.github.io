@@ -46,6 +46,7 @@ describe("BPSR profile presentation catalog", () => {
     ["exact identity", { deployment: "global", source_client_build: "24687926", source_protocol_pack_digest: "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae" }],
     ["older build", { deployment: "global", source_client_build: "24252055", source_protocol_pack_digest: "sha256:older" }],
     ["newer build", { deployment: "global", source_client_build: "25122485", source_protocol_pack_digest: "sha256:newer" }],
+    ["current build", { deployment: "global", source_client_build: "25247556", source_protocol_pack_digest: "sha256:current" }],
     ["wrong digest", { deployment: "global", source_client_build: "24687926", source_protocol_pack_digest: "sha256:wrong" }],
     ["missing build and digest", { deployment: "global" }],
     ["different deployment", { deployment: "cn", source_client_build: "24687926", source_protocol_pack_digest: "sha256:other" }],

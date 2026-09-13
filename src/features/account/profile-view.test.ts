@@ -75,6 +75,8 @@ describe("Battle Imagine ownership presentation", () => {
 
 describe("weapon item presentation", () => {
   it("resolves trusted weapon and equipment labels only by catalog ID", () => {
+    expect(profileEquipmentName(2_000_901, 200, allTreesCatalog))
+      .toBe("Daybreak Lance - Tempest Flow");
     expect(profileEquipmentName(2_000_631, 200, allTreesCatalog))
       .toBe("Ember - Gaze of the Far Sea");
     expect(profileEquipmentName(9_999_999, 200, allTreesCatalog))

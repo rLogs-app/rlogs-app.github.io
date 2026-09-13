@@ -2386,8 +2386,8 @@ describe("damage-rate labels", () => {
 describe("party rune and loadout summaries", () => {
   it("localizes known skills, Imagines, modules, and rune effects across identities", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
-    report.client_build = catalogPresentation.game_build;
-    report.protocol_pack_digest = catalogPresentation.protocol_pack_digest;
+    report.client_build = "25247556";
+    report.protocol_pack_digest = `sha256:${"c".repeat(64)}`;
     report.runs[0]!.combat_loadout_phases![0]!.equipped_skill_ids = ["2203291"];
     report.runs[0]!.combat_loadout_phases![0]!.equipped_imagines = [{
       skill_id: "3948", tier: 5, equipped_slot: 1,

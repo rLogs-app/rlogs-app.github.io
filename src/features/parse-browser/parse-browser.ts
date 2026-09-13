@@ -24,6 +24,7 @@ import {
   localizedActionNameWithAuthority,
   localizedClassNameWithAuthority,
   localizedEffectName,
+  localizedEffectNameWithAuthority,
   localizedImagineName,
   localizedModuleEffectName,
   localizedModuleName,
@@ -440,7 +441,7 @@ export function renderReport(
     ${renderPartyLoadouts(run, graph.participants, associatedReconciliation ?? undefined, messages, associatedReconciliation ? associatedPresentation : viewedPresentation, graphIdentity)}
     ${graph.timeline ? renderTimeline(graph, messages, graphPresentation, graphIdentity) : renderRunTimeline(run, participants, report.report_id, messages)}
     ${renderSkillContributions(participants, skillInfluences, skillEffects, graphPresentation, graphIdentity)}
-    ${renderRdpsCalculations(run, selectedReconciliation, participants, reconciled, graphPresentation)}
+    ${renderRdpsCalculations(run, selectedReconciliation, participants, reconciled, graphPresentation, graphIdentity)}
     ${renderEvidenceCoverage(report, run, associatedReconciliation, participants, reconciled)}
     <p class="parse-proof">${escapeHtml(run.run_group_id ? messages.message("parse.report.proof_group", { proof, group: run.run_group_id }) : proof)}</p>
   </article>`;
@@ -4016,6 +4017,7 @@ function renderRdpsCalculations(
   participants: AnalysisParticipant[],
   reconciled: boolean,
   presentation?: ParsePresentationCatalog,
+  identity?: NullablePresentationIdentity | null,
 ): string {
   const influences = reconciled
     ? (reconciliation?.rdps_influences ?? [])
@@ -4031,7 +4033,7 @@ function renderRdpsCalculations(
       "No exact influence ledger was published for this report. rDPS remains explicitly unresolved rather than being copied from DPS.",
     );
   }
-  const grouped = groupInfluences(influences, effects, participants, presentation);
+  const grouped = groupInfluences(influences, effects, participants, presentation, identity);
   const rows = grouped
     .map((group) => `<div class="rdps-ledger-row"><span><strong>${escapeHtml(group.provider)}</strong><small>granted through ${escapeHtml(group.effect)}${group.components.size ? ` · ${escapeHtml([...group.components].map(title).join(", "))}` : ""}</small></span><span><small>Recipients</small><strong>${group.recipients.size.toLocaleString()}</strong></span><span><small>Damage events</small><strong>${group.events.toLocaleString()}</strong></span><span><small>Observed damage</small><strong>${formatBigInt(group.observedDamage)}</strong></span><span><small>Attributed rDMG</small><strong>${group.allocated ? formatBigInt(group.attributed) : "Unresolved"}${group.incomplete ? "*" : ""}</strong></span></div>`)
     .join("");
@@ -4056,20 +4058,20 @@ function groupInfluences(
   effects: PublicRdpsEffectPresentation[],
   participants: AnalysisParticipant[],
   presentation?: ParsePresentationCatalog,
+  identity?: NullablePresentationIdentity | null,
 ): GroupedInfluence[] {
   const actorNames = new Map(participants.map((actor) => [actor.actor_id, participantName(actor)]));
-  const effectNames = new Map(presentation
-    ? effects.map((effect) => [effect.effect_id, effect.presentation_name] as const)
-    : []);
+  const effectNames = new Map(effects.map((effect) => [effect.effect_id, effect.presentation_name] as const));
   const groups = new Map<string, GroupedInfluence>();
   for (const influence of influences) {
     const key = `${influence.provider_actor_id}\0${influence.effect_id}`;
     const group = groups.get(key) ?? {
       provider: actorNames.get(influence.provider_actor_id) ?? `Player ${influence.provider_actor_id}`,
-      effect: localizedEffectName(
+      effect: localizedEffectNameWithAuthority(
         presentation,
         influence.effect_id,
         effectNames.get(influence.effect_id) ?? null,
+        identity,
       ),
       recipients: new Set<string>(),
       components: new Set<string>(),

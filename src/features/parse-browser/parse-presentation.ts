@@ -94,6 +94,20 @@ export function localizedEffectName(
   return humanName(catalog?.effects[effectId] ?? null) ?? unlocalizedLabel("effect", effectId);
 }
 
+/** Effect names are display-only stable-ID labels. Prefer the bundled catalog,
+ * then accept a verifier-published label when the report carries a complete
+ * producer identity. This never authorizes rDPS attribution semantics. */
+export function localizedEffectNameWithAuthority(
+  catalog: ParsePresentationCatalog | undefined,
+  effectId: string,
+  publishedName: string | null | undefined,
+  identity: NullablePresentationIdentity | null | undefined,
+): string {
+  return humanName(catalog?.effects[effectId] ?? null)
+    ?? (completePresentationIdentity(identity) ? humanName(publishedName ?? null) : undefined)
+    ?? unlocalizedLabel("effect", effectId);
+}
+
 export function localizedImagineName(
   catalog: ParsePresentationCatalog | undefined,
   skillId: string,
