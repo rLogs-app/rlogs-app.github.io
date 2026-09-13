@@ -6,10 +6,13 @@ import type { PublicParseReport, PublicRunReconciliation } from "../../contracts
 import type { ParsePresentationCatalog } from "./parse-presentation";
 import {
   bindParseReportInteractions,
+  defaultTimelineSizing,
+  parseTimelineSizingPreference,
   renderReport,
   renderTimeline,
   renderTimelineSnapshotTable,
   selectCanonicalGraph,
+  timelineSizingStorageKey,
 } from "./parse-browser";
 
 const load = <T>(name: string): T => JSON.parse(
@@ -99,6 +102,80 @@ describe("combat timeline DOM interactions", () => {
     bindParseReportInteractions(root)();
     return root;
   }
+
+  it("renders compact accessible height controls with compatible defaults", () => {
+    const root = mountedTimeline();
+    const fieldset = root.querySelector<HTMLFieldSetElement>(".timeline-size-controls")!;
+    const curve = root.querySelector<HTMLInputElement>("input[data-timeline-curve-height]")!;
+    const lanes = root.querySelector<HTMLInputElement>("input[data-timeline-event-lane-height]")!;
+    const timeline = root.querySelector<HTMLElement>("[data-timeline-metric]")!;
+    const laneSvg = root.querySelector<SVGSVGElement>(".timeline-marker-lanes-svg")!;
+
+    expect(fieldset.querySelector("legend")?.textContent).toBe("Timeline height");
+    expect(curve.closest("label")?.textContent).toContain("Curve");
+    expect(lanes.closest("label")?.textContent).toContain("Event lanes");
+    expect(curve.value).toBe(String(defaultTimelineSizing.curveHeight));
+    expect(lanes.value).toBe(String(defaultTimelineSizing.eventLaneHeight));
+    expect(curve.getAttribute("aria-valuetext")).toBe("320px");
+    expect(lanes.getAttribute("aria-valuetext")).toBe("44px");
+    expect(timeline.style.getPropertyValue("--timeline-curve-height")).toBe("320px");
+    expect(laneSvg.style.getPropertyValue("--timeline-lane-count")).not.toBe("");
+  });
+
+  it("persists timeline height changes and hydrates them on the next render", () => {
+    const firstRoot = mountedTimeline();
+    const curve = firstRoot.querySelector<HTMLInputElement>("input[data-timeline-curve-height]")!;
+    const lanes = firstRoot.querySelector<HTMLInputElement>("input[data-timeline-event-lane-height]")!;
+    curve.value = "480";
+    curve.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    lanes.value = "64";
+    lanes.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+
+    expect(JSON.parse(window.localStorage.getItem(timelineSizingStorageKey)!)).toEqual({
+      version: 1, curveHeight: 480, eventLaneHeight: 64,
+    });
+    const curveSvg = firstRoot.querySelector<SVGSVGElement>(".timeline-svg")!;
+    const laneSvg = firstRoot.querySelector<SVGSVGElement>(".timeline-marker-lanes-svg")!;
+    const laneCount = Number(laneSvg.style.getPropertyValue("--timeline-lane-count"));
+    expect(curveSvg.getAttribute("viewBox")).toBe("0 0 1040 480");
+    expect(curveSvg.dataset.plotHeight).toBe("416");
+    expect(curveSvg.querySelector("[data-timeline-inspector]")?.getAttribute("height")).toBe("416");
+    expect(laneSvg.getAttribute("viewBox")).toBe(`0 0 1040 ${laneCount * 64 + 8}`);
+    const secondRoot = mountedTimeline();
+    const timeline = secondRoot.querySelector<HTMLElement>("[data-timeline-metric]")!;
+    expect(timeline.dataset.timelineCurveHeightPx).toBe("480");
+    expect(timeline.dataset.timelineEventLaneHeightPx).toBe("64");
+    expect(secondRoot.querySelector("[data-timeline-curve-height-output]")?.textContent).toBe("480px");
+    expect(secondRoot.querySelector("[data-timeline-event-lane-height-output]")?.textContent).toBe("64px");
+  });
+
+  it("validates stored timeline heights by version, type, and bounds", () => {
+    expect(parseTimelineSizingPreference("not json")).toEqual(defaultTimelineSizing);
+    expect(parseTimelineSizingPreference(JSON.stringify({ version: 2, curveHeight: 500, eventLaneHeight: 60 })))
+      .toEqual(defaultTimelineSizing);
+    expect(parseTimelineSizingPreference(JSON.stringify({
+      version: 1, curveHeight: 999, eventLaneHeight: -10,
+    }))).toEqual({ curveHeight: 560, eventLaneHeight: 32 });
+    expect(parseTimelineSizingPreference(JSON.stringify({
+      version: 1, curveHeight: "500", eventLaneHeight: null,
+    }))).toEqual(defaultTimelineSizing);
+  });
+
+  it("resets timeline heights and removes the persisted preference", () => {
+    window.localStorage.setItem(timelineSizingStorageKey, JSON.stringify({
+      version: 1, curveHeight: 480, eventLaneHeight: 64,
+    }));
+    const root = mountedTimeline();
+    const reset = root.querySelector<HTMLButtonElement>("[data-timeline-size-reset]")!;
+    const timeline = root.querySelector<HTMLElement>("[data-timeline-metric]")!;
+    expect(reset.disabled).toBe(false);
+    reset.click();
+
+    expect(window.localStorage.getItem(timelineSizingStorageKey)).toBeNull();
+    expect(timeline.dataset.timelineCurveHeightPx).toBe("320");
+    expect(timeline.dataset.timelineEventLaneHeightPx).toBe("44");
+    expect(reset.disabled).toBe(true);
+  });
 
   it("plays, pauses, scrubs, and supports keyboard cursor movement", () => {
     const root = mountedTimeline();

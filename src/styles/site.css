@@ -2105,6 +2105,58 @@ summary.party-loadout-title {
   text-align: center;
 }
 
+.timeline-size-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 6px 12px;
+  padding: 0;
+  margin: 8px 0 4px;
+  border: 0;
+}
+
+.timeline-size-controls legend {
+  width: 100%;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.timeline-size-controls label {
+  display: grid;
+  grid-template-columns: auto minmax(90px, 140px) 42px;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.timeline-size-controls input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.timeline-size-controls output {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.timeline-size-controls button {
+  min-height: 30px;
+  padding: 4px 9px;
+  color: var(--text);
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 5%);
+  cursor: pointer;
+}
+
+.timeline-size-controls button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
 .timeline-chart-scroll {
   overflow-x: auto;
 }
@@ -6701,6 +6753,15 @@ footer p {
   }
 
   .timeline-viewport-actions button {
+    min-height: 44px;
+  }
+
+  .timeline-size-controls label {
+    grid-template-columns: 78px minmax(100px, 1fr) 42px;
+    width: 100%;
+  }
+
+  .timeline-size-controls button {
     min-height: 44px;
   }
 

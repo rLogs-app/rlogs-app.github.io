@@ -923,6 +923,67 @@ const palette = [
 ] as const;
 const timelineLinePatterns = ["solid", "long", "dot", "dash-dot"] as const;
 
+export const timelineSizingStorageKey = "rlogs.timeline-sizing.v1";
+export const defaultTimelineSizing = Object.freeze({ curveHeight: 320, eventLaneHeight: 44 });
+const timelineSizingLimits = Object.freeze({
+  curveHeight: { min: 240, max: 560 },
+  eventLaneHeight: { min: 32, max: 72 },
+});
+
+export interface TimelineSizingPreference {
+  curveHeight: number;
+  eventLaneHeight: number;
+}
+
+function clampTimelineSize(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(minimum, Math.min(maximum, Math.round(value)))
+    : fallback;
+}
+
+export function parseTimelineSizingPreference(value: string | null): TimelineSizingPreference {
+  if (!value) return { ...defaultTimelineSizing };
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (typeof parsed !== "object" || parsed === null || (parsed as { version?: unknown }).version !== 1) {
+      return { ...defaultTimelineSizing };
+    }
+    const candidate = parsed as { curveHeight?: unknown; eventLaneHeight?: unknown };
+    return {
+      curveHeight: clampTimelineSize(candidate.curveHeight, defaultTimelineSizing.curveHeight,
+        timelineSizingLimits.curveHeight.min, timelineSizingLimits.curveHeight.max),
+      eventLaneHeight: clampTimelineSize(candidate.eventLaneHeight, defaultTimelineSizing.eventLaneHeight,
+        timelineSizingLimits.eventLaneHeight.min, timelineSizingLimits.eventLaneHeight.max),
+    };
+  } catch {
+    return { ...defaultTimelineSizing };
+  }
+}
+
+function storedTimelineSizingPreference(): TimelineSizingPreference {
+  try {
+    return parseTimelineSizingPreference(window.localStorage.getItem(timelineSizingStorageKey));
+  } catch {
+    return { ...defaultTimelineSizing };
+  }
+}
+
+function persistTimelineSizingPreference(preference: TimelineSizingPreference): void {
+  try {
+    window.localStorage.setItem(timelineSizingStorageKey, JSON.stringify({ version: 1, ...preference }));
+  } catch {
+    // Storage can be unavailable in hardened or private browsing contexts.
+  }
+}
+
+function resetStoredTimelineSizingPreference(): void {
+  try {
+    window.localStorage.removeItem(timelineSizingStorageKey);
+  } catch {
+    // The in-page reset still applies when storage is unavailable.
+  }
+}
+
 export function renderTimeline(
   graph: CanonicalGraphSelection,
   messages = createMessageResolver(),
@@ -1029,6 +1090,11 @@ export function renderTimeline(
       <output data-timeline-event-status>${escapeHtml(messages.message("parse.timeline.event_navigation.none"))}</output>
       <button type="button" data-timeline-event-next>${escapeHtml(messages.message("parse.timeline.event_navigation.next"))}</button>
     </div>
+    <fieldset class="timeline-size-controls"><legend>${escapeHtml(messages.message("parse.timeline.size.group"))}</legend>
+      <label><span>${escapeHtml(messages.message("parse.timeline.size.curve"))}</span><input type="range" data-timeline-curve-height min="${timelineSizingLimits.curveHeight.min}" max="${timelineSizingLimits.curveHeight.max}" step="20" value="${defaultTimelineSizing.curveHeight}" /><output data-timeline-curve-height-output>${escapeHtml(messages.message("parse.timeline.size.value", { height: defaultTimelineSizing.curveHeight }))}</output></label>
+      <label><span>${escapeHtml(messages.message("parse.timeline.size.event_lanes"))}</span><input type="range" data-timeline-event-lane-height min="${timelineSizingLimits.eventLaneHeight.min}" max="${timelineSizingLimits.eventLaneHeight.max}" step="4" value="${defaultTimelineSizing.eventLaneHeight}" /><output data-timeline-event-lane-height-output>${escapeHtml(messages.message("parse.timeline.size.value", { height: defaultTimelineSizing.eventLaneHeight }))}</output></label>
+      <button type="button" data-timeline-size-reset disabled>${escapeHtml(messages.message("parse.timeline.size.reset"))}</button>
+    </fieldset>
     <div class="timeline-chart-scroll">${renderTimelineMarkerLanes(timeline, markerLanes, messages)}${renderTimelineSvg(timeline, plotted, authorizedRateClock, rdpsLabel, partialRdps, messages)}</div>
     <aside class="timeline-lane-preview" id="timeline-lane-preview-${escapeHtml(timeline.canonical_report_id.replace(/[^a-zA-Z0-9_-]/g, "-"))}-${timeline.canonical_run_index}" data-timeline-lane-preview role="tooltip" hidden></aside>
     ${renderTimelineOverview(timeline, plotted, messages)}
@@ -1377,9 +1443,9 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
     const hitboxClass = death ? "timeline-death-hitbox" : "timeline-lane-marker-hitbox";
     const hitboxX = event.kind === "status" ? -4 : -12;
     const hitboxWidth = event.kind === "status" ? Math.max(24, intervalWidth + 8) : 24;
-    return `<g class="timeline-marker ${event.kind}" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(lane.color)}" data-timeline-marker-boundary="${event.boundary}" data-timeline-marker-at-micros="${event.atMicros}"${interval} data-timeline-marker-label="${escapeHtml(event.label)}" data-timeline-marker-kind="${event.kind}" data-timeline-marker-lane="${escapeHtml(event.laneKey)}" data-timeline-marker-source-index="${event.sourceIndex}" aria-label="${escapeHtml(label)}" aria-expanded="false" role="button" tabindex="0"${controls}${scope}${targetScope}><g data-timeline-marker-symbol data-timeline-marker-y="${y}" transform="translate(0 ${y})"><rect class="${hitboxClass}" x="${hitboxX}" y="-12" width="${hitboxWidth.toFixed(1)}" height="24"/>${glyph}${clusterBadge}</g><title>${escapeHtml(event.label)}</title></g>`;
+    return `<g class="timeline-marker ${event.kind}" transform="translate(${x.toFixed(1)} 0)" style="color:${escapeHtml(lane.color)}" data-timeline-marker-boundary="${event.boundary}" data-timeline-marker-at-micros="${event.atMicros}"${interval} data-timeline-marker-label="${escapeHtml(event.label)}" data-timeline-marker-kind="${event.kind}" data-timeline-marker-lane="${escapeHtml(event.laneKey)}" data-timeline-marker-lane-index="${laneIndex}" data-timeline-marker-source-index="${event.sourceIndex}" aria-label="${escapeHtml(label)}" aria-expanded="false" role="button" tabindex="0"${controls}${scope}${targetScope}><g data-timeline-marker-symbol data-timeline-marker-y="${y}" transform="translate(0 ${y})"><rect class="${hitboxClass}" x="${hitboxX}" y="-12" width="${hitboxWidth.toFixed(1)}" height="24"/>${glyph}${clusterBadge}</g><title>${escapeHtml(event.label)}</title></g>`;
   })).join("");
-  return `<svg class="timeline-marker-lanes-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.lanes.aria"))}" data-duration-micros="${timeline.duration_micros}"><defs><clipPath id="${clipId}"><rect x="${left}" y="0" width="${plotWidth}" height="${height}"/></clipPath></defs>${chrome}<g data-timeline-viewport-elapsed-geometry clip-path="url(#${clipId})">${markers}</g><line class="timeline-lane-playhead" data-timeline-lane-playhead x1="${left}" x2="${left}" y1="0" y2="${height}"/></svg>`;
+  return `<svg class="timeline-marker-lanes-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.lanes.aria"))}" data-duration-micros="${timeline.duration_micros}" style="--timeline-lane-count:${lanes.length}"><defs><clipPath id="${clipId}"><rect x="${left}" y="0" width="${plotWidth}" height="${height}"/></clipPath></defs>${chrome}<g data-timeline-viewport-elapsed-geometry clip-path="url(#${clipId})">${markers}</g><line class="timeline-lane-playhead" data-timeline-lane-playhead x1="${left}" x2="${left}" y1="0" y2="${height}"/></svg>`;
 }
 
 function safeTimelineIconPath(value: string | null | undefined): boolean {
@@ -1467,7 +1533,7 @@ function renderTimelineSvg(timeline: CombatTimeline, plotted: PlottedTimelinePar
     const anchor = index === 0 ? "start" : index === 4 ? "end" : "middle";
     return `<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top + plotHeight}" class="timeline-time-grid"/><text data-timeline-time-tick="${index}" x="${x.toFixed(1)}" y="${height - 10}" text-anchor="${anchor}" class="timeline-tick">${escapeHtml(formatDuration(timeline.duration_micros * fraction))}</text>`;
   }).join("");
-  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.graph_aria", { duration: formatDuration(timeline.duration_micros) }))}" data-duration-seconds="${seconds}" data-duration-micros="${timeline.duration_micros}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-plot-top="${top}" data-plot-height="${plotHeight}" data-series-complete="${timeline.omitted.series_points === 0}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
+  return `<svg class="timeline-svg" viewBox="0 0 ${width} ${height}" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.graph_aria", { duration: formatDuration(timeline.duration_micros) }))}" data-duration-seconds="${seconds}" data-duration-micros="${timeline.duration_micros}" data-plot-left="${left}" data-plot-width="${plotWidth}" data-plot-top="${top}" data-plot-height="${plotHeight}" data-plot-base-bottom="${top + plotHeight}" data-series-complete="${timeline.omitted.series_points === 0}" data-rate-clock-complete="${rateClock ? "true" : "false"}"${rateClock ? ` data-rate-clock="${rateClock}"` : ""}>
     <defs><clipPath id="timeline-plot-clip"><rect x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" /></clipPath></defs>
     ${timeTicks}${groups}<rect class="timeline-inspector-hitbox" data-timeline-inspector x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" tabindex="0" role="slider" aria-label="${escapeHtml(messages.message("parse.timeline.inspector_aria"))}" aria-valuemin="0" aria-valuemax="${seconds}" aria-valuenow="0" aria-valuetext="0:00" />
     <g data-timeline-viewport-elapsed-geometry clip-path="url(#timeline-plot-clip)">${rdpsEvidence}</g>
@@ -2692,8 +2758,142 @@ function wireTimelineLanePreview(timeline: HTMLElement): void {
   }
 }
 
+function resizeTimelineCurve(timeline: HTMLElement, curveHeight: number): void {
+  const svg = timeline.querySelector<SVGSVGElement>(".timeline-svg");
+  if (!svg) return;
+  const width = svg.viewBox.baseVal.width || 1_040;
+  const top = Number(svg.dataset.plotTop);
+  const oldPlotHeight = Number(svg.dataset.plotHeight);
+  const bottomMargin = 42;
+  const nextPlotHeight = curveHeight - top - bottomMargin;
+  if (![top, oldPlotHeight, nextPlotHeight].every(Number.isFinite) || oldPlotHeight <= 0 || nextPlotHeight <= 0) return;
+  const nextBottom = top + nextPlotHeight;
+  svg.querySelectorAll<SVGPolylineElement>(".timeline-trace").forEach((trace) => {
+    const points = (trace.getAttribute("points") ?? "").split(/\s+/u).flatMap((pair) => {
+      const [x, y] = pair.split(",").map(Number);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
+      const nextY = top + ((y - top) / oldPlotHeight) * nextPlotHeight;
+      return [`${x!.toFixed(1)},${nextY.toFixed(1)}`];
+    });
+    trace.setAttribute("points", points.join(" "));
+  });
+  svg.querySelectorAll<SVGLineElement>(".timeline-grid").forEach((line, index) => {
+    const y = top + nextPlotHeight * ((index % 5) / 4);
+    line.setAttribute("y1", y.toFixed(1));
+    line.setAttribute("y2", y.toFixed(1));
+  });
+  svg.querySelectorAll<SVGTextElement>("[data-timeline-scale-tick]").forEach((tick) => {
+    const index = Number(tick.dataset.timelineScaleTick ?? "0");
+    tick.setAttribute("y", (top + nextPlotHeight * (index / 4) + 4).toFixed(1));
+  });
+  svg.querySelectorAll<SVGLineElement>(".timeline-time-grid").forEach((line) => line.setAttribute("y2", String(nextBottom)));
+  svg.querySelectorAll<SVGTextElement>("[data-timeline-time-tick]").forEach((tick) => tick.setAttribute("y", String(curveHeight - 10)));
+  const clip = svg.querySelector<SVGRectElement>("#timeline-plot-clip rect");
+  const inspector = svg.querySelector<SVGRectElement>("[data-timeline-inspector]");
+  clip?.setAttribute("height", String(nextPlotHeight));
+  inspector?.setAttribute("height", String(nextPlotHeight));
+  svg.querySelector<SVGLineElement>("[data-timeline-crosshair] line")?.setAttribute("y2", String(nextBottom));
+  const baseBottom = Number(svg.dataset.plotBaseBottom);
+  svg.querySelector<SVGGElement>(".timeline-rdps-evidence-lane")
+    ?.setAttribute("transform", `translate(0 ${nextBottom - (Number.isFinite(baseBottom) ? baseBottom : 278)})`);
+  svg.dataset.plotHeight = String(nextPlotHeight);
+  svg.setAttribute("viewBox", `0 0 ${width} ${curveHeight}`);
+  refreshTimelineScale(timeline, timelineViewportFor(timeline, Number(svg.dataset.durationMicros)));
+}
+
+function resizeTimelineEventLanes(timeline: HTMLElement, laneHeight: number): void {
+  const svg = timeline.querySelector<SVGSVGElement>(".timeline-marker-lanes-svg");
+  if (!svg) return;
+  const width = svg.viewBox.baseVal.width || 1_040;
+  const laneCount = Number(svg.style.getPropertyValue("--timeline-lane-count"));
+  if (!Number.isInteger(laneCount) || laneCount < 1) return;
+  const height = laneCount * laneHeight + 8;
+  svg.querySelectorAll<SVGGElement>(".timeline-lane-row").forEach((row, laneIndex) => {
+    const top = 4 + laneIndex * laneHeight;
+    const middle = top + laneHeight / 2;
+    const bottom = top + laneHeight;
+    const line = row.querySelector<SVGLineElement>("line");
+    const circle = row.querySelector<SVGCircleElement>("circle");
+    const text = row.querySelector<SVGTextElement>("text");
+    line?.setAttribute("y1", String(bottom));
+    line?.setAttribute("y2", String(bottom));
+    circle?.setAttribute("cy", String(middle));
+    text?.setAttribute("y", String(middle + 4));
+  });
+  svg.querySelectorAll<SVGGraphicsElement>("[data-timeline-marker-lane-index]").forEach((marker) => {
+    const laneIndex = Number(marker.dataset.timelineMarkerLaneIndex);
+    const y = 4 + laneIndex * laneHeight + laneHeight / 2;
+    const symbol = marker.querySelector<SVGGElement>("[data-timeline-marker-symbol]");
+    if (!symbol || !Number.isInteger(laneIndex)) return;
+    symbol.dataset.timelineMarkerY = String(y);
+    symbol.setAttribute("transform", `translate(0 ${y})`);
+  });
+  svg.querySelector<SVGRectElement>("clipPath rect")?.setAttribute("height", String(height));
+  const playhead = svg.querySelector<SVGLineElement>("[data-timeline-lane-playhead]");
+  playhead?.setAttribute("y2", String(height));
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+}
+
+function applyTimelineSizing(timeline: HTMLElement, preference: TimelineSizingPreference): void {
+  const messages = createMessageResolver(timeline.dataset.locale);
+  const curveText = messages.message("parse.timeline.size.value", { height: preference.curveHeight });
+  const laneText = messages.message("parse.timeline.size.value", { height: preference.eventLaneHeight });
+  timeline.dataset.timelineCurveHeightPx = String(preference.curveHeight);
+  timeline.dataset.timelineEventLaneHeightPx = String(preference.eventLaneHeight);
+  timeline.style.setProperty("--timeline-curve-height", `${preference.curveHeight}px`);
+  timeline.style.setProperty("--timeline-event-lane-height", `${preference.eventLaneHeight}px`);
+  resizeTimelineCurve(timeline, preference.curveHeight);
+  resizeTimelineEventLanes(timeline, preference.eventLaneHeight);
+  applyTimelineViewport(timeline);
+  const curve = timeline.querySelector<HTMLInputElement>("[data-timeline-curve-height]");
+  const lanes = timeline.querySelector<HTMLInputElement>("[data-timeline-event-lane-height]");
+  const curveOutput = timeline.querySelector<HTMLOutputElement>("[data-timeline-curve-height-output]");
+  const laneOutput = timeline.querySelector<HTMLOutputElement>("[data-timeline-event-lane-height-output]");
+  if (curve) {
+    curve.value = String(preference.curveHeight);
+    curve.setAttribute("aria-valuetext", curveText);
+  }
+  if (lanes) {
+    lanes.value = String(preference.eventLaneHeight);
+    lanes.setAttribute("aria-valuetext", laneText);
+  }
+  if (curveOutput) curveOutput.textContent = curveText;
+  if (laneOutput) laneOutput.textContent = laneText;
+  const reset = timeline.querySelector<HTMLButtonElement>("[data-timeline-size-reset]");
+  if (reset) reset.disabled = preference.curveHeight === defaultTimelineSizing.curveHeight &&
+    preference.eventLaneHeight === defaultTimelineSizing.eventLaneHeight;
+}
+
+function wireTimelineSizingControls(root: HTMLElement): HTMLElement[] {
+  let preference = storedTimelineSizingPreference();
+  const timelines = [...root.querySelectorAll<HTMLElement>("[data-timeline-metric]")];
+  const applyToAll = () => timelines.forEach((timeline) => applyTimelineSizing(timeline, preference));
+  applyToAll();
+  timelines.forEach((timeline) => {
+    const curve = timeline.querySelector<HTMLInputElement>("[data-timeline-curve-height]");
+    const lanes = timeline.querySelector<HTMLInputElement>("[data-timeline-event-lane-height]");
+    const update = () => {
+      preference = parseTimelineSizingPreference(JSON.stringify({
+        version: 1,
+        curveHeight: Number(curve?.value),
+        eventLaneHeight: Number(lanes?.value),
+      }));
+      persistTimelineSizingPreference(preference);
+      applyToAll();
+    };
+    curve?.addEventListener("input", update);
+    lanes?.addEventListener("input", update);
+    timeline.querySelector<HTMLButtonElement>("[data-timeline-size-reset]")?.addEventListener("click", () => {
+      preference = { ...defaultTimelineSizing };
+      resetStoredTimelineSizingPreference();
+      applyToAll();
+    });
+  });
+  return timelines;
+}
+
 function wireTimelineControls(root: HTMLElement): void {
-  root.querySelectorAll<HTMLElement>("[data-timeline-metric]").forEach(wireTimelineLanePreview);
+  wireTimelineSizingControls(root).forEach(wireTimelineLanePreview);
   root.querySelectorAll<HTMLButtonElement>("[data-metric]").forEach((button) => button.addEventListener("click", () => {
     const metric = button.dataset.metric;
     const timeline = button.closest<HTMLElement>("[data-timeline-metric]");
