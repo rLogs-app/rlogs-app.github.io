@@ -17,10 +17,12 @@ import {
   localizedSceneNameWithAuthority,
   localizedSpecializationNameWithAuthority,
   loadParsePresentation,
-  semanticPresentationForIdentity,
   type ParsePresentationCatalog,
 } from "../parse-browser/parse-presentation";
-import { supplementalDifficultyLabel } from "../parse-browser/difficulty-presentation";
+import {
+  producerDifficultyPresentationAuthorized,
+  supplementalDifficultyLabel,
+} from "../parse-browser/difficulty-presentation";
 import { createMessageResolver } from "../../localization/messages";
 
 const apiBase = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/u, "");
@@ -319,26 +321,18 @@ export function observedReportDifficultyLabel(
   presentation?: ParsePresentationCatalog,
   schemaVersion: 1 | 2 = 1,
 ): string | undefined {
-  const authorized = presentationForObservedReport(presentation, schemaVersion, report) != null;
-  return supplementalDifficultyLabel(
-    report,
-    observedReportSceneLabel(report, presentation, schemaVersion),
-    authorized,
-    createMessageResolver(),
-    false,
-  ) ?? undefined;
-}
-
-function presentationForObservedReport(
-  presentation: ParsePresentationCatalog | undefined,
-  schemaVersion: 1 | 2,
-  report: ObservedCharacterReportReference,
-): ParsePresentationCatalog | undefined {
-  return schemaVersion === 2 ? semanticPresentationForIdentity(presentation, {
+  const identity = schemaVersion === 2 ? {
     deployment_id: report.deployment_id ?? null,
     client_build: report.client_build ?? null,
     protocol_pack_digest: report.protocol_pack_digest ?? null,
-  }) : undefined;
+  } : null;
+  return supplementalDifficultyLabel(
+    report,
+    observedReportSceneLabel(report, presentation, schemaVersion),
+    producerDifficultyPresentationAuthorized(identity),
+    createMessageResolver(),
+    false,
+  ) ?? undefined;
 }
 
 function humanize(value: string): string {

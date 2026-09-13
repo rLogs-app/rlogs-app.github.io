@@ -33,13 +33,16 @@ import {
   presentationForReport,
   semanticPresentationForCatalogEntry,
   semanticPresentationForIdentity,
-  semanticPresentationForReport,
   type NullablePresentationIdentity,
   type ParsePresentationCatalog,
 } from "./parse-presentation";
 import { fetchPublicRead } from "../../public-api";
 import { createMessageResolver, type MessageResolver } from "../../localization/messages";
-import { supplementalDifficultyLabel } from "./difficulty-presentation";
+import {
+  catalogDifficultyPresentationAuthorized,
+  producerDifficultyPresentationAuthorized,
+  supplementalDifficultyLabel,
+} from "./difficulty-presentation";
 
 const baseUrl = import.meta.env.BASE_URL;
 const configuredApi = String(import.meta.env.VITE_RLOGS_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -332,9 +335,13 @@ export function renderCatalogEntry(
   schemaVersion: 6 | 7 = 6,
   messages = createMessageResolver(),
 ): string {
-  const semanticAuthorized = Boolean(semanticPresentationForCatalogEntry(presentation, schemaVersion, entry));
   const scene = catalogSceneLabel(entry, presentation, schemaVersion);
-  const difficulty = supplementalDifficultyLabel(entry, scene, semanticAuthorized, messages);
+  const difficulty = supplementalDifficultyLabel(
+    entry,
+    scene,
+    catalogDifficultyPresentationAuthorized(schemaVersion),
+    messages,
+  );
   return `<button class="parse-row" type="button" data-report-id="${escapeHtml(entry.report_id)}" data-run-index="${entry.run_index}">
     <span><strong>${escapeHtml(scene)}</strong>
       <small>${escapeHtml([difficulty, title(entry.terminal_state)].filter(Boolean).join(" / "))}</small></span>
@@ -378,12 +385,6 @@ export function renderReport(
     client_build: report.client_build,
     protocol_pack_digest: report.protocol_pack_digest ?? null,
   };
-  const viewedSemanticPresentation = semanticPresentationForReport(
-    presentation,
-    report.deployment_id,
-    report.client_build,
-    report.protocol_pack_digest,
-  );
   const graphPresentation = viewedPresentation;
   const associatedPresentation = viewedPresentation;
   const graphIdentity = reconciled && selectedReconciliation
@@ -419,7 +420,7 @@ export function renderReport(
   return `<article class="parse-report">
     <div class="parse-report-heading"><div><p class="eyebrow">${escapeHtml(report.region_id)} / ${escapeHtml(report.verification.tier)}</p>
       <h3>${escapeHtml(sceneHeading)}</h3>
-      <p>${escapeHtml([supplementalDifficultyLabel(run, sceneHeading, Boolean(viewedSemanticPresentation), messages), title(run.terminal_state)].filter(Boolean).join(" / "))}</p></div>
+      <p>${escapeHtml([supplementalDifficultyLabel(run, sceneHeading, producerDifficultyPresentationAuthorized(viewedIdentity), messages), title(run.terminal_state)].filter(Boolean).join(" / "))}</p></div>
       ${renderReplayStatus(associatedReconciliation, reconciled, messages)}</div>
     <div class="parse-run-identity" aria-label="Run identifiers">
       <span><small>Run ID</small><code>${escapeHtml(run.run_group_id ?? `${report.report_id}:${run.run_index}`)}</code></span>

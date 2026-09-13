@@ -92,7 +92,7 @@ describe("public profile routes", () => {
     )).resolves.toEqual(catalog);
   });
 
-  it("shows catalog labels across identities while keeping difficulty semantics exact", () => {
+  it("shows retained report labels and difficulty across complete identities", () => {
     const character: ObservedCharacterEntry = {
       observed_character_key: `obs_${"a".repeat(32)}`,
       identity_kind: "legacy_name_observation",
@@ -154,7 +154,8 @@ describe("public profile routes", () => {
       presentation_authority: null,
       reports: [{ ...character.reports[0]!, deployment_id: null, client_build: null, protocol_pack_digest: null }],
     };
-    for (const [candidate, schema] of [[wrong, 2], [unavailable, 2], [character, 1]] as const) {
+    expect(observedReportDifficultyLabel(wrong.reports[0]!, presentation, 2)).toBe("Master 5");
+    for (const [candidate, schema] of [[unavailable, 2], [character, 1]] as const) {
       expect(observedClassLabel(candidate, presentation, schema)).toBe("Wind Knight / Vanguard Spec");
       expect(observedReportSceneLabel(candidate.reports[0]!, presentation, schema)).toBe("Cursed Radiant Tomb");
       expect(observedReportDifficultyLabel(candidate.reports[0]!, presentation, schema)).toBe("Tier 5");
@@ -181,13 +182,19 @@ describe("public profile routes", () => {
       protocol_pack_digest: `sha256:${"f".repeat(64)}`,
       difficulty_family: "master",
       difficulty_tier: 17,
-    }, presentation, 2)).toBe("Tier 17");
+    }, presentation, 2)).toBe("Master 17");
     expect(observedReportDifficultyLabel({
       ...character.reports[0]!,
       protocol_pack_digest: `sha256:${"f".repeat(64)}`,
       difficulty_family: "master",
       difficulty_tier: null,
-    }, presentation, 2)).toBeUndefined();
+    }, presentation, 2)).toBe("Master (tier unresolved)");
+    expect(observedReportDifficultyLabel({
+      ...character.reports[0]!,
+      protocol_pack_digest: null,
+      difficulty_family: "master",
+      difficulty_tier: 17,
+    }, presentation, 2)).toBe("Tier 17");
     expect(observedReportDifficultyLabel({ ...character.reports[0]!, difficulty_family: null, difficulty_tier: null }, presentation, 2)).toBeUndefined();
     expect(observedReportSceneLabel({ ...character.reports[0]!, scene_id: 99991, scene_name: "Mech Facility" }, presentation, 2))
       .toBe("Mech Facility");

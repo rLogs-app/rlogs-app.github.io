@@ -99,14 +99,19 @@ describe("My Parses", () => {
     expect(filterMyParses([entry], "private")).toEqual([]);
   });
 
-  it("keeps catalog labels for legacy and wrong-identity parses while leaving difficulty raw", () => {
+  it("keeps retained catalog difficulty across builds while legacy rows remain raw", () => {
     const wrong = { ...entry, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
+    const newerBuild = renderMyParseEntry(wrong, presentation, 7);
+    expect(newerBuild).toContain("Floor 54");
+    expect(newerBuild).toContain("Challenge 54");
+    expect(newerBuild).toContain("Participant: 3296036");
+
+    const legacy = renderMyParseEntry(entry, presentation, 6);
+    expect(legacy).toContain("Floor 54");
+    expect(legacy).toContain("Tier 54");
+    expect(legacy).toContain("Participant: 3296036");
+    expect(legacy).not.toContain("Challenge");
     for (const [candidate, schema] of [[entry, 6], [wrong, 7]] as const) {
-      const html = renderMyParseEntry(candidate, presentation, schema);
-      expect(html).toContain("Floor 54");
-      expect(html).toContain("Tier 54");
-      expect(html).toContain("Participant: 3296036");
-      expect(html).not.toContain("Challenge");
       expect(filterMyParses([candidate], "floor", presentation, schema)).toEqual([candidate]);
       expect(filterMyParses([candidate], "32154 unlisted 3296036", presentation, schema)).toEqual([candidate]);
     }

@@ -26,7 +26,10 @@ import {
   renderCoreWithOptionalPresentation,
   type ParsePresentationCatalog,
 } from "../parse-browser/parse-presentation";
-import { supplementalDifficultyLabel } from "../parse-browser/difficulty-presentation";
+import {
+  catalogDifficultyPresentationAuthorized,
+  supplementalDifficultyLabel,
+} from "../parse-browser/difficulty-presentation";
 import { createMessageResolver, type MessageResolver } from "../../localization/messages";
 import { regionalSeason } from "./regional-seasons";
 
@@ -121,6 +124,7 @@ export function buildSceneRankings(
   const groups = new Map<string, SceneRanking>();
   const authorized = (entry: PublicParseCatalogEntry): boolean =>
     semanticPresentationForCatalogEntry(presentation, schemaVersion, entry) != null;
+  const difficultyPresentationAuthorized = catalogDifficultyPresentationAuthorized(schemaVersion);
   const stimen = ranked.filter((entry) => isStimenRun(entry, authorized(entry)));
   const highestStimenFloorBySeason = new Map<string, number>();
   for (const entry of stimen) {
@@ -145,7 +149,9 @@ export function buildSceneRankings(
     const hasPresentation = authorized(entry);
     return isStimenRun(entry, hasPresentation)
       ? `${seasonKey}:stimen:${highestStimenFloorBySeason.get(seasonKey) ?? 0}`
-      : `${seasonKey}:${hasPresentation ? "presented" : "raw"}:scene:${entry.scene_id ?? (hasPresentation ? entry.activity_id ?? entry.scene_name : undefined) ?? "unknown"}`;
+      : difficultyPresentationAuthorized
+        ? `${seasonKey}:scene:${entry.scene_id ?? "unknown"}`
+        : `${seasonKey}:${hasPresentation ? "presented" : "raw"}:scene:${entry.scene_id ?? (hasPresentation ? entry.activity_id ?? entry.scene_name : undefined) ?? "unknown"}`;
   };
   const highestTierByScope = new Map<string, number>();
   for (const entry of candidates) {
@@ -163,12 +169,12 @@ export function buildSceneRankings(
     const highestTier = highestTierByScope.get(rankingScope(entry));
     if (highestTier !== undefined && entry.difficulty_tier !== highestTier) continue;
     const difficultyLabel = catalogEntryDifficultyLabel(entry, presentation, schemaVersion, messages);
-    const difficultyKey = hasPresentation
+    const difficultyKey = difficultyPresentationAuthorized
       ? `${entry.difficulty_family ?? "unknown"}:${entry.difficulty_tier ?? "unknown"}`
       : `raw:${entry.difficulty_tier ?? "unknown"}`;
     const key = isStimenRun(entry, hasPresentation)
       ? `${season.cohort}:${season.seasonId ?? "unknown"}:stimen:${highestStimenFloor}:${difficultyKey}`
-      : `${season.cohort}:${season.seasonId ?? "unknown"}:${hasPresentation ? "presented" : "raw"}:scene:${entry.scene_id ?? (hasPresentation ? entry.activity_id ?? entry.scene_name : undefined) ?? "unknown"}:${difficultyKey}`;
+      : `${rankingScope(entry)}:${difficultyKey}`;
     const label = isStimenRun(entry, hasPresentation)
       ? `Stimen Remains · Floor ${highestStimenFloor}`
       : catalogEntrySceneLabel(entry, presentation, schemaVersion);
@@ -267,7 +273,7 @@ export function catalogEntryDifficultyLabel(
   schemaVersion: 6 | 7 = 6,
   messages: MessageResolver = createMessageResolver(),
 ): string | undefined {
-  const authorized = semanticPresentationForCatalogEntry(presentation, schemaVersion, entry) != null;
+  const authorized = catalogDifficultyPresentationAuthorized(schemaVersion);
   const scene = catalogEntrySceneLabel(entry, presentation, schemaVersion);
   return supplementalDifficultyLabel(entry, scene, authorized, messages, false) ?? undefined;
 }

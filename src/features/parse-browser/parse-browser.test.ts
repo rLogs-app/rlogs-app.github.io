@@ -261,17 +261,21 @@ describe("parse search", () => {
     expect(filterSearch([parse], "stimen europe", catalogPresentation, 7)).toEqual([]);
   });
 
-  it("exposes catalog labels across identities while keeping semantics exact", () => {
+  it("exposes retained catalog labels and difficulty across identities", () => {
     const exact = renderCatalogEntry(parse, catalogPresentation, 7);
     expect(exact).toContain("Stimen Remains - Floor 20");
     expect(exact).toContain("Challenge 20");
 
     const wrong = { ...parse, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
+    const newerBuild = renderCatalogEntry(wrong, catalogPresentation, 7);
+    expect(newerBuild).toContain("Stimen Remains - Floor 20");
+    expect(newerBuild).toContain("Challenge 20");
+
+    const legacy = renderCatalogEntry(parse, catalogPresentation, 6);
+    expect(legacy).toContain("Stimen Remains - Floor 20");
+    expect(legacy).toContain("Tier 20");
+    expect(legacy).not.toContain("Challenge");
     for (const [candidate, schema] of [[wrong, 7], [parse, 6]] as const) {
-      const html = renderCatalogEntry(candidate, catalogPresentation, schema);
-      expect(html).toContain("Stimen Remains - Floor 20");
-      expect(html).toContain("Tier 20");
-      expect(html).not.toContain("Challenge");
       expect(filterSearch([candidate], "stimen", catalogPresentation, schema)).toEqual([candidate]);
       expect(filterSearch([candidate], "30120 global", catalogPresentation, schema)).toEqual([candidate]);
     }
@@ -311,8 +315,12 @@ describe("parse search", () => {
 
     report.protocol_pack_digest = `sha256:${"f".repeat(64)}`;
     const unauthorized = renderReport(report, 0, null, null, catalogPresentation);
-    expect(unauthorized).toContain("Tier 17 / Completed");
-    expect(unauthorized).not.toContain("Master 17");
+    expect(unauthorized).toContain("Master 17 / Completed");
+
+    delete report.protocol_pack_digest;
+    const malformed = renderReport(report, 0, null, null, catalogPresentation);
+    expect(malformed).toContain("Tier 17 / Completed");
+    expect(malformed).not.toContain("Master 17");
 
     report.protocol_pack_digest = catalogPresentation.protocol_pack_digest;
     report.runs[0]!.difficulty_family = "hard";
@@ -428,7 +436,8 @@ describe("parse search", () => {
     expect(renderReport(report, 0, null, null, catalogPresentation)).toContain("Master 0 / Completed");
 
     const wrongIdentity = { ...tierZero, protocol_pack_digest: `sha256:${"f".repeat(64)}` };
-    expect(renderCatalogEntry(wrongIdentity, catalogPresentation, 7)).toContain("Tier 0 / Completed");
+    expect(renderCatalogEntry(wrongIdentity, catalogPresentation, 7)).toContain("Master 0 / Completed");
+    expect(renderCatalogEntry(tierZero, catalogPresentation, 6)).toContain("Tier 0 / Completed");
   });
 
   it("withholds semantic facets for mixed catalog identities", () => {

@@ -68,9 +68,15 @@ describe("home rankings", () => {
     expect(rankings.find((value) => value.regionLabel === "China")?.seasonLabel).toBe("Season 4");
   });
 
-  it("shows only the highest submitted difficulty tier for a scene ranking", () => {
+  it("groups exact and newer catalog identities and keeps only the highest submitted tier", () => {
     const master17 = { ...entry(1633, "Tina's Mindrealm", 10), difficulty_family: "master", difficulty_tier: 17 };
-    const master20 = { ...entry(1633, "Tina's Mindrealm", 8), difficulty_family: "master", difficulty_tier: 20 };
+    const master20 = {
+      ...entry(1633, "Tina's Mindrealm", 8),
+      client_build: "24699999",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+      difficulty_family: "master",
+      difficulty_tier: 20,
+    };
     const rankings = buildSceneRankings([master17, master20], presentation, 7);
     expect(rankings).toHaveLength(1);
     expect(rankings[0]?.difficultyLabel).toBe("Master 20");
@@ -115,7 +121,7 @@ describe("home rankings", () => {
     expect(name).not.toContain("synthetic.activity");
   });
 
-  it("renders catalog scene labels across identities while keeping difficulty semantics exact", () => {
+  it("renders retained catalog difficulty across identities", () => {
     const exact = { ...entry(1633, "Chaotic - Tina's Mindrealm", 10), difficulty_family: "master", difficulty_tier: 17 };
     const authorized = parseFeedRow(exact, presentation, 7);
     expect(authorized).toContain("Chaotic - Tina's Mindrealm");
@@ -128,9 +134,9 @@ describe("home rankings", () => {
       protocol_pack_digest: `sha256:${"f".repeat(64)}`,
     };
     expect(parseFeedRow(wrongDigest, presentation, 7)).toContain("Chaotic - Tina's Mindrealm");
-    expect(parseFeedRow(wrongDigest, presentation, 7)).toContain("Tier 17");
-    expect(parseFeedRow(wrongDigest, presentation, 7)).not.toContain("Master 17");
+    expect(parseFeedRow(wrongDigest, presentation, 7)).toContain("Master 17");
     expect(parseFeedRow(exact, presentation, 6)).toContain("Chaotic - Tina's Mindrealm");
+    expect(parseFeedRow(exact, presentation, 6)).toContain("Tier 17");
   });
 
   it("carries an authority-backed attached name when the current scene catalog has not caught up", () => {

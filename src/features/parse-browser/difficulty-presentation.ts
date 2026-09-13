@@ -6,7 +6,30 @@ export interface DifficultyPresentationIdentity {
   difficulty_tier?: number | null;
 }
 
+export interface DifficultyProducerIdentity {
+  deployment_id?: string | null;
+  client_build?: string | null;
+  protocol_pack_digest?: string | null;
+}
+
 const difficultyLessActivityFamilies = new Set(["stimen-vaults"]);
+
+/** Schema 7 catalog difficulty is retained from a backend-validated run. This
+ * trust is deliberately narrower than exact-build semantic authorization. */
+export function catalogDifficultyPresentationAuthorized(schemaVersion: 6 | 7): boolean {
+  return schemaVersion === 7;
+}
+
+/** Report and observed-profile rows may present retained difficulty only when
+ * the producing runtime travels with the row as a complete identity triple. */
+export function producerDifficultyPresentationAuthorized(
+  identity: DifficultyProducerIdentity | null | undefined,
+): boolean {
+  return typeof identity?.deployment_id === "string" && identity.deployment_id.trim().length > 0
+    && typeof identity.client_build === "string" && identity.client_build.trim().length > 0
+    && typeof identity.protocol_pack_digest === "string"
+    && /^sha256:[0-9a-f]{64}$/u.test(identity.protocol_pack_digest);
+}
 
 export function supplementalDifficultyLabel(
   identity: DifficultyPresentationIdentity,
