@@ -2332,8 +2332,11 @@ summary.party-loadout-title {
 .timeline-marker[data-timeline-marker-lane] .timeline-death-skull {
   fill: currentColor;
   stroke: var(--surface-raised);
-  stroke-width: 1;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
   vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 2px rgb(0 0 0 / 96%));
 }
 
 .timeline-marker[data-timeline-marker-lane]:focus-visible .timeline-lane-marker-hitbox,
@@ -2512,10 +2515,12 @@ summary.party-loadout-title {
 .timeline-death-bones {
   fill: none;
   stroke: currentColor;
-  stroke-width: 2.4;
+  stroke-width: 3.2;
   stroke-linecap: round;
+  stroke-linejoin: round;
   stroke-dasharray: none;
   vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 2px rgb(0 0 0 / 96%));
 }
 
 .timeline-death-eye { fill: #071117; stroke: none; }

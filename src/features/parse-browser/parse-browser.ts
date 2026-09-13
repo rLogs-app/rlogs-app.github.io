@@ -1363,7 +1363,7 @@ function renderTimelineMarkerLanes(timeline: CombatTimeline, lanes: TimelineLane
       : ` aria-controls="${escapeHtml(previewId)}"`;
     const label = death ? messages.message("parse.timeline.death.trigger", { death: event.label }) : event.label;
     const glyph = death
-      ? `<path class="timeline-death-bones" d="M-7-6L7 7M7-6L-7 7"/><path class="timeline-death-skull" d="M-5-3A5 5 0 1 1 5-3C5 0 3 2 2 2V6H-2V2C-3 2-5 0-5-3Z"/>`
+      ? `<path class="timeline-death-bones" d="M-10-8L10 9M10-8L-10 9"/><path class="timeline-death-skull" d="M-7.5-4.5A7.5 7.5 0 1 1 7.5-4.5C7.5.5 5 3 3 3.5V8H1V5H-1V8H-3V3.5C-5 3-7.5.5-7.5-4.5Z"/>`
       : event.kind === "status"
         ? `<rect class="timeline-lane-status-span" x="0" y="-6" width="${intervalWidth.toFixed(1)}" height="12" rx="6"/>`
       : event.kind === "skill" || event.kind === "hostile"

@@ -627,7 +627,16 @@ describe("combat timeline DOM interactions", () => {
 
     expect(root.querySelector(".parse-timeline-chart")).toBeNull();
     expect(root.querySelector(".parse-death-marker")).toBeNull();
-    expect(trigger.querySelector(".timeline-death-skull")).not.toBeNull();
+    expect(trigger.querySelector(".timeline-death-skull")?.getAttribute("d")).toContain("A7.5 7.5");
+    expect(trigger.querySelector(".timeline-death-bones")?.getAttribute("d"))
+      .toBe("M-10-8L10 9M10-8L-10 9");
+    expect(trigger.querySelector("circle")).toBeNull();
+    const hitbox = trigger.querySelector(".timeline-death-hitbox");
+    expect(hitbox?.getAttribute("width")).toBe("24.0");
+    expect(hitbox?.getAttribute("height")).toBe("24");
+    const styles = readFileSync(new URL("../../styles/site.css", import.meta.url), "utf8");
+    expect(styles).toMatch(/\.timeline-death-bones\s*\{[^}]*stroke:\s*currentColor;[^}]*stroke-width:\s*3\.2[^}]*drop-shadow\(0 0 2px rgb\(0 0 0 \/ 96%\)\)/su);
+    expect(styles).toMatch(/\.timeline-marker\[data-timeline-marker-lane\] \.timeline-death-skull\s*\{[^}]*fill:\s*currentColor;[^}]*stroke-width:\s*1\.5[^}]*drop-shadow\(0 0 2px rgb\(0 0 0 \/ 96%\)\)/su);
     expect(trigger.getAttribute("style")).toContain("color:");
     expect(summary.textContent).toContain("death observed in the 0:03.000–0:04.000 one-second bucket");
     expect(summary.textContent).toContain("This legacy timeline predates exact death-cause evidence.");
