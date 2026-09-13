@@ -978,6 +978,18 @@ export function renderTimeline(
     timeline.omitted.series_points ? messages.message("parse.timeline.note.series_truncated") : "",
     omissions ? messages.message(omissions === 1 ? "parse.timeline.note.omissions.one" : "parse.timeline.note.omissions.other", { count: count(omissions) }) : "",
   ].filter(Boolean).join(" ");
+  const skillObservationCounts = timeline.participant_tracks.reduce((counts, track) => {
+    counts[track.skill_observation?.coverage ?? "unreported"] += 1;
+    return counts;
+  }, { complete: 0, partial: 0, unavailable: 0, unreported: 0 });
+  const noSkillRowsOmitted = timeline.participant_tracks.every((track) => (track.omitted_skill_uses ?? 0) === 0);
+  const skillObservation = timeline.participant_tracks.length > 0 &&
+      skillObservationCounts.complete === timeline.participant_tracks.length && noSkillRowsOmitted
+    ? messages.message("parse.timeline.skill_observation.all_complete", { count: count(skillObservationCounts.complete) })
+    : `${messages.message("parse.timeline.skill_observation.summary", {
+      complete: count(skillObservationCounts.complete), partial: count(skillObservationCounts.partial),
+      unavailable: count(skillObservationCounts.unavailable), unreported: count(skillObservationCounts.unreported),
+    })} ${messages.message("parse.timeline.skill_observation.caution")}`;
   return `<section class="combat-timeline" data-timeline-metric="damage" data-timeline-window="5" data-timeline-viewport-start="0" data-timeline-viewport-end="${durationSeconds}" data-timeline-rdps-label="${escapeHtml(rdpsLabel)}" data-timeline-participant-count="${plotted.length}" data-timeline-exact-rdps-track-count="${exactCumulativeRdpsTracks.length}" data-locale="${escapeHtml(messages.locale)}" aria-label="${escapeHtml(messages.message("parse.timeline.aria"))}">
     <div class="timeline-heading"><div><strong>${escapeHtml(messages.message("parse.timeline.title"))}</strong><small>${escapeHtml(trustLabel)}</small></div>
       <div class="timeline-controls" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.metric_group"))}">
@@ -1033,6 +1045,7 @@ export function renderTimeline(
     </div>
     <div class="timeline-legend" role="group" aria-label="${escapeHtml(messages.message("parse.timeline.participants"))}">${plotted.map(({ actor, color, pattern }, participantIndex) => `<button type="button" data-participant-toggle="${participantIndex}" aria-pressed="true" style="--track:${color}"><i class="line-pattern-${pattern}"></i><span>${escapeHtml(actor.display_name ?? messages.message("parse.timeline.player", { id: actor.actor_id }))}</span></button>`).join("")}${hasHostileMechanics ? `<button type="button" data-hostile-mechanics-toggle aria-pressed="true" style="--track:${palette[5]}"><i class="line-pattern-dash-dot"></i><span>${escapeHtml(messages.message("parse.timeline.hostile_mechanics"))}</span></button>` : ""}</div>
     ${notes ? `<p class="timeline-note">${escapeHtml(notes)}</p>` : ""}
+    <p class="timeline-note timeline-skill-observation">${escapeHtml(skillObservation)}</p>
     ${markerLanes.length || omittedMarkerCount > 0 ? `<p class="timeline-note timeline-lane-coverage">${escapeHtml(messages.message(
       omittedMarkerCount === 1 ? "parse.timeline.lanes.coverage.one"
         : omittedMarkerCount > 1 ? "parse.timeline.lanes.coverage.other" : "parse.timeline.lanes.coverage_complete",

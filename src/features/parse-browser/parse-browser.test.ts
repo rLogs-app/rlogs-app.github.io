@@ -1810,7 +1810,7 @@ describe("timeline rolling windows", () => {
       timeline: { ...graph.timeline!, omitted: { ...graph.timeline!.omitted, death_markers: 2, loadout_markers: 3, skill_uses: 4 } },
     });
     expect(html).toContain("9 events were omitted from publication");
-    expect(html).toContain("exact skill uses, complete status lifecycles, deaths, and loadout changes from the public timeline only");
+    expect(html).toContain("published exact skill uses, complete status lifecycles, deaths, and loadout changes from the public timeline only");
     const fullyOmitted = renderTimeline({
       ...graph,
       timeline: {
@@ -1820,6 +1820,46 @@ describe("timeline rolling windows", () => {
     });
     expect(fullyOmitted).not.toContain("timeline-marker-lanes-svg");
     expect(fullyOmitted).toContain("1 event was omitted from publication");
+  });
+
+  it("discloses per-participant skill observation coverage without treating missing coverage as zero casts", () => {
+    const report = load<PublicParseReport>("parse-report.v1.json");
+    const graph = selectCanonicalGraph(report.runs[0]);
+    const tracks = graph.timeline!.participant_tracks.map((track, index) => ({
+      ...track,
+      skill_observation: index === 0
+        ? { coverage: "complete" as const, evidence: ["exact_local_outbound" as const] }
+        : index === 1
+          ? { coverage: "partial" as const, evidence: ["reconciled_local_vantage" as const] }
+          : { coverage: "unavailable" as const, evidence: [] },
+    }));
+    const covered = renderTimeline({ ...graph, timeline: { ...graph.timeline!, participant_tracks: tracks } });
+    expect(covered).toContain("Skill-use observation coverage: 1 complete, 1 partial");
+    expect(covered).toContain("An empty skill lane proves no skill uses only when that participant&#39;s observation coverage is complete and no skill rows were omitted from publication.");
+
+    const unreported = renderTimeline(graph);
+    expect(unreported).toContain(`0 unavailable, ${graph.timeline!.participant_tracks.length} unreported`);
+    expect(unreported).not.toContain("Skill-use observation is complete for all");
+
+    const complete = renderTimeline({
+      ...graph,
+      timeline: { ...graph.timeline!, participant_tracks: graph.timeline!.participant_tracks.map((track) => ({
+        ...track, skill_observation: { coverage: "complete" as const, evidence: ["exact_local_outbound" as const] },
+      })) },
+    });
+    expect(complete).toContain(`Skill-use observation is complete for all ${graph.timeline!.participant_tracks.length} participant tracks.`);
+    expect(complete).not.toContain("An empty skill lane proves no skill uses");
+
+    const completeButTruncated = renderTimeline({
+      ...graph,
+      timeline: { ...graph.timeline!, participant_tracks: graph.timeline!.participant_tracks.map((track, index) => ({
+        ...track,
+        omitted_skill_uses: index === 0 ? 1 : 0,
+        skill_observation: { coverage: "complete" as const, evidence: ["exact_local_outbound" as const] },
+      })) },
+    });
+    expect(completeButTruncated).not.toContain("Skill-use observation is complete for all");
+    expect(completeButTruncated).toContain("no skill rows were omitted from publication");
   });
 
   it("averages sparse bucket totals across a trailing window without filling the whole encounter", () => {

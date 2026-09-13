@@ -877,6 +877,36 @@ describe("public parse contract", () => {
     report.protocol_pack_digest = "sha256:not-a-digest";
     expect(isPublicParseReport(report)).toBe(false);
   });
+  it("accepts optional skill observation coverage while rejecting unsupported or contradictory evidence", () => {
+    const report = reportWithTimelineV6();
+    const tracks = report.runs[0].timeline.participant_tracks;
+    tracks[0].skill_observation = { coverage: "complete", evidence: ["exact_local_outbound"] };
+    tracks[1].skill_observation = { coverage: "partial", evidence: ["exact_local_outbound"] };
+    tracks.slice(2).forEach((track: any) => {
+      track.skill_observation = { coverage: "unavailable", evidence: [] };
+    });
+    expect(isPublicParseReport(report)).toBe(true);
+
+    const unsupported = structuredClone(report);
+    unsupported.runs[0].timeline.participant_tracks[0].skill_observation.evidence = ["exact_party_broadcast"];
+    expect(isPublicParseReport(unsupported)).toBe(false);
+
+    const unavailableWithEvidence = structuredClone(report);
+    unavailableWithEvidence.runs[0].timeline.participant_tracks[0].skill_observation = {
+      coverage: "unavailable", evidence: ["exact_local_outbound"],
+    };
+    expect(isPublicParseReport(unavailableWithEvidence)).toBe(false);
+
+    const completeWithoutEvidence = structuredClone(report);
+    completeWithoutEvidence.runs[0].timeline.participant_tracks[0].skill_observation = { coverage: "complete", evidence: [] };
+    expect(isPublicParseReport(completeWithoutEvidence)).toBe(false);
+
+    const wrongSourceEvidence = structuredClone(report);
+    wrongSourceEvidence.runs[0].timeline.participant_tracks[0].skill_observation = {
+      coverage: "partial", evidence: ["reconciled_local_vantage"],
+    };
+    expect(isPublicParseReport(wrongSourceEvidence)).toBe(false);
+  });
   it("rejects participant tracks that cannot index the canonical series", () => {
     const report = fixture("parse-report.v1.json") as any;
     report.runs[0].timeline.participant_tracks[0].canonical_participant_index = 99;
