@@ -27,6 +27,10 @@ const scenes = readJson(resolve(runtimeRoot, "localization/en-US/scene-names.v1.
 const auxiliaryActions = readJson(resolve(runtimeRoot, "localization/en-US/auxiliary-action-names.v1.json"));
 const observation = readJson(resolve(siteRoot, "scripts/data/public-parse-action-observation.v1.json"));
 const currentRecount = readJson(resolve(catalogRoot, "combat-actions/current-build-recount.v1.json"));
+const clientRecountReviews = readJson(resolve(
+  root,
+  "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/current-build-unmapped-catalog/client-recount-reviews.json",
+));
 const profilePresentation = readJson(resolve(publicRoot, "profile-presentation.en-US.v1.json"));
 
 if (
@@ -64,8 +68,10 @@ for (const action of currentRecount.actions ?? []) {
   const damageIds = action.relation?.match(/:\s*([\d, ]+)$/u)?.[1]?.match(/\d+/gu) ?? [];
   for (const damageId of damageIds) offer(damageId, action.localization_key);
 }
+const recountLocalizationKeys = new Map();
 for (const file of jsonFiles(resolve(catalogRoot, "recount-groups"))) {
   const entity = readJson(file);
+  recountLocalizationKeys.set(Number(entity.id), entity.localization_key);
   for (const damageId of entity.attributes?.damage_ids ?? []) {
     offer(damageId, entity.localization_key);
   }
@@ -75,6 +81,15 @@ for (const file of jsonFiles(resolve(catalogRoot, "skills"))) {
   for (const skillEffectId of entity.attributes?.skill_effect_ids ?? []) {
     offer(skillEffectId, entity.localization_key);
   }
+}
+for (const review of clientRecountReviews.entries ?? []) {
+  if (
+    review.status !== "presentation-group-review-exact-damage-parent-known" ||
+    review.review_kind !== "partial-client-recount" ||
+    review.candidate_group_ids?.length !== 1 ||
+    candidates.has(String(review.action_id))
+  ) continue;
+  offer(review.action_id, recountLocalizationKeys.get(review.candidate_group_ids[0]));
 }
 for (const [id, label] of Object.entries(parse.imagines)) {
   const labels = candidates.get(id) ?? new Set();

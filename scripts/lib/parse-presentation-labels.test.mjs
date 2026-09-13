@@ -91,11 +91,11 @@ describe("parse presentation label gate", () => {
     expect(catalog.coverage).toMatchObject({
       scope: "captured-public-api-action-ids-with-trusted-root-label-reconciliation",
       observed_action_count: observation.action_ids.length,
-      localized_observed_action_count: 256,
+      localized_observed_action_count: 257,
       saved_history_observed_action_count: 187,
       saved_history_localized_observed_action_count: 187,
       captured_public_promotion_count: 8,
-      trusted_enrichment_count: 18,
+      trusted_enrichment_count: 19,
       conflicting_action_ids: [],
       public_action_observation: {
         captured_at: observation.captured_at,
@@ -104,7 +104,7 @@ describe("parse presentation label gate", () => {
         report_count: observation.report_count,
       },
     });
-    expect(catalog.coverage.uncovered_action_ids).toHaveLength(6);
+    expect(catalog.coverage.uncovered_action_ids).toHaveLength(5);
     expect(catalog.coverage.uncovered_action_ids).toContain("700009");
     expect(catalog.actions["122330103"]).toBe("Powerdraw");
     expect(catalog.actions["2220329107"]).toBe("Falcon Strike");
@@ -138,7 +138,8 @@ describe("parse presentation label gate", () => {
     expect(catalog.actions["2202112"]).toBe("Overhealing");
     expect(catalog.actions["3003260"]).toBe("Judgment - Heal");
     expect(catalog.actions["3057111"]).toBe("Overhealing");
-    for (const unresolved of ["2212", "700009", "873204", "873205", "1009702", "3054412"]) {
+    expect(catalog.actions["1009702"]).toBe("Arcane! Precision Burst");
+    for (const unresolved of ["2212", "700009", "873204", "873205", "3054412"]) {
       expect(catalog.actions[unresolved]).toBeUndefined();
     }
     expect(catalog.actions["9999999"]).toBeUndefined();
