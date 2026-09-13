@@ -1743,7 +1743,7 @@ describe("timeline rolling windows", () => {
     expect(ambiguous).not.toContain("Future Stable Action");
   });
 
-  it("renders hostile cast sources in distinct lanes before player lanes without boss inference", () => {
+  it("renders hostile cast lanes and gates trusted icons by exact presentation identity", () => {
     const report = load<PublicParseReport>("parse-report.v1.json");
     const graph = selectCanonicalGraph(report.runs[0]);
     const presentation = {
@@ -1765,18 +1765,35 @@ describe("timeline rolling windows", () => {
       omitted: { ...graph.timeline!.omitted, skill_uses: 0, hostile_casts: 0 },
       skill_uses: [],
     };
-    const html = renderTimeline({ ...graph, timeline }, createMessageResolver(), presentation);
+    const mismatchedIdentity = {
+      deployment_id: presentation.deployment_id,
+      client_build: "24699999",
+      protocol_pack_digest: `sha256:${"b".repeat(64)}`,
+    };
+    const html = renderTimeline(
+      { ...graph, timeline }, createMessageResolver(), presentation, mismatchedIdentity,
+    );
     expect(html).toContain('class="timeline-marker hostile"');
     expect(html).toContain('data-timeline-lane-key="hostile-enemy-44"');
     expect(html).toContain('data-timeline-lane-hostile');
     expect(html).toContain(`Enemy actor enemy-44 used Powerdraw at 0:00.750, targeting ${graph.participants[0]!.display_name}`);
-    expect(html).toContain('href="/assets/bpsr/profile/skills/weapon_gj-01_kx05.png"');
+    expect(html).not.toContain('href="/assets/bpsr/profile/skills/weapon_gj-01_kx05.png"');
     expect(html).not.toMatch(/boss[^-]/iu);
     expect(html.indexOf('data-timeline-lane-key="hostile-enemy-44"'))
       .toBeLessThan(html.indexOf('data-timeline-lane-key="participant-'));
     const hostileMarker = html.match(/<g[^>]+class="timeline-marker hostile"[^>]*>/u)?.[0] ?? "";
     expect(hostileMarker).not.toContain("data-timeline-marker-participant");
     expect(hostileMarker).toContain('data-timeline-target-participant="0"');
+
+    const exactIdentity = {
+      deployment_id: presentation.deployment_id,
+      client_build: presentation.game_build,
+      protocol_pack_digest: presentation.protocol_pack_digest,
+    };
+    const exact = renderTimeline(
+      { ...graph, timeline }, createMessageResolver(), presentation, exactIdentity,
+    );
+    expect(exact).toContain('href="/assets/bpsr/profile/skills/weapon_gj-01_kx05.png"');
 
     const reconciledWithheldTarget = renderTimeline({
       ...graph, reconciled: true, trustKind: "reconciled", contributingReportCount: 2,

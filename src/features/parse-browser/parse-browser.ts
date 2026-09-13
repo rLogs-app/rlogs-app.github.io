@@ -1098,11 +1098,12 @@ export function normalizeTimelineLaneEvents(
   identity?: NullablePresentationIdentity | null,
 ): TimelineLane[] {
   const events: TimelineLaneEvent[] = [];
-  const playerActionSemanticsAuthorized = Boolean(semanticPresentationForIdentity(presentation, identity));
+  const semanticPresentation = semanticPresentationForIdentity(presentation, identity);
+  const actionSemanticsAuthorized = Boolean(semanticPresentation);
   (timeline.hostile_casts ?? []).forEach((cast, castIndex) => {
     const enemy = messages.message("parse.timeline.enemy_actor", { id: cast.source_actor_id });
     const action = localizedActionName(presentation, cast.action_id, null);
-    const iconAssetPath = trustedTimelineActionIconPath(presentation, cast.action_id);
+    const iconAssetPath = trustedTimelineActionIconPath(semanticPresentation, cast.action_id);
     const targetMatches = cast.target_actor_id === undefined ? [] : plotted.flatMap(({ actor }, participantIndex) =>
       actor.actor_id === cast.target_actor_id ? [{ actor, participantIndex }] : []);
     const targetMatch = targetMatches.length === 1 ? targetMatches[0] : undefined;
@@ -1208,7 +1209,7 @@ export function normalizeTimelineLaneEvents(
     const label = messages.message("parse.timeline.event.skill", {
       player, action, time: formatDuration(skill.at_micros),
     });
-    const publishedIconPath = playerActionSemanticsAuthorized && matchingAbilities.length === 1
+    const publishedIconPath = actionSemanticsAuthorized && matchingAbilities.length === 1
       ? matchingAbilities[0]!.icon_asset_path ?? undefined
       : undefined;
     const iconAssetPath = timelineSkillIconPath(presentation, skill.action_id, publishedIconPath);
