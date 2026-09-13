@@ -247,11 +247,11 @@ export function isPublicParseReport(value: unknown): value is PublicParseReport 
     : value.schema_version === 17 && value.projection_revision === 10 ? 6
     : value.schema_version === 17 && value.projection_revision === 11 ? 7
     : value.schema_version === 17 && value.projection_revision === 12 ? 8
-    : value.schema_version === 17 && value.projection_revision === 13 ? 9 : null;
+    : value.schema_version === 17 && (value.projection_revision === 13 || value.projection_revision === 14) ? 9 : null;
   if (timelineSchema == null) return false;
   const requireProtocolIdentity = (value.schema_version === 15 && value.projection_revision === 7) ||
     (value.schema_version === 16 && value.projection_revision === 8) ||
-    (value.schema_version === 17 && (value.projection_revision === 9 || value.projection_revision === 10 || value.projection_revision === 11 || value.projection_revision === 12 || value.projection_revision === 13));
+    (value.schema_version === 17 && (value.projection_revision === 9 || value.projection_revision === 10 || value.projection_revision === 11 || value.projection_revision === 12 || value.projection_revision === 13 || value.projection_revision === 14));
   return typeof value.report_id === "string" &&
     reportIdPattern.test(value.report_id) && (value.visibility === "public" || value.visibility === "unlisted" || value.visibility === "private") &&
     typeof value.deployment_id === "string" && value.deployment_id.length > 0 &&
@@ -667,7 +667,8 @@ function isTimelineTrack(value: unknown, participants: readonly unknown[], durat
       value.canonical_participant_index >= 256 || !isNonNegativeInteger(value.series_point_count) || value.series_point_count > 262_144 ||
       (value.omitted_skill_uses !== undefined && !isNonNegativeInteger(value.omitted_skill_uses)) ||
       (timelineSchema >= 9 ? !isTimelineSkillObservation(value.skill_observation, timelineSource)
-        : value.skill_observation !== undefined && !isTimelineSkillObservation(value.skill_observation, timelineSource))) return false;
+        : value.skill_observation !== undefined && !isTimelineSkillObservation(value.skill_observation, timelineSource)) ||
+      (timelineSchema >= 9 && value.skill_observation.coverage === "complete" && value.omitted_skill_uses !== 0)) return false;
   const participant = participants[value.canonical_participant_index];
   if (!requireResolved && participant == null) return true;
   if (!isRecord(participant) || participant.actor_id !== value.actor_id || !Array.isArray(participant.series) ||

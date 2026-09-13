@@ -886,6 +886,13 @@ describe("public parse contract", () => {
       track.skill_observation = { coverage: "unavailable", evidence: [] };
     });
     expect(isPublicParseReport(report)).toBe(true);
+    const currentContinuity = reportWithTimelineV8();
+    currentContinuity.projection_revision = 14;
+    currentContinuity.runs[0].timeline.schema_version = 9;
+    currentContinuity.runs[0].timeline.participant_tracks.forEach((track: any) => {
+      track.skill_observation = { coverage: "unavailable", evidence: [] };
+    });
+    expect(isPublicParseReport(currentContinuity)).toBe(true);
 
     const unsupported = structuredClone(report);
     unsupported.runs[0].timeline.participant_tracks[0].skill_observation.evidence = ["exact_party_broadcast"];
